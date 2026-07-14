@@ -1,5 +1,13 @@
 # FlowLyrics v1.0.0
 
+## ダウンロード
+
+[FlowLyrics 最新版をダウンロード](https://github.com/MoriKouta/FlowLyrics/releases/latest)
+
+Releaseページの「Assets」から、FlowLyricsのZIPファイルをダウンロードしてください。
+
+※「Source code (zip)」「Source code (tar.gz)」はアプリ本体ではありません。
+
 Windows版Spotifyで再生している曲に追従し、同期歌詞をデスクトップへ表示するWindows専用オーバーレイアプリです。
 
 背景を完全に透明にして歌詞だけを表示したり、色付きパネルや縁取り、フォント、表示位置などを自由にカスタマイズできます。常に手前への表示やクリック透過にも対応しているため、作業中や映像編集、配信、デスクトップ鑑賞用として利用できます。
