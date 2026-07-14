@@ -1,4 +1,4 @@
-# FlowLyrics v0.4.2
+# FlowLyrics v1.0.0
 
 Windows版Spotifyで再生している曲に追従し、同期歌詞をデスクトップへ表示するWindows専用オーバーレイアプリです。
 
