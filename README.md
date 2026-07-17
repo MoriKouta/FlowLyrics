@@ -47,7 +47,7 @@ Both the Microsoft Store and Spotify.com versions are supported. FlowLyrics dete
 
 ## Quick Start
 
-1. Download and extract `FlowLyrics-v1.1.1-win-x64-portable.zip` from the Release assets.
+1. Download `FlowLyrics-vX.X.X-win-x64-portable.zip`from the latest Release.
 2. Double-click `FlowLyrics.exe`. No additional .NET installation is required.
 3. Start playing a song in Spotify for Windows.
 4. Drag the lyric window to the desired location and resize it from any corner.
