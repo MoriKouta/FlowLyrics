@@ -1,4 +1,4 @@
-# FlowLyrics v1.0.0
+# FlowLyrics
 
 ## ダウンロード
 
