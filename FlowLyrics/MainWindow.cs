@@ -3,14 +3,12 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
@@ -141,13 +139,15 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _resizeRecenterPending;
 
-	private readonly Bitmap _backdropSampleBitmap;
+	private bool _plainLyricsScrollMode;
 
-	private readonly Graphics _backdropSampleGraphics;
+	private string? _plainLyricsLayoutKey;
 
-	private System.Windows.Media.Color _sampledBackdropColor = System.Windows.Media.Color.FromRgb(45, 45, 45);
+	private System.Windows.Controls.Button? _reverseColorsButton;
 
-	private DateTime _nextBackdropSampleUtc;
+	private TextBlock? _reverseColorsLabel;
+
+	private System.Windows.Media.Color _trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 
 	internal System.Windows.Controls.ContextMenu OverlayMenu;
 
@@ -264,11 +264,10 @@ public class MainWindow : Window, IComponentConnector
 	public MainWindow()
 	{
 		InitializeComponent();
-		_backdropSampleBitmap = new Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-		_backdropSampleGraphics = Graphics.FromImage(_backdropSampleBitmap);
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializePlaybackTimeline();
+		EnsureReverseColorsButton();
 		_settings = _settingsService.Load();
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
@@ -288,7 +287,6 @@ public class MainWindow : Window, IComponentConnector
 		{
 			UpdateSelectiveClickThrough();
 			UpdatePauseEyes();
-			UpdateBackdropSampleIfNeeded();
 			RenderLyrics();
 		};
 		_saveTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -337,6 +335,8 @@ public class MainWindow : Window, IComponentConnector
 			if (_snapshot != null)
 			{
 				_lyrics = null;
+				_plainLyricsScrollMode = false;
+				_plainLyricsLayoutKey = null;
 				_lastLineIndex = int.MinValue;
 				await LoadLyricsAsync(_snapshot.Track, forceRefresh: false);
 			}
@@ -360,7 +360,14 @@ public class MainWindow : Window, IComponentConnector
 		{
 			CaptureWindowBounds();
 			UpdateChromeVisibility();
-			QueueActiveLineRecentering();
+			if (_plainLyricsScrollMode)
+			{
+				_plainLyricsLayoutKey = null;
+			}
+			else
+			{
+				QueueActiveLineRecentering();
+			}
 		};
 		base.MouseLeftButtonDown += MainWindow_MouseLeftButtonDown;
 		base.Width = _settings.WindowWidth;
@@ -386,6 +393,11 @@ public class MainWindow : Window, IComponentConnector
 		_tray.SettingsRequested += OpenSettings;
 		_tray.ExitRequested += ExitApplication;
 		SetLocked(_settings.LockOnStartup || _settings.IsLocked, persist: false);
+		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
+		{
+			UpdatePlayerButtonBorders();
+			UpdateLockButtonVisual();
+		});
 		_tray.UpdateState(base.IsVisible, _isLocked);
 		if (_settings.StartWithWindows)
 		{
@@ -473,12 +485,15 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsRetryScheduled = false;
 					_lyrics = null;
 					_lyricsLookup = null;
+					_plainLyricsScrollMode = false;
+					_plainLyricsLayoutKey = null;
 					_lyricsCancellation?.Cancel();
 					_lastLineIndex = int.MinValue;
 				}
 				TrackStatusText.Text = "SPOTIFY / WAITING";
 				TrackTitleText.Text = T("Play something in Spotify");
-				StatusDot.Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(142, 151, 166));
+				_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
+				StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
 				if (_settings.ShowStatusWhenIdle)
 				{
 					SetStatus(T("Play something in Spotify"), T("Following Spotify for Windows automatically"), animate: false);
@@ -502,10 +517,13 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsRetryScheduled = false;
 					_lyrics = null;
 					_lyricsLookup = null;
+					_plainLyricsScrollMode = false;
+					_plainLyricsLayoutKey = null;
 					_lastLineIndex = int.MinValue;
 					TrackStatusText.Text = "SPOTIFY / CHECKING CACHE";
 					TrackTitleText.Text = playbackSnapshot.Track.DisplayName;
-					StatusDot.Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(142, 151, 166));
+					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
+					StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
 					SetStatus(T("Checking saved lyrics…"), playbackSnapshot.Track.DisplayName, animate: false);
 					LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
 				}
@@ -540,6 +558,8 @@ public class MainWindow : Window, IComponentConnector
 				_lyricsRetryScheduled = false;
 				_lyricsLookup = lyricsLookupResult;
 				LyricsResult lyrics = lyricsLookupResult.Lyrics;
+				_plainLyricsScrollMode = false;
+				_plainLyricsLayoutKey = null;
 				_lastLineIndex = int.MinValue;
 				if (lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				{
@@ -575,8 +595,9 @@ public class MainWindow : Window, IComponentConnector
 				}
 				else if (_settings.EnablePlainLyricsFallback && lyrics.HasPlainLyrics)
 				{
-					_lyrics = CreateEstimatedLyrics(lyrics, track);
-					SetTrackStatus("ESTIMATED", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
+					_lyrics = lyrics;
+					_plainLyricsScrollMode = true;
+					SetTrackStatus("PLAIN LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					RenderLyrics();
 				}
 				else
@@ -670,8 +691,14 @@ public class MainWindow : Window, IComponentConnector
 
 	private void RenderLyrics()
 	{
-		UpdateScrollAnimation();
 		UpdatePlaybackProgress();
+		if (_plainLyricsScrollMode && _lyrics?.HasPlainLyrics == true)
+		{
+			EnsurePlainLyricsLayout();
+			UpdatePlainLyricsScroll();
+			return;
+		}
+		UpdateScrollAnimation();
 		if ((object)_snapshot != null && (object)_lyrics != null && _lyrics.HasSyncedLyrics)
 		{
 			int num = _settings.GlobalLyricsOffsetMs;
@@ -688,6 +715,62 @@ public class MainWindow : Window, IComponentConnector
 				DisplayLyricContext(lines, num2, animate: true);
 			}
 		}
+	}
+
+	private void EnsurePlainLyricsLayout()
+	{
+		if (_lyrics?.PlainLyrics == null)
+		{
+			return;
+		}
+		string layoutKey = string.Join("|", _activeTrackKey, _settings.FontFamily, _settings.FontSize, _settings.MinimumFontSize,
+			_settings.TextAlignment, _settings.LineSpacing, _settings.MaximumWrapLines, _settings.WrapLongLines, _settings.AutoFitText,
+			LyricsScrollViewer.ViewportWidth);
+		if (string.Equals(_plainLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		List<LyricLine> lines = _lyrics.PlainLyrics
+			.Replace("\r\n", "\n", StringComparison.Ordinal)
+			.Split('\n')
+			.Select((string line) => line.Trim())
+			.Where((string line) => !string.IsNullOrWhiteSpace(line))
+			.Where((string line) => !line.StartsWith('[') || !line.EndsWith(']'))
+			.Select((string line) => new LyricLine(TimeSpan.Zero, line))
+			.ToList();
+		if (lines.Count == 0)
+		{
+			return;
+		}
+
+		RebuildLineControls(lines.Count, lines, 0);
+		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(8.0, LyricsScrollViewer.ViewportHeight * 0.12), 0.0,
+			Math.Max(16.0, LyricsScrollViewer.ViewportHeight * 0.45));
+		_activeLineIndex = -1;
+		_lastLineIndex = int.MinValue;
+		for (int i = 0; i < _lineControls.Count; i++)
+		{
+			OutlinedText line = _lineControls[i];
+			line.Fill = ResolveTextBrush(i, isActive: true);
+			line.FontWeight = FontWeights.SemiBold;
+			line.FontSize = _settings.FontSize * Math.Max(0.78, _settings.InactiveFontScale);
+			line.Opacity = 1.0;
+		}
+		LyricsStackPanel.UpdateLayout();
+		_plainLyricsLayoutKey = layoutKey;
+	}
+
+	private void UpdatePlainLyricsScroll()
+	{
+		if (_snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero || LyricsScrollViewer.ViewportHeight <= 0.0)
+		{
+			return;
+		}
+		double maxOffset = Math.Max(0.0, LyricsScrollViewer.ExtentHeight - LyricsScrollViewer.ViewportHeight);
+		double ratio = Math.Clamp(_snapshot.EstimatedPosition(DateTimeOffset.UtcNow).TotalMilliseconds /
+			_snapshot.Track.Duration.TotalMilliseconds, 0.0, 1.0);
+		LyricsScrollViewer.ScrollToVerticalOffset(maxOffset * ratio);
 	}
 
 	private void DisplayLyricContext(IReadOnlyList<LyricLine> lines, int activeIndex, bool animate)
@@ -757,6 +840,10 @@ public class MainWindow : Window, IComponentConnector
 	{
 		int num = Math.Max(1, requestedCount ?? 2);
 		_visibleFirstLineIndex = Math.Max(0, firstLineIndex);
+		if (!_plainLyricsScrollMode)
+		{
+			LyricsStackPanel.Margin = new Thickness(0.0);
+		}
 		LyricsStackPanel.Children.Clear();
 		_lineControls.Clear();
 		for (int i = 0; i < num; i++)
@@ -777,8 +864,8 @@ public class MainWindow : Window, IComponentConnector
 	private void ApplyTextSettingsToControls()
 	{
 		System.Windows.Media.FontFamily fontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily);
-		System.Windows.Media.Brush stroke = CreateBlendBrush(_settings.OutlineColor, 1.0, Colors.Black, _settings.OutlineBlendMode);
-		System.Windows.Media.Brush shadowBrush = CreateBlendBrush(_settings.ShadowColor, 1.0, Colors.Black, _settings.ShadowBlendMode);
+		System.Windows.Media.Brush stroke = CreateDisplayBrush(_settings.OutlineColor, 1.0, Colors.Black);
+		System.Windows.Media.Brush shadowBrush = CreateDisplayBrush(_settings.ShadowColor, 1.0, Colors.Black);
 		string textAlignment = _settings.TextAlignment;
 		TextAlignment textAlignment2 = ((textAlignment == "Center") ? TextAlignment.Center : ((textAlignment == "Right") ? TextAlignment.Right : TextAlignment.Left));
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -898,15 +985,15 @@ public class MainWindow : Window, IComponentConnector
 	{
 		if (_settings.TextColorMode == "Fixed")
 		{
-			return CreateBlendBrush(isActive ? _settings.CurrentTextColor : _settings.NextTextColor, 1.0, Colors.White, isActive ? _settings.CurrentTextBlendMode : _settings.NextTextBlendMode);
+			return CreateDisplayBrush(isActive ? _settings.CurrentTextColor : _settings.NextTextColor, 1.0, Colors.White);
 		}
 		int num = StableIndex($"{_activeTrackKey}|{_settings.RandomPaletteSeed}", int.MaxValue);
 		if (_settings.TextColorMode == "TrackRandom")
 		{
 			CuratedColorPalette theme = ColorPalettes.GetTheme(num);
-			return CreateBlendBrush(isActive ? theme.Primary : theme.Secondary, 1.0, Colors.White, isActive ? _settings.CurrentTextBlendMode : _settings.NextTextBlendMode);
+			return CreateDisplayBrush(isActive ? theme.Primary : theme.Secondary, 1.0, Colors.White);
 		}
-		return CreateBlendBrush(ColorPalettes.GetAccent(StableIndex($"{num}|{lyricIndex}", int.MaxValue)), 1.0, Colors.White, isActive ? _settings.CurrentTextBlendMode : _settings.NextTextBlendMode);
+		return CreateDisplayBrush(ColorPalettes.GetAccent(StableIndex($"{num}|{lyricIndex}", int.MaxValue)), 1.0, Colors.White);
 	}
 
 	private static int StableIndex(string value, int count)
@@ -924,15 +1011,16 @@ public class MainWindow : Window, IComponentConnector
 	{
 		_settings.Normalize();
 		ApplyUiLanguage();
-		base.Resources["UiAccentBrush"] = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
+		base.Resources["UiAccentBrush"] = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
 		UpdatePlayerButtonBorders();
 		OverlayPanel.Padding = new Thickness(_settings.PanelPadding);
 		OverlayPanel.CornerRadius = new CornerRadius(_settings.CornerRadius);
-		OverlayPanel.Background = CreateBlendBrush(_settings.BackgroundColor, _settings.BackgroundOpacity, Colors.Black, _settings.BackgroundBlendMode, ignoreSourceAlpha: true);
-		OverlayPanel.BorderBrush = CreateBlendBrush(_settings.BorderColor, 1.0, Colors.White, _settings.BorderBlendMode);
+		OverlayPanel.Background = CreateDisplayBrush(_settings.BackgroundColor, _settings.BackgroundOpacity, Colors.Black, ignoreSourceAlpha: true);
+		OverlayPanel.BorderBrush = CreateDisplayBrush(_settings.BorderColor, 1.0, Colors.White);
 		OverlayPanel.BorderThickness = (_settings.ShowPanelBorder ? new Thickness(_settings.BorderThickness) : new Thickness(0.0));
 		base.Opacity = _settings.OverlayOpacity;
 		base.Topmost = _settings.AlwaysOnTop;
+		_plainLyricsLayoutKey = null;
 		RebuildLineControls();
 		UpdateChromeVisibility();
 		UpdatePlaybackChrome();
@@ -956,12 +1044,43 @@ public class MainWindow : Window, IComponentConnector
 
 	private void UpdatePlayerButtonBorders()
 	{
-		System.Windows.Media.Brush accent = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
-		foreach (System.Windows.Controls.Button button in new[] { PreviousButton, PlayPauseButton, NextButton, VolumeButton, SettingsButton })
+		System.Windows.Media.Brush accent = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+		System.Windows.Media.Brush surface = new SolidColorBrush(_settings.ReverseColors
+			? System.Windows.Media.Color.FromArgb(218, 222, 225, 222)
+			: System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+		System.Windows.Media.Brush icon = _settings.ReverseColors
+			? new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30))
+			: System.Windows.Media.Brushes.White;
+		foreach (System.Windows.Controls.Button button in GetPlayerButtons())
 		{
 			button.BorderBrush = accent;
 			button.BorderThickness = new Thickness(1.25);
+			button.Background = surface;
+			button.Foreground = icon;
+			foreach (Shape shape in FindVisualChildren<Shape>(button))
+			{
+				shape.Fill = icon;
+			}
+			foreach (TextBlock text in FindVisualChildren<TextBlock>(button))
+			{
+				text.Foreground = icon;
+			}
 		}
+		UpdateReverseColorsButtonVisual();
+		UpdateOverlayChromeColors();
+	}
+
+	private IEnumerable<System.Windows.Controls.Button> GetPlayerButtons()
+	{
+		yield return PreviousButton;
+		yield return PlayPauseButton;
+		yield return NextButton;
+		if (_reverseColorsButton != null)
+		{
+			yield return _reverseColorsButton;
+		}
+		yield return VolumeButton;
+		yield return SettingsButton;
 	}
 
 	private string T(string key)
@@ -995,6 +1114,7 @@ public class MainWindow : Window, IComponentConnector
 		NextButton.ToolTip = T("Next track");
 		VolumeButton.ToolTip = T("Volume");
 		SettingsButton.ToolTip = T("Settings...");
+		UpdateReverseColorsButtonVisual();
 		_tray?.UpdateLanguage(_settings.Language);
 		UpdateLockButtonVisual();
 	}
@@ -1019,6 +1139,10 @@ public class MainWindow : Window, IComponentConnector
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		VolumeButton.Visibility = ((!flag4) ? Visibility.Collapsed : Visibility.Visible);
+		if (_reverseColorsButton != null)
+		{
+			_reverseColorsButton.Visibility = VolumeButton.Visibility;
+		}
 		LockButton.Visibility = Visibility.Visible;
 		SettingsButton.Visibility = Visibility.Visible;
 		bool flag6 = num < 68.0;
@@ -1046,6 +1170,10 @@ public class MainWindow : Window, IComponentConnector
 			NextButton.IsEnabled = false;
 			LockButton.IsEnabled = true;
 			VolumeButton.IsEnabled = true;
+			if (_reverseColorsButton != null)
+			{
+				_reverseColorsButton.IsEnabled = true;
+			}
 			SettingsButton.IsEnabled = true;
 			PlaybackMenuItem.IsEnabled = false;
 			if (!_isSeeking)
@@ -1063,6 +1191,10 @@ public class MainWindow : Window, IComponentConnector
 			NextButton.IsEnabled = snapshot.CanSkipNext;
 			LockButton.IsEnabled = true;
 			VolumeButton.IsEnabled = true;
+			if (_reverseColorsButton != null)
+			{
+				_reverseColorsButton.IsEnabled = true;
+			}
 			SettingsButton.IsEnabled = true;
 			PlaybackSeekSlider.IsEnabled = snapshot.Track.Duration > TimeSpan.Zero;
 			PlaybackMenuItem.IsEnabled = true;
@@ -1211,6 +1343,110 @@ public class MainWindow : Window, IComponentConnector
 		SetPlaybackTimeText(_playbackDurationText, TimeSpan.Zero);
 	}
 
+	private void EnsureReverseColorsButton()
+	{
+		if (_reverseColorsButton != null)
+		{
+			return;
+		}
+		_reverseColorsLabel = new TextBlock
+		{
+			Text = "REV",
+			FontFamily = _englishDotFont,
+			FontSize = 7.5,
+			FontWeight = FontWeights.Bold,
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
+			Tag = "NoTranslate"
+		};
+		_reverseColorsButton = new System.Windows.Controls.Button
+		{
+			Content = _reverseColorsLabel,
+			ToolTip = "Reverse Colors",
+			Tag = "NoTranslate"
+		};
+		if (base.Resources["SmallMediaButton"] is Style style)
+		{
+			_reverseColorsButton.Style = style;
+		}
+		_reverseColorsButton.Click += ReverseColorsButton_Click;
+		_reverseColorsButton.MouseEnter += delegate { _volumePopupCloseTimer?.Stop(); };
+		int index = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
+		RightControlGroup.Children.Insert(index, _reverseColorsButton);
+	}
+
+	private void ReverseColorsButton_Click(object sender, RoutedEventArgs e)
+	{
+		_settings.ReverseColors = !_settings.ReverseColors;
+		_settingsWindow?.SetReverseColors(_settings.ReverseColors);
+		ApplyVisualSettings();
+		ScheduleSettingsSave();
+	}
+
+	private void UpdateReverseColorsButtonVisual()
+	{
+		if (_reverseColorsButton == null || _reverseColorsLabel == null)
+		{
+			return;
+		}
+		_reverseColorsLabel.Text = _settings.ReverseColors ? "REV" : "REV";
+		_reverseColorsButton.ToolTip = _settings.ReverseColors ? "Reverse Colors: On" : "Reverse Colors: Off";
+	}
+
+	private void UpdateOverlayChromeColors()
+	{
+		System.Windows.Media.Brush content = _settings.ReverseColors
+			? new SolidColorBrush(System.Windows.Media.Color.FromArgb(226, 29, 32, 30))
+			: new SolidColorBrush(System.Windows.Media.Color.FromArgb(226, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+		System.Windows.Media.Brush contentStrong = _settings.ReverseColors
+			? new SolidColorBrush(System.Windows.Media.Color.FromRgb(22, 24, 23))
+			: System.Windows.Media.Brushes.White;
+		TrackStatusText.Foreground = content;
+		TrackTitleText.Foreground = contentStrong;
+		StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
+		if (_playbackPositionText != null)
+		{
+			_playbackPositionText.Foreground = content;
+		}
+		if (_playbackDurationText != null)
+		{
+			_playbackDurationText.Foreground = content;
+		}
+		if (_seekHoverText != null)
+		{
+			_seekHoverText.Foreground = contentStrong;
+		}
+		VolumePopupSurface.Background = _settings.ReverseColors
+			? new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 229, 232, 229))
+			: new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 24, 24, 24));
+		VolumePopupSurface.BorderBrush = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
+		{
+			System.Windows.Media.Brush rail = _settings.ReverseColors
+				? new SolidColorBrush(System.Windows.Media.Color.FromArgb(94, 38, 41, 39))
+				: new SolidColorBrush(System.Windows.Media.Color.FromArgb(66, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+			System.Windows.Media.Color accentColor = ParseColor(_settings.UiColor, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44));
+			foreach (Slider slider in new[] { PlaybackSeekSlider, VolumeSlider })
+			{
+				slider.ApplyTemplate();
+				foreach (RepeatButton repeat in FindVisualChildren<RepeatButton>(slider))
+				{
+					if (repeat.Background is not SolidColorBrush brush || brush.Color.R != accentColor.R || brush.Color.G != accentColor.G || brush.Color.B != accentColor.B)
+					{
+						repeat.Background = rail;
+					}
+				}
+			}
+		});
+		foreach (Thumb thumb in new[] { ResizeTopLeft, ResizeTopRight, ResizeBottomLeft, ResizeBottomRight })
+		{
+			foreach (Shape dot in FindVisualChildren<Shape>(thumb))
+			{
+				dot.Fill = content;
+			}
+		}
+	}
+
 	private TextBlock CreatePlaybackTimeText(System.Windows.HorizontalAlignment alignment)
 	{
 		return new TextBlock
@@ -1286,34 +1522,8 @@ public class MainWindow : Window, IComponentConnector
 	{
 		TrackStatusText.Text = "SPOTIFY / " + status;
 		TrackTitleText.Text = _snapshot?.Track.DisplayName ?? "FlowLyrics";
-		StatusDot.Fill = new SolidColorBrush(color);
-	}
-
-	private static LyricsResult CreateEstimatedLyrics(LyricsResult result, TrackInfo track)
-	{
-		string[] array = (from line in (result.PlainLyrics ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
-			select line.Trim() into line
-			where !string.IsNullOrWhiteSpace(line)
-			where !line.StartsWith('[') || !line.EndsWith(']')
-			select line).ToArray();
-		if (array.Length == 0)
-		{
-			return result;
-		}
-		TimeSpan timeSpan = ((track.Duration > TimeSpan.FromSeconds(20L)) ? track.Duration : TimeSpan.FromSeconds(Math.Max(30, array.Length * 4)));
-		TimeSpan timeSpan2 = TimeSpan.FromSeconds(Math.Min(10.0, timeSpan.TotalSeconds * 0.05));
-		double num = Math.Max(1.0, timeSpan.TotalSeconds - timeSpan2.TotalSeconds - 4.0);
-		double[] array2 = array.Select((string line) => Math.Clamp((double)line.Length / 18.0, 0.72, 2.2)).ToArray();
-		double num2 = array2.Sum();
-		double num3 = 0.0;
-		List<LyricLine> list = new List<LyricLine>(array.Length);
-		for (int num4 = 0; num4 < array.Length; num4++)
-		{
-			TimeSpan time = timeSpan2 + TimeSpan.FromSeconds(num * num3 / num2);
-			list.Add(new LyricLine(time, array[num4]));
-			num3 += array2[num4];
-		}
-		return new LyricsResult(list, result.PlainLyrics, result.Source, IsInstrumental: false, IsEstimatedTiming: true);
+		_trackStatusColor = color;
+		StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
 	}
 
 	private static int FindActiveLine(IReadOnlyList<LyricLine> lines, TimeSpan position)
@@ -1337,127 +1547,13 @@ public class MainWindow : Window, IComponentConnector
 		return result;
 	}
 
-	private void UpdateBackdropSampleIfNeeded()
-	{
-		if (!BlendModeService.RequiresBackdropSampling(_settings) || !base.IsVisible || _windowHandle == IntPtr.Zero)
-		{
-			return;
-		}
-		DateTime utcNow = DateTime.UtcNow;
-		if (utcNow < _nextBackdropSampleUtc)
-		{
-			return;
-		}
-		_nextBackdropSampleUtc = utcNow.AddMilliseconds(240.0);
-		if (!TrySampleBackdrop(out System.Windows.Media.Color sampled))
-		{
-			return;
-		}
-
-		System.Windows.Media.Color smoothed = System.Windows.Media.Color.FromRgb(
-			SmoothChannel(_sampledBackdropColor.R, sampled.R),
-			SmoothChannel(_sampledBackdropColor.G, sampled.G),
-			SmoothChannel(_sampledBackdropColor.B, sampled.B));
-		int difference = Math.Abs(smoothed.R - _sampledBackdropColor.R) + Math.Abs(smoothed.G - _sampledBackdropColor.G) + Math.Abs(smoothed.B - _sampledBackdropColor.B);
-		if (difference < 5)
-		{
-			return;
-		}
-		_sampledBackdropColor = smoothed;
-		ApplyBlendModeBrushes();
-	}
-
-	private bool TrySampleBackdrop(out System.Windows.Media.Color color)
-	{
-		color = _sampledBackdropColor;
-		if (!NativeMethods.GetWindowRect(_windowHandle, out NativeMethods.Rect rect))
-		{
-			return false;
-		}
-
-		System.Drawing.Rectangle screen = SystemInformation.VirtualScreen;
-		int margin = 10;
-		List<System.Drawing.Point> points = new List<System.Drawing.Point>(8);
-		AddBackdropPoint(points, rect.Left + (rect.Right - rect.Left) / 4, rect.Top - margin, rect, screen);
-		AddBackdropPoint(points, rect.Left + (rect.Right - rect.Left) / 2, rect.Top - margin, rect, screen);
-		AddBackdropPoint(points, rect.Left + (rect.Right - rect.Left) * 3 / 4, rect.Top - margin, rect, screen);
-		AddBackdropPoint(points, rect.Left + (rect.Right - rect.Left) / 4, rect.Bottom + margin, rect, screen);
-		AddBackdropPoint(points, rect.Left + (rect.Right - rect.Left) * 3 / 4, rect.Bottom + margin, rect, screen);
-		AddBackdropPoint(points, rect.Left - margin, rect.Top + (rect.Bottom - rect.Top) / 2, rect, screen);
-		AddBackdropPoint(points, rect.Right + margin, rect.Top + (rect.Bottom - rect.Top) / 3, rect, screen);
-		AddBackdropPoint(points, rect.Right + margin, rect.Top + (rect.Bottom - rect.Top) * 2 / 3, rect, screen);
-		if (points.Count == 0)
-		{
-			return false;
-		}
-
-		long red = 0;
-		long green = 0;
-		long blue = 0;
-		int samples = 0;
-		try
-		{
-			foreach (System.Drawing.Point point in points)
-			{
-				_backdropSampleGraphics.CopyFromScreen(point.X, point.Y, 0, 0, new System.Drawing.Size(1, 1), CopyPixelOperation.SourceCopy);
-				System.Drawing.Color pixel = _backdropSampleBitmap.GetPixel(0, 0);
-				red += pixel.R;
-				green += pixel.G;
-				blue += pixel.B;
-				samples++;
-			}
-		}
-		catch
-		{
-			return false;
-		}
-		if (samples == 0)
-		{
-			return false;
-		}
-		color = System.Windows.Media.Color.FromRgb((byte)(red / samples), (byte)(green / samples), (byte)(blue / samples));
-		return true;
-	}
-
-	private static void AddBackdropPoint(List<System.Drawing.Point> points, int x, int y, NativeMethods.Rect window, System.Drawing.Rectangle screen)
-	{
-		if (x < screen.Left || x >= screen.Right || y < screen.Top || y >= screen.Bottom)
-		{
-			return;
-		}
-		if (x >= window.Left && x < window.Right && y >= window.Top && y < window.Bottom)
-		{
-			return;
-		}
-		points.Add(new System.Drawing.Point(x, y));
-	}
-
-	private static byte SmoothChannel(byte current, byte target)
-	{
-		return (byte)Math.Clamp((int)Math.Round(current + (target - current) * 0.32), 0, 255);
-	}
-
-	private void ApplyBlendModeBrushes()
-	{
-		base.Resources["UiAccentBrush"] = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
-		OverlayPanel.Background = CreateBlendBrush(_settings.BackgroundColor, _settings.BackgroundOpacity, Colors.Black, _settings.BackgroundBlendMode, ignoreSourceAlpha: true);
-		OverlayPanel.BorderBrush = CreateBlendBrush(_settings.BorderColor, 1.0, Colors.White, _settings.BorderBlendMode);
-		System.Windows.Media.Brush stroke = CreateBlendBrush(_settings.OutlineColor, 1.0, Colors.Black, _settings.OutlineBlendMode);
-		System.Windows.Media.Brush shadow = CreateBlendBrush(_settings.ShadowColor, 1.0, Colors.Black, _settings.ShadowBlendMode);
-		foreach (OutlinedText line in _lineControls)
-		{
-			line.Stroke = stroke;
-			line.ShadowBrush = shadow;
-		}
-		UpdateLockVisuals();
-		_lastLineIndex = int.MinValue;
-	}
-
-	private System.Windows.Media.Brush CreateBlendBrush(string value, double opacity, System.Windows.Media.Color fallback, string individualMode, bool ignoreSourceAlpha = false)
+	private System.Windows.Media.Brush CreateDisplayBrush(string value, double opacity, System.Windows.Media.Color fallback, bool preservePlayerUi = false, bool ignoreSourceAlpha = false)
 	{
 		System.Windows.Media.Color color = ParseColor(value, fallback);
-		string mode = BlendModeService.ResolveMode(_settings, individualMode);
-		color = BlendModeService.Apply(color, _sampledBackdropColor, mode);
+		if (_settings.ReverseColors && !preservePlayerUi)
+		{
+			color = ApplyReverseColor(color);
+		}
 		double sourceAlpha = ignoreSourceAlpha ? 1.0 : color.A / 255.0;
 		SolidColorBrush brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(
 			(byte)Math.Round(Math.Clamp(opacity * sourceAlpha, 0.0, 1.0) * 255.0), color.R, color.G, color.B));
@@ -1465,13 +1561,11 @@ public class MainWindow : Window, IComponentConnector
 		return brush;
 	}
 
-	private static System.Windows.Media.Brush CreateBrush(string value, double opacity, System.Windows.Media.Color fallback, bool ignoreSourceAlpha = false)
+	private System.Windows.Media.Color ApplyReverseColor(System.Windows.Media.Color color)
 	{
-		System.Windows.Media.Color color = ParseColor(value, fallback);
-		double num = (ignoreSourceAlpha ? 1.0 : ((double)(int)color.A / 255.0));
-		SolidColorBrush solidColorBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb((byte)Math.Round(Math.Clamp(opacity * num, 0.0, 1.0) * 255.0), color.R, color.G, color.B));
-		solidColorBrush.Freeze();
-		return solidColorBrush;
+		return _settings.ReverseColors
+			? System.Windows.Media.Color.FromArgb(color.A, (byte)(byte.MaxValue - color.R), (byte)(byte.MaxValue - color.G), (byte)(byte.MaxValue - color.B))
+			: color;
 	}
 
 	private static System.Windows.Media.Color ParseColor(string value, System.Windows.Media.Color fallback)
@@ -1593,7 +1687,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			return true;
 		}
-		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
+		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
 		{
 			return IsPointOverElement(VolumeSlider, screenPoint);
 		}
@@ -1632,11 +1726,17 @@ public class MainWindow : Window, IComponentConnector
 	private void UpdateLockButtonVisual()
 	{
 		LockButton.ToolTip = T(_isLocked ? "Locked — click to unlock" : "Lock — click to enable");
-		System.Windows.Media.Brush accent = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
-		LockButton.Background = (_isLocked ? CreateBlendBrush(_settings.UiColor, 0.42, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue)));
+		System.Windows.Media.Brush accent = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+		LockButton.Background = _isLocked
+			? CreateDisplayBrush(_settings.UiColor, 0.42, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true)
+			: new SolidColorBrush(_settings.ReverseColors
+				? System.Windows.Media.Color.FromArgb(218, 222, 225, 222)
+				: System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue));
 		LockButton.BorderBrush = accent;
 		LockButton.BorderThickness = new Thickness(1.25);
-		LockIcon.Fill = (_isLocked ? CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true) : System.Windows.Media.Brushes.White);
+		LockIcon.Fill = _isLocked
+			? accent
+			: (_settings.ReverseColors ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30)) : System.Windows.Media.Brushes.White);
 	}
 
 	private void ToggleVisibility()
@@ -1853,8 +1953,6 @@ public class MainWindow : Window, IComponentConnector
 			_hotkeys?.Dispose();
 			_tray?.Dispose();
 			_lyricsService.Dispose();
-			_backdropSampleGraphics.Dispose();
-			_backdropSampleBitmap.Dispose();
 			_windowSource?.RemoveHook(WindowMessageHook);
 			Close();
 			System.Windows.Application.Current.Shutdown();
@@ -1872,6 +1970,22 @@ public class MainWindow : Window, IComponentConnector
 			child = VisualTreeHelper.GetParent(child);
 		}
 		return null;
+	}
+
+	private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+	{
+		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+		{
+			DependencyObject child = VisualTreeHelper.GetChild(root, i);
+			if (child is T match)
+			{
+				yield return match;
+			}
+			foreach (T descendant in FindVisualChildren<T>(child))
+			{
+				yield return descendant;
+			}
+		}
 	}
 
 	private void ResizeCorner_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

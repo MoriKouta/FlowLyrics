@@ -44,6 +44,19 @@ public static class LocalizationService
 		["ru-RU"] = D(("Play a track on Spotify.", "Включите трек в Spotify."), ("If the lyrics or timing are incorrect, you can choose another result from LRCLIB.", "Если текст или синхронизация неверны, выберите другой результат из LRCLIB."), ("Estimated timing is being used. Choose from LRCLIB to look for synchronized lyrics.", "Используется приблизительная синхронизация. Выберите результат LRCLIB, чтобы найти синхронный текст."), ("Lyrics candidates were found in LRCLIB. Choose the correct lyrics below.", "В LRCLIB найдены варианты текста. Выберите правильный вариант ниже."), ("No synced lyrics were found. Search using another title or English name, or add a local LRC file.", "Синхронный текст не найден. Выполните поиск по другому или английскому названию либо добавьте локальный LRC-файл."))
 	};
 
+	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> PlainLyricsTranslations = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+	{
+		["ja-JP"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "同期なし歌詞は全文をスクロール表示します。LRCLIBから候補を選び、同期歌詞を探せます。")),
+		["zh-CN"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "非同步歌词会连续滚动显示。可从 LRCLIB 候选中查找同步歌词。")),
+		["zh-TW"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "非同步歌詞會連續捲動顯示。可從 LRCLIB 候選中尋找同步歌詞。")),
+		["ko-KR"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "비동기 가사는 전체가 계속 스크롤됩니다. LRCLIB 후보에서 동기화 가사를 찾아보세요.")),
+		["es-ES"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "La letra no sincronizada se desplaza de forma continua. Elige un resultado de LRCLIB para buscar letra sincronizada.")),
+		["fr-FR"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "Les paroles non synchronisées défilent en continu. Choisissez un résultat LRCLIB pour trouver des paroles synchronisées.")),
+		["de-DE"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "Unsynchronisierter Text wird fortlaufend gescrollt. Wählen Sie ein LRCLIB-Ergebnis für synchronisierten Text.")),
+		["pt-BR"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "A letra sem sincronização rola continuamente. Escolha um resultado do LRCLIB para buscar letra sincronizada.")),
+		["ru-RU"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "Несинхронизированный текст прокручивается непрерывно. Выберите вариант LRCLIB для поиска синхронного текста."))
+	};
+
 	public static string CurrentLanguage { get; private set; } = "en-US";
 
 	public static IReadOnlyList<LanguageOption> Languages { get; } = new LanguageOption[10]
@@ -97,6 +110,10 @@ public static class LocalizationService
 			return value2;
 		}
 		if (LyricsGuidanceTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
+		{
+			return value2;
+		}
+		if (PlainLyricsTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
 			return value2;
 		}

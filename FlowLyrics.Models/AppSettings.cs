@@ -7,7 +7,7 @@ namespace FlowLyrics.Models;
 
 public sealed class AppSettings
 {
-	public int SettingsSchemaVersion { get; set; } = 10;
+	public int SettingsSchemaVersion { get; set; } = 11;
 
 	public string Language { get; set; } = "en-US";
 
@@ -51,23 +51,7 @@ public sealed class AppSettings
 
 	public string UiColor { get; set; } = "#FFFF6B2C";
 
-	public string BlendModeScope { get; set; } = "All";
-
-	public string GlobalBlendMode { get; set; } = "Normal";
-
-	public string CurrentTextBlendMode { get; set; } = "Normal";
-
-	public string NextTextBlendMode { get; set; } = "Normal";
-
-	public string OutlineBlendMode { get; set; } = "Normal";
-
-	public string ShadowBlendMode { get; set; } = "Normal";
-
-	public string BackgroundBlendMode { get; set; } = "Normal";
-
-	public string BorderBlendMode { get; set; } = "Normal";
-
-	public string UiBlendMode { get; set; } = "Normal";
+	public bool ReverseColors { get; set; }
 
 	public double BackgroundOpacity { get; set; }
 
@@ -134,7 +118,7 @@ public sealed class AppSettings
 
 	public void Normalize()
 	{
-		SettingsSchemaVersion = Math.Max(10, SettingsSchemaVersion);
+		SettingsSchemaVersion = Math.Max(11, SettingsSchemaVersion);
 		Language = LocalizationService.NormalizeLanguage(Language);
 		WindowWidth = Math.Clamp(WindowWidth, 120.0, 3840.0);
 		WindowHeight = Math.Clamp(WindowHeight, 40.0, 1200.0);
@@ -156,15 +140,6 @@ public sealed class AppSettings
 		AutoFitText = true;
 		MaximumWrapLines = Math.Clamp(MaximumWrapLines, 1, 8);
 		TextColorMode = "Fixed";
-		BlendModeScope = string.Equals(BlendModeScope, "Individual", StringComparison.OrdinalIgnoreCase) ? "Individual" : "All";
-		GlobalBlendMode = NormalizeBlendMode(GlobalBlendMode);
-		CurrentTextBlendMode = NormalizeBlendMode(CurrentTextBlendMode);
-		NextTextBlendMode = NormalizeBlendMode(NextTextBlendMode);
-		OutlineBlendMode = NormalizeBlendMode(OutlineBlendMode);
-		ShadowBlendMode = NormalizeBlendMode(ShadowBlendMode);
-		BackgroundBlendMode = NormalizeBlendMode(BackgroundBlendMode);
-		BorderBlendMode = NormalizeBlendMode(BorderBlendMode);
-		UiBlendMode = NormalizeBlendMode(UiBlendMode);
 		ShowUnlockedBadge = false;
 		string textAlignment = TextAlignment;
 		bool flag = ((textAlignment == "Left" || textAlignment == "Right") ? true : false);
@@ -179,15 +154,4 @@ public sealed class AppSettings
 		}
 	}
 
-	private static string NormalizeBlendMode(string? value)
-	{
-		return value?.Trim().ToUpperInvariant() switch
-		{
-			"AUTO" => "Auto",
-			"INVERT" => "Invert",
-			"SCREEN" => "Screen",
-			"OVERLAY" => "Overlay",
-			_ => "Normal"
-		};
-	}
 }

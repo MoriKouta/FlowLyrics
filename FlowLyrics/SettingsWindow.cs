@@ -52,23 +52,19 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private CandidateSearchWindow? _candidateSearchWindow;
 
-	private readonly Dictionary<string, string> _individualBlendModes = new Dictionary<string, string>(StringComparer.Ordinal);
+	private System.Windows.Controls.Button? _reverseColorsSettingsButton;
 
-	private readonly Dictionary<string, List<System.Windows.Controls.Button>> _blendModeButtons = new Dictionary<string, List<System.Windows.Controls.Button>>(StringComparer.Ordinal);
-
-	private readonly List<StackPanel> _individualBlendPanels = new List<StackPanel>();
-
-	private readonly List<System.Windows.Controls.Button> _scopeButtons = new List<System.Windows.Controls.Button>();
-
-	private string _blendModeScope = "All";
-
-	private string _globalBlendMode = "Normal";
+	private bool _reverseColors;
 
 	private TextBlock? _versionText;
 
 	private bool _brandingInitialized;
 
-	private bool _blendModeControlsInitialized;
+	private bool _reverseColorsControlInitialized;
+
+	private bool _softThemeInitialized;
+
+	private Border? _settingsHeaderBorder;
 
 	internal System.Windows.Controls.TabControl SettingsTabs;
 
@@ -238,8 +234,9 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			DisableDialogOnlyButtons();
 			InitializeBranding();
-			InitializeBlendModeControls();
-			RefreshBlendModeButtons();
+			InitializeReverseColorsControl();
+			ApplySoftSettingsTheme();
+			RefreshReverseColorsButton();
 			UpdateAccentColor(ResultSettings.UiColor);
 			CaptureLocalizableContent(this);
 			ApplyLanguage(_currentLanguage);
@@ -352,184 +349,292 @@ public class SettingsWindow : Window, IComponentConnector
 		_brandingInitialized = true;
 	}
 
-	private void InitializeBlendModeControls()
+	private void InitializeReverseColorsControl()
 	{
-		if (_blendModeControlsInitialized)
+		if (_reverseColorsControlInitialized)
+		{
+			return;
+		}
+		System.Windows.Controls.Button? pickButton = FindVisualChildren<System.Windows.Controls.Button>(this)
+			.FirstOrDefault((System.Windows.Controls.Button button) => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
+		if (pickButton == null || VisualTreeHelper.GetParent(pickButton) is not Grid colorGrid || VisualTreeHelper.GetParent(colorGrid) is not StackPanel colorCard)
 		{
 			return;
 		}
 
-		(string Tag, string Property)[] rows =
+		DockPanel reversePanel = new DockPanel
 		{
-			("CurrentColorBox", nameof(AppSettings.CurrentTextBlendMode)),
-			("NextColorBox", nameof(AppSettings.NextTextBlendMode)),
-			("OutlineColorBox", nameof(AppSettings.OutlineBlendMode)),
-			("ShadowColorBox", nameof(AppSettings.ShadowBlendMode)),
-			("BackgroundColorBox", nameof(AppSettings.BackgroundBlendMode)),
-			("BorderColorBox", nameof(AppSettings.BorderBlendMode)),
-			("UiColorBox", nameof(AppSettings.UiBlendMode))
+			Margin = new Thickness(0.0, 12.0, 0.0, 0.0),
+			LastChildFill = false,
+			Tag = "NoTranslate"
 		};
-
-		Grid? colorGrid = null;
-		foreach ((string tag, string property) in rows)
+		reversePanel.Children.Add(new TextBlock
 		{
-			System.Windows.Controls.Button? pickButton = FindVisualChildren<System.Windows.Controls.Button>(this)
-				.FirstOrDefault((System.Windows.Controls.Button button) => string.Equals(button.Tag?.ToString(), tag, StringComparison.Ordinal));
-			if (pickButton == null || VisualTreeHelper.GetParent(pickButton) is not Grid grid)
+			Text = "REVERSE COLORS",
+			FontFamily = _englishDotFont,
+			FontSize = 10.0,
+			FontWeight = FontWeights.Bold,
+			VerticalAlignment = VerticalAlignment.Center,
+			Margin = new Thickness(0.0, 0.0, 12.0, 0.0),
+			Tag = "NoTranslate"
+		});
+		_reverseColorsSettingsButton = CreateSmallFeatureButton();
+		_reverseColorsSettingsButton.ToolTip = "Reverse every custom color except Player UI";
+		_reverseColorsSettingsButton.Click += delegate
+		{
+			_reverseColors = !_reverseColors;
+			RefreshReverseColorsButton();
+			NotifyPreviewChanged();
+		};
+		reversePanel.Children.Add(_reverseColorsSettingsButton);
+		colorCard.Children.Add(reversePanel);
+		_reverseColorsControlInitialized = true;
+	}
+
+	private void ApplySoftSettingsTheme()
+	{
+		if (_softThemeInitialized)
+		{
+			return;
+		}
+
+		SolidColorBrush windowBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(229, 231, 228));
+		SolidColorBrush cardBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(242, 243, 241));
+		SolidColorBrush cardBorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(207, 211, 207));
+		SolidColorBrush controlBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 223, 220));
+		SolidColorBrush controlBorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(174, 180, 175));
+		SolidColorBrush textBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 43, 41));
+		SolidColorBrush mutedBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(94, 100, 97));
+		SolidColorBrush headerBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(48, 50, 49));
+		SolidColorBrush footerBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(218, 221, 218));
+		SolidColorBrush accent = ParseColorBrush(UiColorBox.Text, System.Windows.Media.Color.FromRgb(byte.MaxValue, 138, 61));
+
+		base.Background = windowBrush;
+		base.Foreground = textBrush;
+		base.Resources["Panel"] = cardBrush;
+		base.Resources["Line"] = cardBorderBrush;
+		base.Resources["Paper"] = textBrush;
+		base.Resources["Muted"] = mutedBrush;
+
+		if (base.Content is Grid root)
+		{
+			foreach (Border border in root.Children.OfType<Border>())
+			{
+				int row = Grid.GetRow(border);
+				if (row == 0)
+				{
+					_settingsHeaderBorder = border;
+					border.Background = headerBrush;
+				}
+				else if (row == 2)
+				{
+					border.Background = footerBrush;
+				}
+			}
+		}
+
+		foreach (Border border in FindVisualChildren<Border>(this))
+		{
+			if (border.CornerRadius.TopLeft >= 9.0 && !IsInsideHeader(border))
+			{
+				border.Background = cardBrush;
+				border.BorderBrush = cardBorderBrush;
+			}
+		}
+
+		ControlTemplate softButtonTemplate = CreateSoftButtonTemplate(accent);
+		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
+		{
+			button.Template = softButtonTemplate;
+			button.Foreground = textBrush;
+			button.BorderBrush = controlBorderBrush;
+			if (!IsAccentBrush(button.Background, accent.Color))
+			{
+				button.Background = controlBrush;
+			}
+		}
+
+		foreach (TextBlock text in FindVisualChildren<TextBlock>(this))
+		{
+			if (IsInsideHeader(text) || IsAccentBrush(text.Foreground, accent.Color))
 			{
 				continue;
 			}
-
-			colorGrid ??= grid;
-			if (grid.ColumnDefinitions.Count == 3)
+			if (text.Foreground is SolidColorBrush brush && GetLuminance(brush.Color) < 95.0)
 			{
-				grid.ColumnDefinitions[2].Width = GridLength.Auto;
-				grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+				continue;
 			}
-
-			StackPanel modes = new StackPanel
-			{
-				Orientation = System.Windows.Controls.Orientation.Horizontal,
-				VerticalAlignment = VerticalAlignment.Center,
-				Margin = new Thickness(6.0, 0.0, 0.0, 0.0),
-				Tag = "NoTranslate"
-			};
-			Grid.SetRow(modes, Grid.GetRow(pickButton));
-			Grid.SetColumn(modes, 3);
-			_individualBlendPanels.Add(modes);
-			_blendModeButtons[property] = AddModeButtons(modes, (string mode) =>
-			{
-				_individualBlendModes[property] = mode;
-				RefreshBlendModeButtons();
-				NotifyPreviewChanged();
-			});
-			grid.Children.Add(modes);
+			text.Foreground = text.FontWeight >= FontWeights.SemiBold ? textBrush : mutedBrush;
 		}
 
-		if (colorGrid == null || VisualTreeHelper.GetParent(colorGrid) is not StackPanel colorCard)
+		foreach (System.Windows.Controls.CheckBox checkBox in FindVisualChildren<System.Windows.Controls.CheckBox>(this))
 		{
-			return;
+			checkBox.Foreground = textBrush;
 		}
-		_blendModeControlsInitialized = true;
+		foreach (System.Windows.Controls.RadioButton radioButton in FindVisualChildren<System.Windows.Controls.RadioButton>(this))
+		{
+			radioButton.Foreground = textBrush;
+			radioButton.Background = controlBrush;
+			radioButton.BorderBrush = controlBorderBrush;
+		}
+		foreach (System.Windows.Controls.TextBox textBox in FindVisualChildren<System.Windows.Controls.TextBox>(this))
+		{
+			textBox.Foreground = textBrush;
+			textBox.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(250, 250, 248));
+			textBox.BorderBrush = controlBorderBrush;
+		}
+		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
+		{
+			comboBox.Foreground = textBrush;
+			comboBox.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(250, 250, 248));
+			comboBox.BorderBrush = controlBorderBrush;
+		}
+		ControlTemplate softTabTemplate = CreateSoftTabTemplate(accent);
+		foreach (TabItem tab in FindVisualChildren<TabItem>(this))
+		{
+			tab.Foreground = mutedBrush;
+			tab.Background = controlBrush;
+			tab.BorderBrush = controlBorderBrush;
+			tab.Template = softTabTemplate;
+		}
 
-		StackPanel globalPanel = new StackPanel
+		if (_versionText != null)
 		{
-			Orientation = System.Windows.Controls.Orientation.Horizontal,
-			Margin = new Thickness(0.0, 0.0, 0.0, 10.0),
-			Tag = "NoTranslate"
-		};
-		globalPanel.Children.Add(new TextBlock
+			_versionText.Foreground = System.Windows.Media.Brushes.White;
+		}
+		RefreshReverseColorsButton();
+		_softThemeInitialized = true;
+	}
+
+	private ControlTemplate CreateSoftButtonTemplate(System.Windows.Media.Brush accent)
+	{
+		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border), "Surface");
+		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(5.0));
+		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetValue(System.Windows.FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+		presenter.SetValue(System.Windows.FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		surface.AppendChild(presenter);
+
+		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button)) { VisualTree = surface };
+		Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+		hover.Setters.Add(new Setter(Border.BorderBrushProperty, accent, "Surface"));
+		hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.86, "Surface"));
+		template.Triggers.Add(hover);
+		Trigger pressed = new Trigger { Property = System.Windows.Controls.Button.IsPressedProperty, Value = true };
+		pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.68, "Surface"));
+		template.Triggers.Add(pressed);
+		Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+		disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.38, "Surface"));
+		template.Triggers.Add(disabled);
+		return template;
+	}
+
+	private static ControlTemplate CreateSoftTabTemplate(System.Windows.Media.Brush accent)
+	{
+		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border), "TabSurface");
+		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
+		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(6.0));
+		surface.SetValue(Border.PaddingProperty, new Thickness(18.0, 11.0, 18.0, 11.0));
+		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetValue(ContentPresenter.ContentSourceProperty, "Header");
+		presenter.SetValue(System.Windows.FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+		presenter.SetValue(System.Windows.FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		surface.AppendChild(presenter);
+		ControlTemplate template = new ControlTemplate(typeof(TabItem)) { VisualTree = surface };
+		Trigger selected = new Trigger { Property = TabItem.IsSelectedProperty, Value = true };
+		selected.Setters.Add(new Setter(Border.BackgroundProperty, accent, "TabSurface"));
+		selected.Setters.Add(new Setter(Border.BorderBrushProperty, accent, "TabSurface"));
+		selected.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty, new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30))));
+		template.Triggers.Add(selected);
+		Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+		hover.Setters.Add(new Setter(Border.BorderBrushProperty, accent, "TabSurface"));
+		template.Triggers.Add(hover);
+		return template;
+	}
+
+	private bool IsInsideHeader(DependencyObject element)
+	{
+		DependencyObject? current = element;
+		while (current != null)
 		{
-			Text = "BLEND",
+			if (ReferenceEquals(current, _settingsHeaderBorder))
+			{
+				return true;
+			}
+			current = VisualTreeHelper.GetParent(current);
+		}
+		return false;
+	}
+
+	private static bool IsAccentBrush(System.Windows.Media.Brush? brush, System.Windows.Media.Color accent)
+	{
+		return brush is SolidColorBrush solid && solid.Color.R == accent.R && solid.Color.G == accent.G && solid.Color.B == accent.B;
+	}
+
+	private static double GetLuminance(System.Windows.Media.Color color)
+	{
+		return 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B;
+	}
+
+	private static SolidColorBrush ParseColorBrush(string value, System.Windows.Media.Color fallback)
+	{
+		try
+		{
+			return new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(value.Trim()));
+		}
+		catch
+		{
+			return new SolidColorBrush(fallback);
+		}
+	}
+
+	private System.Windows.Controls.Button CreateSmallFeatureButton()
+	{
+		return new System.Windows.Controls.Button
+		{
+			Content = "OFF",
 			FontFamily = _englishDotFont,
 			FontSize = 9.0,
 			FontWeight = FontWeights.Bold,
-			VerticalAlignment = VerticalAlignment.Center,
-			Margin = new Thickness(0.0, 0.0, 7.0, 0.0),
-			Tag = "NoTranslate"
-		});
-		_scopeButtons.Add(CreateSmallModeButton("ALL", () => SetBlendScope("All")));
-		_scopeButtons.Add(CreateSmallModeButton("EACH", () => SetBlendScope("Individual")));
-		foreach (System.Windows.Controls.Button button in _scopeButtons)
-		{
-			globalPanel.Children.Add(button);
-		}
-		globalPanel.Children.Add(new Border { Width = 8.0 });
-		_blendModeButtons["Global"] = AddModeButtons(globalPanel, (string mode) =>
-		{
-			_globalBlendMode = mode;
-			RefreshBlendModeButtons();
-			NotifyPreviewChanged();
-		});
-		int colorGridIndex = colorCard.Children.IndexOf(colorGrid);
-		colorCard.Children.Insert(Math.Max(1, colorGridIndex), globalPanel);
-	}
-
-	private List<System.Windows.Controls.Button> AddModeButtons(System.Windows.Controls.Panel panel, Action<string> onSelect)
-	{
-		List<System.Windows.Controls.Button> result = new List<System.Windows.Controls.Button>();
-		foreach (string mode in BlendModeService.Modes)
-		{
-			string captured = mode;
-			System.Windows.Controls.Button button = CreateSmallModeButton(ModeLabel(mode), () => onSelect(captured));
-			button.ToolTip = mode;
-			panel.Children.Add(button);
-			result.Add(button);
-		}
-		return result;
-	}
-
-	private System.Windows.Controls.Button CreateSmallModeButton(string label, Action onClick)
-	{
-		System.Windows.Controls.Button button = new System.Windows.Controls.Button
-		{
-			Content = label,
-			FontFamily = _englishDotFont,
-			FontSize = 8.0,
-			FontWeight = FontWeights.Bold,
-			Padding = new Thickness(5.0, 3.0, 5.0, 3.0),
-			Margin = new Thickness(1.0),
-			MinWidth = label.Length > 5 ? 48.0 : 36.0,
+			Padding = new Thickness(9.0, 4.0, 9.0, 4.0),
+			Margin = new Thickness(0.0),
+			MinWidth = 52.0,
 			Tag = "NoTranslate"
 		};
-		button.Click += delegate { onClick(); };
-		return button;
 	}
 
-	private void SetBlendScope(string scope)
+	private void RefreshReverseColorsButton()
 	{
-		_blendModeScope = scope;
-		RefreshBlendModeButtons();
-		NotifyPreviewChanged();
-	}
-
-	private void RefreshBlendModeButtons()
-	{
-		bool individual = string.Equals(_blendModeScope, "Individual", StringComparison.Ordinal);
-		foreach (StackPanel panel in _individualBlendPanels)
+		if (_reverseColorsSettingsButton == null)
 		{
-			panel.IsEnabled = individual;
-			panel.Opacity = individual ? 1.0 : 0.32;
+			return;
 		}
-		for (int i = 0; i < _scopeButtons.Count; i++)
+		_reverseColorsSettingsButton.Content = _reverseColors ? "ON" : "OFF";
+		if (_reverseColors)
 		{
-			SetModeButtonState(_scopeButtons[i], i == (individual ? 1 : 0));
-		}
-		foreach ((string key, List<System.Windows.Controls.Button> buttons) in _blendModeButtons)
-		{
-			string selected = key == "Global" ? _globalBlendMode : (_individualBlendModes.TryGetValue(key, out string? value) ? value : "Normal");
-			foreach (System.Windows.Controls.Button button in buttons)
-			{
-				SetModeButtonState(button, string.Equals(button.ToolTip?.ToString(), selected, StringComparison.OrdinalIgnoreCase));
-			}
-		}
-	}
-
-	private void SetModeButtonState(System.Windows.Controls.Button button, bool selected)
-	{
-		if (selected)
-		{
-			button.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Orange");
-			button.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(17, 17, 17));
+			_reverseColorsSettingsButton.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Orange");
+			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 32, 31));
 		}
 		else
 		{
-			button.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(52, 52, 52));
-			button.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "Paper");
+			_reverseColorsSettingsButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 223, 220));
+			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(50, 54, 52));
 		}
 	}
 
-	private static string ModeLabel(string mode)
+	public void SetReverseColors(bool enabled)
 	{
-		return mode switch
-		{
-			"Normal" => "NORM",
-			"Auto" => "AUTO",
-			"Invert" => "INVERT",
-			"Screen" => "SCREEN",
-			"Overlay" => "OVERLAY",
-			_ => mode.ToUpperInvariant()
-		};
+		_reverseColors = enabled;
+		ResultSettings.ReverseColors = enabled;
+		RefreshReverseColorsButton();
 	}
 
 	private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
@@ -640,6 +745,7 @@ public class SettingsWindow : Window, IComponentConnector
 		ShowPanelBorderBox.IsChecked = settings.ShowPanelBorder;
 		BorderColorBox.Text = settings.BorderColor;
 		UiColorBox.Text = settings.UiColor;
+		_reverseColors = settings.ReverseColors;
 		BorderThicknessSlider.Value = settings.BorderThickness;
 		ShowTrackInfoBox.IsChecked = settings.ShowTrackInfo;
 		ShowPlaybackControlsBox.IsChecked = settings.ShowPlaybackControls;
@@ -653,16 +759,7 @@ public class SettingsWindow : Window, IComponentConnector
 		ShortcutsEnabledBox.IsChecked = settings.ShortcutsEnabled;
 		PauseEyeAnimationBox.IsChecked = settings.PauseEyeAnimation;
 		GlobalOffsetSlider.Value = settings.GlobalLyricsOffsetMs;
-		_blendModeScope = settings.BlendModeScope;
-		_globalBlendMode = settings.GlobalBlendMode;
-		_individualBlendModes[nameof(AppSettings.CurrentTextBlendMode)] = settings.CurrentTextBlendMode;
-		_individualBlendModes[nameof(AppSettings.NextTextBlendMode)] = settings.NextTextBlendMode;
-		_individualBlendModes[nameof(AppSettings.OutlineBlendMode)] = settings.OutlineBlendMode;
-		_individualBlendModes[nameof(AppSettings.ShadowBlendMode)] = settings.ShadowBlendMode;
-		_individualBlendModes[nameof(AppSettings.BackgroundBlendMode)] = settings.BackgroundBlendMode;
-		_individualBlendModes[nameof(AppSettings.BorderBlendMode)] = settings.BorderBlendMode;
-		_individualBlendModes[nameof(AppSettings.UiBlendMode)] = settings.UiBlendMode;
-		RefreshBlendModeButtons();
+		RefreshReverseColorsButton();
 		SelectItemByTag(LanguageBox, settings.Language);
 	}
 
@@ -789,7 +886,7 @@ public class SettingsWindow : Window, IComponentConnector
 				text = T("No synced lyrics were found. Search using another title or English name, or add a local LRC file.");
 				break;
 			default:
-				text = ((!flag2) ? T("If the lyrics or timing are incorrect, you can choose another result from LRCLIB.") : T("Estimated timing is being used. Choose from LRCLIB to look for synchronized lyrics."));
+				text = ((!flag2) ? T("If the lyrics or timing are incorrect, you can choose another result from LRCLIB.") : T("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics."));
 				break;
 			}
 			lyricsGuidanceText.Text = text;
@@ -1035,15 +1132,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.ShowPanelBorder = ShowPanelBorderBox.IsChecked == true;
 		appSettings.BorderColor = NormalizeColor(BorderColorBox.Text);
 		appSettings.UiColor = NormalizeColor(UiColorBox.Text);
-		appSettings.BlendModeScope = _blendModeScope;
-		appSettings.GlobalBlendMode = _globalBlendMode;
-		appSettings.CurrentTextBlendMode = GetIndividualBlendMode(nameof(AppSettings.CurrentTextBlendMode));
-		appSettings.NextTextBlendMode = GetIndividualBlendMode(nameof(AppSettings.NextTextBlendMode));
-		appSettings.OutlineBlendMode = GetIndividualBlendMode(nameof(AppSettings.OutlineBlendMode));
-		appSettings.ShadowBlendMode = GetIndividualBlendMode(nameof(AppSettings.ShadowBlendMode));
-		appSettings.BackgroundBlendMode = GetIndividualBlendMode(nameof(AppSettings.BackgroundBlendMode));
-		appSettings.BorderBlendMode = GetIndividualBlendMode(nameof(AppSettings.BorderBlendMode));
-		appSettings.UiBlendMode = GetIndividualBlendMode(nameof(AppSettings.UiBlendMode));
+		appSettings.ReverseColors = _reverseColors;
 		appSettings.BorderThickness = BorderThicknessSlider.Value;
 		appSettings.ShowUnlockedBadge = false;
 		appSettings.ShowTrackInfo = ShowTrackInfoBox.IsChecked == true;
@@ -1061,11 +1150,6 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.Language = GetSelectedTag(LanguageBox, "en-US");
 		appSettings.Normalize();
 		return appSettings;
-	}
-
-	private string GetIndividualBlendMode(string property)
-	{
-		return _individualBlendModes.TryGetValue(property, out string? value) ? value : "Normal";
 	}
 
 	private void LyricsOnly_Click(object sender, RoutedEventArgs e)
@@ -1167,13 +1251,8 @@ public class SettingsWindow : Window, IComponentConnector
 		BackgroundColorBox.Text = appSettings.BackgroundColor;
 		BorderColorBox.Text = appSettings.BorderColor;
 		UiColorBox.Text = appSettings.UiColor;
-		_blendModeScope = "All";
-		_globalBlendMode = "Normal";
-		foreach (string key in _individualBlendModes.Keys.ToArray())
-		{
-			_individualBlendModes[key] = "Normal";
-		}
-		RefreshBlendModeButtons();
+		_reverseColors = false;
+		RefreshReverseColorsButton();
 		_suppressPreview = false;
 		NotifyPreviewChanged();
 	}
@@ -1203,6 +1282,21 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			System.Windows.Media.Color color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(value.Trim());
 			base.Resources["Orange"] = new SolidColorBrush(color);
+			if (_softThemeInitialized)
+			{
+				SolidColorBrush accent = new SolidColorBrush(color);
+				ControlTemplate template = CreateSoftButtonTemplate(accent);
+				foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
+				{
+					button.Template = template;
+				}
+				ControlTemplate tabTemplate = CreateSoftTabTemplate(accent);
+				foreach (TabItem tab in FindVisualChildren<TabItem>(this))
+				{
+					tab.Template = tabTemplate;
+				}
+				RefreshReverseColorsButton();
+			}
 			if (_versionText != null)
 			{
 				_versionText.Foreground = System.Windows.Media.Brushes.White;

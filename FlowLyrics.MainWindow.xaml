@@ -40,7 +40,7 @@
         <Setter Property="Margin" Value="5,0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Foreground" Value="#FFFFFFFF" />
-        <Setter Property="Background" Value="#F02F2F2F" />
+		<Setter Property="Background" Value="#2EFFFFFF" />
         <Setter Property="BorderBrush" Value="{DynamicResource UiAccentBrush}" />
         <Setter Property="BorderThickness" Value="1.25" />
         <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
