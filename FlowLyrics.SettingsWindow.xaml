@@ -231,7 +231,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.7" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.8" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>
@@ -557,7 +557,7 @@
                 </StackPanel>
                 <WrapPanel Margin="-4,8,0,0">
                   <Button Name="ChooseCandidatesButton" Content="Choose from LRCLIB" Background="{DynamicResource Orange}" Foreground="{StaticResource Ink}" BorderBrush="{DynamicResource Orange}" Click="ChooseCandidates_Click" />
-                  <Button Name="ResetManualButton" Content="Reset manual selection" Click="ResetManualSelection_Click" />
+                  <Button Name="ResetManualButton" Content="Clear selection and cache" Click="ResetManualSelection_Click" />
                   <Button Name="OpenLrclibButton" Content="Open in LRCLIB" Click="OpenCurrentLrclib_Click" />
                 </WrapPanel>
                 <TextBlock Name="LyricsActionStatusText" Margin="4,8,4,0" Foreground="{StaticResource Muted}" TextWrapping="Wrap" />

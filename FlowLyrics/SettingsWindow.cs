@@ -11,12 +11,14 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Forms;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using FlowLyrics.Models;
 using FlowLyrics.Services;
 using Microsoft.Win32;
@@ -414,7 +416,16 @@ public class SettingsWindow : Window, IComponentConnector
 	private StackPanel? GetTabStack(string originalHeader)
 	{
 		TabItem? tab = SettingsTabs.Items.OfType<TabItem>().FirstOrDefault((TabItem item) =>
-			_localizedHeaders.TryGetValue(item, out string? header) && string.Equals(header, originalHeader, StringComparison.Ordinal));
+			string.Equals(item.Header?.ToString(), originalHeader, StringComparison.Ordinal)
+			|| (_localizedHeaders.TryGetValue(item, out string? header) && string.Equals(header, originalHeader, StringComparison.Ordinal)));
+		tab ??= originalHeader switch
+		{
+			"Lyrics" => LyricsTab,
+			"Text" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(1),
+			"Color" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(2),
+			"Behavior" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(3),
+			_ => null
+		};
 		return tab?.Content is ScrollViewer scroll && scroll.Content is StackPanel stack ? stack : null;
 	}
 
@@ -709,6 +720,9 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void StylePresetLabels()
 	{
+		System.Windows.Media.Brush nameBrush = _reverseColors
+			? System.Windows.Media.Brushes.Black
+			: System.Windows.Media.Brushes.White;
 		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
 		{
 			if (button.Tag is string tag && int.TryParse(tag, out int index) && index >= 0 && index < ColorPalettes.Themes.Count)
@@ -716,12 +730,45 @@ public class SettingsWindow : Window, IComponentConnector
 				TextBlock? name = FindVisualChildren<TextBlock>(button).LastOrDefault();
 				if (name != null)
 				{
-					name.Foreground = System.Windows.Media.Brushes.Black;
+					name.Foreground = nameBrush;
 					name.FontFamily = _englishDotFont;
 					name.Tag = "NoTranslate";
 				}
 			}
 		}
+	}
+
+	private void ApplySliderChrome()
+	{
+		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
+		{
+			foreach (Slider slider in FindVisualChildren<Slider>(this))
+			{
+				slider.ApplyTemplate();
+				slider.UpdateLayout();
+				foreach (Thumb thumb in FindVisualChildren<Thumb>(slider))
+				{
+					foreach (Shape shape in FindVisualChildren<Shape>(thumb))
+					{
+						shape.Stroke = System.Windows.Media.Brushes.Transparent;
+						shape.StrokeThickness = 0.0;
+					}
+				}
+				foreach (RepeatButton repeat in FindVisualChildren<RepeatButton>(slider))
+				{
+					Border? rail = FindVisualChildren<Border>(repeat).FirstOrDefault();
+					if (rail == null)
+					{
+						continue;
+					}
+					bool decrease = ReferenceEquals(repeat.Command, Slider.DecreaseLarge);
+					rail.CornerRadius = new CornerRadius(3.0);
+					rail.Margin = slider.Orientation == System.Windows.Controls.Orientation.Vertical
+						? (decrease ? new Thickness(0.0, 0.0, 0.0, 2.0) : new Thickness(0.0, 2.0, 0.0, 0.0))
+						: (decrease ? new Thickness(0.0, 0.0, 2.0, 0.0) : new Thickness(2.0, 0.0, 0.0, 0.0));
+				}
+			}
+		});
 	}
 
 	private void ApplySoftSettingsTheme()
@@ -840,17 +887,25 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
 		{
-			comboBox.Foreground = textBrush;
+			SolidColorBrush selectionText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 20, 20));
+			comboBox.Foreground = selectionText;
 			comboBox.Background = inputBrush;
 			comboBox.BorderBrush = controlBorderBrush;
-		}
-		if (_reverseColors)
-		{
-			SolidColorBrush languageText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30));
-			LanguageBox.Foreground = languageText;
-			foreach (System.Windows.Controls.ComboBoxItem item in LanguageBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+			Style itemStyle = new Style(typeof(System.Windows.Controls.ComboBoxItem));
+			itemStyle.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty, selectionText));
+			comboBox.ItemContainerStyle = itemStyle;
+			comboBox.ApplyTemplate();
+			foreach (System.Windows.Controls.TextBox editor in FindVisualChildren<System.Windows.Controls.TextBox>(comboBox))
 			{
-				item.Foreground = languageText;
+				editor.Foreground = selectionText;
+			}
+			foreach (TextBlock selection in FindVisualChildren<TextBlock>(comboBox))
+			{
+				selection.Foreground = selectionText;
+			}
+			foreach (System.Windows.Controls.ComboBoxItem item in comboBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+			{
+				item.Foreground = selectionText;
 			}
 		}
 		ControlTemplate softTabTemplate = CreateSoftTabTemplate(accent);
@@ -867,6 +922,7 @@ public class SettingsWindow : Window, IComponentConnector
 			_versionText.Foreground = headerTextBrush;
 		}
 		StylePresetLabels();
+		ApplySliderChrome();
 		RefreshReverseColorsButton();
 		_softThemeInitialized = true;
 		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
@@ -1231,6 +1287,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			array[i].IsEnabled = flag;
 		}
+		ResetManualButton.Content = T("Clear selection and cache");
 		if (flag && !(trackInfo == null))
 		{
 			LrclibRecord lrclibRecord = lyricsLookupResult?.LrclibRecord;
@@ -1266,7 +1323,7 @@ public class SettingsWindow : Window, IComponentConnector
 			}
 			lyricsGuidanceText.Text = text;
 			OpenLrclibButton.IsEnabled = lrclibRecord != null;
-			ResetManualButton.IsEnabled = lyricsLookupResult?.SelectedManually ?? false;
+			ResetManualButton.IsEnabled = true;
 		}
 	}
 

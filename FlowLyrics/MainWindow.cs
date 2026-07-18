@@ -1433,11 +1433,29 @@ public class MainWindow : Window, IComponentConnector
 			foreach (Slider slider in new[] { PlaybackSeekSlider, VolumeSlider })
 			{
 				slider.ApplyTemplate();
+				slider.UpdateLayout();
+				foreach (Thumb thumb in FindVisualChildren<Thumb>(slider))
+				{
+					foreach (Shape shape in FindVisualChildren<Shape>(thumb))
+					{
+						shape.Stroke = System.Windows.Media.Brushes.Transparent;
+						shape.StrokeThickness = 0.0;
+					}
+				}
 				foreach (RepeatButton repeat in FindVisualChildren<RepeatButton>(slider))
 				{
 					if (repeat.Background is not SolidColorBrush brush || brush.Color.R != accentColor.R || brush.Color.G != accentColor.G || brush.Color.B != accentColor.B)
 					{
 						repeat.Background = rail;
+					}
+					Border? railSurface = FindVisualChildren<Border>(repeat).FirstOrDefault();
+					if (railSurface != null)
+					{
+						bool decrease = ReferenceEquals(repeat.Command, Slider.DecreaseLarge);
+						railSurface.CornerRadius = new CornerRadius(2.0);
+						railSurface.Margin = slider.Orientation == Orientation.Vertical
+							? (decrease ? new Thickness(0.0, 0.0, 0.0, 2.0) : new Thickness(0.0, 2.0, 0.0, 0.0))
+							: (decrease ? new Thickness(0.0, 0.0, 2.0, 0.0) : new Thickness(2.0, 0.0, 0.0, 0.0));
 					}
 				}
 			}
@@ -1496,7 +1514,7 @@ public class MainWindow : Window, IComponentConnector
 		double ratio = x / PlaybackSeekSlider.ActualWidth;
 		_seekHoverText.Text = FormatPlaybackTime(TimeSpan.FromMilliseconds(_snapshot.Track.Duration.TotalMilliseconds * ratio));
 		_seekHoverText.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-		_seekHoverPopup.HorizontalOffset = x - _seekHoverText.DesiredSize.Width / 2.0 + 12.0;
+		_seekHoverPopup.HorizontalOffset = x - _seekHoverText.DesiredSize.Width / 2.0 + 26.0;
 		_seekHoverPopup.VerticalOffset = -_seekHoverText.DesiredSize.Height - 7.0;
 		_seekHoverPopup.IsOpen = true;
 	}

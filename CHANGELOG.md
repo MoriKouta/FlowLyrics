@@ -14,7 +14,7 @@
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.7`.
+- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.8`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
@@ -34,7 +34,7 @@
 
 - Improved VOL popup dismissal with continuous pointer monitoring and refined its horizontal alignment.
 - Improved seek timestamp alignment above the pointer.
-- Made Color Preset names consistently black in the English dot font.
+- Kept Color Preset names in the English dot font without changing their size.
 - Restored WPF BAML and font packaging to the original `FlowLyrics.g.resources` layout so the portable EXE can initialize its application and windows correctly.
 - Applied the Settings wordmark, version text, and Reverse Colors control after the visual tree is loaded so they are always visible.
 - Improved the Settings version alignment and contrast.
@@ -44,6 +44,13 @@
 - Fixed the VOL popup lingering after the pointer moved away or Settings was opened, and aligned it farther left above VOL.
 - Kept the lyrics-source status dot unchanged when Reverse Colors is enabled.
 - Removed the seek timestamp frame and centered the timestamp directly above the pointer.
+- Fixed unreadable selection text in language, font, alignment, and other Settings dropdowns without tying it to Reverse Colors.
+- Fixed named palette controls and the confirmed Behavior reset action not being inserted when tab headers had already been localized.
+- Fixed Color Preset names so they switch between white and black with the Settings surface under Reverse Colors.
+- Removed the remaining runtime slider-thumb outlines and preserved rounded rail gaps in Settings, seek, and volume sliders.
+- Simplified the LRCLIB contribution hint to unobtrusive text links without a framed panel.
+- Renamed the per-track reset action to Clear selection and cache and made it remove both the manual override and only that track's cache.
+- Shifted the seek hover timestamp farther right to align above the pointer.
 
 ### Notes
 

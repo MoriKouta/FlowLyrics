@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -212,33 +213,30 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		Grid.SetRow(CloseButton, 4);
 		Border panel = new Border
 		{
-			Margin = new Thickness(0.0, 10.0, 0.0, 4.0),
-			Padding = new Thickness(12.0, 9.0, 12.0, 9.0),
-			CornerRadius = new CornerRadius(7.0),
-			BorderThickness = new Thickness(1.0)
+			Margin = new Thickness(2.0, 5.0, 2.0, 2.0),
+			Padding = new Thickness(0.0),
+			Background = System.Windows.Media.Brushes.Transparent,
+			BorderThickness = new Thickness(0.0)
 		};
-		panel.SetResourceReference(Border.BackgroundProperty, "Panel");
-		panel.SetResourceReference(Border.BorderBrushProperty, "ControlBorder");
-		DockPanel row = new DockPanel { LastChildFill = true };
-		StackPanel links = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-		Button lrclib = new Button { Content = "LRCLIB", FontFamily = _englishDotFont, FontSize = 9.0, ToolTip = "Open LRCLIB" };
-		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
-		Button lrcget = new Button { Content = "LRCGET", FontFamily = _englishDotFont, FontSize = 9.0, ToolTip = "Open LRCGET" };
-		lrcget.Click += delegate { OpenUrl(new Uri("https://github.com/tranxuanthang/lrcget")); };
-		links.Children.Add(lrclib);
-		links.Children.Add(lrcget);
-		DockPanel.SetDock(links, Dock.Right);
-		row.Children.Add(links);
 		TextBlock message = new TextBlock
 		{
-			Text = T("Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them."),
 			TextWrapping = TextWrapping.Wrap,
 			VerticalAlignment = VerticalAlignment.Center,
-			Margin = new Thickness(0.0, 0.0, 10.0, 0.0)
+			FontSize = 10.0,
+			Opacity = 0.72
 		};
 		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
-		row.Children.Add(message);
-		panel.Child = row;
+		message.Inlines.Add(new Run(T("Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them.")) + "  ");
+		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
+		lrclib.SetResourceReference(TextElement.ForegroundProperty, "Orange");
+		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
+		message.Inlines.Add(lrclib);
+		message.Inlines.Add(new Run("  ·  "));
+		Hyperlink lrcget = new Hyperlink(new Run("LRCGET")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
+		lrcget.SetResourceReference(TextElement.ForegroundProperty, "Orange");
+		lrcget.Click += delegate { OpenUrl(new Uri("https://github.com/tranxuanthang/lrcget")); };
+		message.Inlines.Add(lrcget);
+		panel.Child = message;
 		Grid.SetRow(panel, 3);
 		root.Children.Add(panel);
 	}

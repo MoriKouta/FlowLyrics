@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Spotify on Windows. It follows the track playing in the Spotify desktop app, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.0-dev.7` confirmation build. It is not the final `1.3.0` release.
+> This package is the `1.3.0-dev.8` confirmation build. It is not the final `1.3.0` release.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -39,7 +39,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download `FlowLyrics-v1.3.0-dev.7-win-x64-portable.zip` from the provided development build.
+1. Download `FlowLyrics-v1.3.0-dev.8-win-x64-portable.zip` from the provided development build.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in the Spotify desktop app.
@@ -72,7 +72,7 @@ VOL uses Spotify's Windows shared-mode audio sessions and searches every active 
 
 Open **Settings > Lyrics** to inspect the current Spotify metadata and the LRCLIB record currently in use. If the lyrics or timing are wrong, or the automatic matcher finds more than one safe possibility, choose **Choose from LRCLIB**. You can edit Title, Artist, Album, and Keyword—including an English or romanized title—before searching.
 
-Manual LRCLIB selections are remembered for the same Spotify track. Choosing **Use these lyrics** removes the previous cache for that track, stores the selected LRCLIB record, applies it immediately, and closes the chooser. Use **Reset manual selection** when you want to return to automatic matching.
+Manual LRCLIB selections are remembered for the same Spotify track. Choosing **Use these lyrics** removes the previous cache for that track, stores the selected LRCLIB record, applies it immediately, and closes the chooser. Use **Clear selection and cache** to remove the current track's manual override and cached lyrics before returning to automatic matching.
 
 Open the LRC folder from **Settings > Lyrics > Local LRC**, then place timestamped `.lrc` files in it. The default location is:
 

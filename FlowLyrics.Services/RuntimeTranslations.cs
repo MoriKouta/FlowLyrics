@@ -6,6 +6,7 @@ namespace FlowLyrics.Services;
 internal static class RuntimeTranslations
 {
 	private const string ContributionKey = "Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them.";
+	private const string ClearSelectionKey = "Clear selection and cache";
 
 	private static readonly IReadOnlyDictionary<string, string> ContributionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 	{
@@ -18,6 +19,19 @@ internal static class RuntimeTranslations
 		["de-DE"] = "Kein Liedtext gefunden? Teilen Sie ihn mit LRCGET auf LRCLIB und seien Sie die erste Person.",
 		["pt-BR"] = "Não encontrou a letra? Envie-a ao LRCLIB com o LRCGET e seja a primeira pessoa a compartilhar.",
 		["ru-RU"] = "Не нашли текст? Опубликуйте его в LRCLIB через LRCGET и станьте первым автором."
+	};
+
+	private static readonly IReadOnlyDictionary<string, string> ClearSelectionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+	{
+		["ja-JP"] = "選択・キャッシュをクリア",
+		["zh-CN"] = "清除选择和缓存",
+		["zh-TW"] = "清除選擇與快取",
+		["ko-KR"] = "선택 및 캐시 지우기",
+		["es-ES"] = "Borrar selección y caché",
+		["fr-FR"] = "Effacer la sélection et le cache",
+		["de-DE"] = "Auswahl und Cache löschen",
+		["pt-BR"] = "Limpar seleção e cache",
+		["ru-RU"] = "Очистить выбор и кеш"
 	};
 
 	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Values = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
@@ -49,6 +63,10 @@ internal static class RuntimeTranslations
 	public static bool TryGet(string language, string key, out string value)
 	{
 		if (string.Equals(key, ContributionKey, StringComparison.Ordinal) && ContributionValues.TryGetValue(language, out value!))
+		{
+			return true;
+		}
+		if (string.Equals(key, ClearSelectionKey, StringComparison.Ordinal) && ClearSelectionValues.TryGetValue(language, out value!))
 		{
 			return true;
 		}
