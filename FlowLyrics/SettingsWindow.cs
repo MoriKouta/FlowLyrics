@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -63,6 +64,16 @@ public class SettingsWindow : Window, IComponentConnector
 	private bool _reverseColorsControlInitialized;
 
 	private bool _softThemeInitialized;
+
+	private bool _paletteManagerInitialized;
+
+	private bool _behaviorResetInitialized;
+
+	private readonly List<SavedColorPalette> _savedColorPalettes;
+
+	private System.Windows.Controls.TextBox? _paletteNameBox;
+
+	private System.Windows.Controls.ComboBox? _savedPaletteBox;
 
 	private Border? _settingsHeaderBorder;
 
@@ -221,6 +232,7 @@ public class SettingsWindow : Window, IComponentConnector
 		LrcFolderPathBox.Text = _lrcDirectory;
 		_originalSettings = settings.Clone();
 		ResultSettings = settings.Clone();
+		_savedColorPalettes = settings.SavedColorPalettes.Select(ClonePalette).ToList();
 		_randomPaletteSeed = settings.RandomPaletteSeed;
 		FontFamilyBox.ItemsSource = Fonts.SystemFontFamilies.Select((System.Windows.Media.FontFamily font) => font.Source).Distinct<string>(StringComparer.CurrentCultureIgnoreCase).OrderBy<string, string>((string name) => name, StringComparer.CurrentCultureIgnoreCase)
 			.ToArray();
@@ -235,6 +247,8 @@ public class SettingsWindow : Window, IComponentConnector
 			DisableDialogOnlyButtons();
 			InitializeBranding();
 			InitializeReverseColorsControl();
+			InitializePaletteManager();
+			InitializeBehaviorReset();
 			ApplySoftSettingsTheme();
 			RefreshReverseColorsButton();
 			UpdateAccentColor(ResultSettings.UiColor);
@@ -262,6 +276,8 @@ public class SettingsWindow : Window, IComponentConnector
 			base.Dispatcher.BeginInvoke((Action)delegate
 			{
 				InitializeReverseColorsControl();
+				InitializePaletteManager();
+				InitializeBehaviorReset();
 				CaptureLocalizableContent(this);
 				ApplyLanguage(_currentLanguage);
 				ApplySoftSettingsTheme();
@@ -395,39 +411,353 @@ public class SettingsWindow : Window, IComponentConnector
 		_reverseColorsControlInitialized = true;
 	}
 
+	private StackPanel? GetTabStack(string originalHeader)
+	{
+		TabItem? tab = SettingsTabs.Items.OfType<TabItem>().FirstOrDefault((TabItem item) =>
+			_localizedHeaders.TryGetValue(item, out string? header) && string.Equals(header, originalHeader, StringComparison.Ordinal));
+		return tab?.Content is ScrollViewer scroll && scroll.Content is StackPanel stack ? stack : null;
+	}
+
+	private void InitializePaletteManager()
+	{
+		if (_paletteManagerInitialized || GetTabStack("Color") is not StackPanel colorStack)
+		{
+			return;
+		}
+		Border card = new Border();
+		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		StackPanel content = new StackPanel { Tag = "NoTranslate" };
+		content.Children.Add(new TextBlock
+		{
+			Text = "MY PALETTES",
+			FontFamily = _englishDotFont,
+			FontSize = 18.0,
+			FontWeight = FontWeights.Bold,
+			Margin = new Thickness(0.0, 0.0, 0.0, 10.0),
+			Tag = "NoTranslate"
+		});
+
+		WrapPanel saveRow = new WrapPanel { Margin = new Thickness(-4.0, 0.0, 0.0, 4.0) };
+		_paletteNameBox = new System.Windows.Controls.TextBox
+		{
+			Width = 210.0,
+			Text = "My Palette",
+			FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+			Margin = new Thickness(4.0)
+		};
+		saveRow.Children.Add(_paletteNameBox);
+		saveRow.Children.Add(CreatePaletteButton("SAVE CURRENT", SaveCurrentPalette_Click));
+		content.Children.Add(saveRow);
+
+		WrapPanel manageRow = new WrapPanel { Margin = new Thickness(-4.0, 0.0, 0.0, 0.0) };
+		_savedPaletteBox = new System.Windows.Controls.ComboBox
+		{
+			Width = 210.0,
+			Margin = new Thickness(4.0),
+			FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
+		};
+		manageRow.Children.Add(_savedPaletteBox);
+		manageRow.Children.Add(CreatePaletteButton("APPLY", ApplySavedPalette_Click));
+		manageRow.Children.Add(CreatePaletteButton("DELETE", DeleteSavedPalette_Click));
+		manageRow.Children.Add(CreatePaletteButton("EXPORT", ExportPalette_Click));
+		manageRow.Children.Add(CreatePaletteButton("IMPORT", ImportPalette_Click));
+		content.Children.Add(manageRow);
+		card.Child = content;
+		colorStack.Children.Insert(Math.Min(1, colorStack.Children.Count), card);
+		RefreshSavedPaletteList();
+		_paletteManagerInitialized = true;
+	}
+
+	private System.Windows.Controls.Button CreatePaletteButton(string text, RoutedEventHandler handler)
+	{
+		System.Windows.Controls.Button button = new System.Windows.Controls.Button
+		{
+			Content = text,
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			Tag = "NoTranslate",
+			Margin = new Thickness(4.0)
+		};
+		button.Click += handler;
+		return button;
+	}
+
+	private SavedColorPalette CaptureCurrentPalette(string name)
+	{
+		return new SavedColorPalette
+		{
+			Name = name.Trim(),
+			CurrentTextColor = NormalizeColor(CurrentColorBox.Text),
+			NextTextColor = NormalizeColor(NextColorBox.Text),
+			OutlineColor = NormalizeColor(OutlineColorBox.Text),
+			ShadowColor = NormalizeColor(ShadowColorBox.Text),
+			BackgroundColor = NormalizeColor(BackgroundColorBox.Text),
+			BorderColor = NormalizeColor(BorderColorBox.Text),
+			UiColor = NormalizeColor(UiColorBox.Text)
+		};
+	}
+
+	private static SavedColorPalette ClonePalette(SavedColorPalette palette)
+	{
+		return new SavedColorPalette
+		{
+			FormatVersion = palette.FormatVersion,
+			Name = palette.Name,
+			CurrentTextColor = palette.CurrentTextColor,
+			NextTextColor = palette.NextTextColor,
+			OutlineColor = palette.OutlineColor,
+			ShadowColor = palette.ShadowColor,
+			BackgroundColor = palette.BackgroundColor,
+			BorderColor = palette.BorderColor,
+			UiColor = palette.UiColor
+		};
+	}
+
+	private void RefreshSavedPaletteList(string? selectName = null)
+	{
+		if (_savedPaletteBox == null)
+		{
+			return;
+		}
+		string? previous = selectName ?? _savedPaletteBox.SelectedItem?.ToString();
+		_savedPaletteBox.ItemsSource = _savedColorPalettes.Select((SavedColorPalette palette) => palette.Name).ToArray();
+		_savedPaletteBox.SelectedItem = previous;
+		if (_savedPaletteBox.SelectedIndex < 0 && _savedPaletteBox.Items.Count > 0)
+		{
+			_savedPaletteBox.SelectedIndex = 0;
+		}
+	}
+
+	private SavedColorPalette? SelectedSavedPalette()
+	{
+		string? name = _savedPaletteBox?.SelectedItem?.ToString();
+		return _savedColorPalettes.FirstOrDefault((SavedColorPalette palette) => string.Equals(palette.Name, name, StringComparison.OrdinalIgnoreCase));
+	}
+
+	private void SaveCurrentPalette_Click(object sender, RoutedEventArgs e)
+	{
+		string name = _paletteNameBox?.Text.Trim() ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			System.Windows.MessageBox.Show(this, "Enter a palette name.", "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Information);
+			return;
+		}
+		try
+		{
+			SavedColorPalette palette = CaptureCurrentPalette(name);
+			int index = _savedColorPalettes.FindIndex((SavedColorPalette item) => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+			if (index >= 0)
+			{
+				_savedColorPalettes[index] = palette;
+			}
+			else
+			{
+				_savedColorPalettes.Add(palette);
+			}
+			RefreshSavedPaletteList(palette.Name);
+			NotifyPreviewChanged();
+		}
+		catch (Exception ex)
+		{
+			System.Windows.MessageBox.Show(this, ex.Message, "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+		}
+	}
+
+	private void ApplySavedPalette_Click(object sender, RoutedEventArgs e)
+	{
+		if (SelectedSavedPalette() is SavedColorPalette palette)
+		{
+			ApplySavedPalette(palette);
+		}
+	}
+
+	private void ApplySavedPalette(SavedColorPalette palette)
+	{
+		ValidatePalette(palette);
+		_suppressPreview = true;
+		CurrentColorBox.Text = palette.CurrentTextColor;
+		NextColorBox.Text = palette.NextTextColor;
+		OutlineColorBox.Text = palette.OutlineColor;
+		ShadowColorBox.Text = palette.ShadowColor;
+		BackgroundColorBox.Text = palette.BackgroundColor;
+		BorderColorBox.Text = palette.BorderColor;
+		UiColorBox.Text = palette.UiColor;
+		_suppressPreview = false;
+		UpdateAccentColor(UiColorBox.Text);
+		NotifyPreviewChanged();
+	}
+
+	private void ValidatePalette(SavedColorPalette palette)
+	{
+		foreach (string color in new[] { palette.CurrentTextColor, palette.NextTextColor, palette.OutlineColor, palette.ShadowColor, palette.BackgroundColor, palette.BorderColor, palette.UiColor })
+		{
+			ValidateColor(color);
+		}
+	}
+
+	private void DeleteSavedPalette_Click(object sender, RoutedEventArgs e)
+	{
+		if (SelectedSavedPalette() is not SavedColorPalette palette || System.Windows.MessageBox.Show(this, $"Delete ‘{palette.Name}’?", "FlowLyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+		{
+			return;
+		}
+		_savedColorPalettes.Remove(palette);
+		RefreshSavedPaletteList();
+		NotifyPreviewChanged();
+	}
+
+	private void ExportPalette_Click(object sender, RoutedEventArgs e)
+	{
+		if (SelectedSavedPalette() is not SavedColorPalette palette)
+		{
+			return;
+		}
+		Microsoft.Win32.SaveFileDialog dialog = new Microsoft.Win32.SaveFileDialog
+		{
+			Title = "Export FlowLyrics palette",
+			Filter = "FlowLyrics palette (*.flowpalette)|*.flowpalette",
+			DefaultExt = ".flowpalette",
+			AddExtension = true,
+			FileName = string.Concat(palette.Name.Where((char c) => !System.IO.Path.GetInvalidFileNameChars().Contains(c)))
+		};
+		if (dialog.ShowDialog(this) == true)
+		{
+			File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(palette, new JsonSerializerOptions { WriteIndented = true }));
+		}
+	}
+
+	private void ImportPalette_Click(object sender, RoutedEventArgs e)
+	{
+		Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+		{
+			Title = "Import FlowLyrics palette",
+			Filter = "FlowLyrics palette (*.flowpalette)|*.flowpalette"
+		};
+		if (dialog.ShowDialog(this) != true)
+		{
+			return;
+		}
+		try
+		{
+			SavedColorPalette palette = JsonSerializer.Deserialize<SavedColorPalette>(File.ReadAllText(dialog.FileName), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidDataException("This palette file is empty.");
+			palette.Name = string.IsNullOrWhiteSpace(palette.Name) ? System.IO.Path.GetFileNameWithoutExtension(dialog.FileName) : palette.Name.Trim();
+			ValidatePalette(palette);
+			int index = _savedColorPalettes.FindIndex((SavedColorPalette item) => string.Equals(item.Name, palette.Name, StringComparison.OrdinalIgnoreCase));
+			if (index >= 0)
+			{
+				_savedColorPalettes[index] = palette;
+			}
+			else
+			{
+				_savedColorPalettes.Add(palette);
+			}
+			RefreshSavedPaletteList(palette.Name);
+			ApplySavedPalette(palette);
+		}
+		catch (Exception ex)
+		{
+			System.Windows.MessageBox.Show(this, ex.Message, "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+		}
+	}
+
+	private void InitializeBehaviorReset()
+	{
+		if (_behaviorResetInitialized || GetTabStack("Behavior") is not StackPanel behaviorStack || base.Content is not Grid root)
+		{
+			return;
+		}
+		Border? footer = root.Children.OfType<Border>().FirstOrDefault((Border item) => Grid.GetRow(item) == 2);
+		if (footer?.Child is not DockPanel footerPanel)
+		{
+			return;
+		}
+		System.Windows.Controls.Button? resetButton = footerPanel.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault();
+		if (resetButton == null)
+		{
+			return;
+		}
+		footerPanel.Children.Remove(resetButton);
+		resetButton.Content = "RESET ALL SETTINGS";
+		resetButton.FontFamily = _englishDotFont;
+		resetButton.FontSize = 9.0;
+		resetButton.Tag = "NoTranslate";
+		resetButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+		Border card = new Border();
+		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		StackPanel panel = new StackPanel { Tag = "NoTranslate" };
+		panel.Children.Add(new TextBlock
+		{
+			Text = "RESET",
+			FontFamily = _englishDotFont,
+			FontSize = 18.0,
+			FontWeight = FontWeights.Bold,
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
+			Tag = "NoTranslate"
+		});
+		panel.Children.Add(new TextBlock
+		{
+			Text = "Restore every setting, including saved color palettes.",
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 0.0, 0.0, 10.0),
+			Tag = "NoTranslate"
+		});
+		panel.Children.Add(resetButton);
+		card.Child = panel;
+		behaviorStack.Children.Add(card);
+		_behaviorResetInitialized = true;
+	}
+
+	private void StylePresetLabels()
+	{
+		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
+		{
+			if (button.Tag is string tag && int.TryParse(tag, out int index) && index >= 0 && index < ColorPalettes.Themes.Count)
+			{
+				TextBlock? name = FindVisualChildren<TextBlock>(button).LastOrDefault();
+				if (name != null)
+				{
+					name.Foreground = System.Windows.Media.Brushes.Black;
+					name.FontFamily = _englishDotFont;
+					name.Tag = "NoTranslate";
+				}
+			}
+		}
+	}
+
 	private void ApplySoftSettingsTheme()
 	{
-		SolidColorBrush windowBrush = new SolidColorBrush(_reverseColors
+		bool darkTheme = !_reverseColors;
+		SolidColorBrush windowBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(26, 24, 27)
 			: System.Windows.Media.Color.FromRgb(229, 231, 228));
-		SolidColorBrush cardBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush cardBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(34, 32, 35)
 			: System.Windows.Media.Color.FromRgb(242, 243, 241));
-		SolidColorBrush cardBorderBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush cardBorderBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(67, 63, 67)
 			: System.Windows.Media.Color.FromRgb(207, 211, 207));
-		SolidColorBrush controlBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush controlBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(48, 45, 49)
 			: System.Windows.Media.Color.FromRgb(220, 223, 220));
-		SolidColorBrush controlBorderBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush controlBorderBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(88, 83, 88)
 			: System.Windows.Media.Color.FromRgb(174, 180, 175));
-		SolidColorBrush textBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush textBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(224, 221, 223)
 			: System.Windows.Media.Color.FromRgb(29, 32, 30));
-		SolidColorBrush mutedBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush mutedBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(188, 183, 186)
 			: System.Windows.Media.Color.FromRgb(58, 63, 60));
-		SolidColorBrush headerBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush headerBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(220, 222, 220)
 			: System.Windows.Media.Color.FromRgb(48, 50, 49));
-		SolidColorBrush headerTextBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush headerTextBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(29, 32, 30)
 			: System.Windows.Media.Colors.White);
-		SolidColorBrush footerBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush footerBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(37, 34, 38)
 			: System.Windows.Media.Color.FromRgb(218, 221, 218));
-		SolidColorBrush inputBrush = new SolidColorBrush(_reverseColors
+		SolidColorBrush inputBrush = new SolidColorBrush(darkTheme
 			? System.Windows.Media.Color.FromRgb(42, 39, 43)
 			: System.Windows.Media.Color.FromRgb(250, 250, 248));
 		SolidColorBrush accent = ParseColorBrush(UiColorBox.Text, System.Windows.Media.Color.FromRgb(byte.MaxValue, 138, 61));
@@ -514,6 +844,15 @@ public class SettingsWindow : Window, IComponentConnector
 			comboBox.Background = inputBrush;
 			comboBox.BorderBrush = controlBorderBrush;
 		}
+		if (_reverseColors)
+		{
+			SolidColorBrush languageText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30));
+			LanguageBox.Foreground = languageText;
+			foreach (System.Windows.Controls.ComboBoxItem item in LanguageBox.Items.OfType<System.Windows.Controls.ComboBoxItem>())
+			{
+				item.Foreground = languageText;
+			}
+		}
 		ControlTemplate softTabTemplate = CreateSoftTabTemplate(accent);
 		foreach (TabItem tab in FindVisualChildren<TabItem>(this))
 		{
@@ -527,6 +866,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			_versionText.Foreground = headerTextBrush;
 		}
+		StylePresetLabels();
 		RefreshReverseColorsButton();
 		_softThemeInitialized = true;
 		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
@@ -651,10 +991,11 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		else
 		{
-			_reverseColorsSettingsButton.Background = new SolidColorBrush(_reverseColors
+			bool darkTheme = !_reverseColors;
+			_reverseColorsSettingsButton.Background = new SolidColorBrush(darkTheme
 				? System.Windows.Media.Color.FromRgb(48, 45, 49)
 				: System.Windows.Media.Color.FromRgb(220, 223, 220));
-			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(_reverseColors
+			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(darkTheme
 				? System.Windows.Media.Color.FromRgb(224, 221, 223)
 				: System.Windows.Media.Color.FromRgb(29, 32, 30));
 		}
@@ -777,6 +1118,9 @@ public class SettingsWindow : Window, IComponentConnector
 		BorderColorBox.Text = settings.BorderColor;
 		UiColorBox.Text = settings.UiColor;
 		_reverseColors = settings.ReverseColors;
+		_savedColorPalettes.Clear();
+		_savedColorPalettes.AddRange(settings.SavedColorPalettes.Select(ClonePalette));
+		RefreshSavedPaletteList();
 		BorderThicknessSlider.Value = settings.BorderThickness;
 		ShowTrackInfoBox.IsChecked = settings.ShowTrackInfo;
 		ShowPlaybackControlsBox.IsChecked = settings.ShowPlaybackControls;
@@ -1164,6 +1508,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.BorderColor = NormalizeColor(BorderColorBox.Text);
 		appSettings.UiColor = NormalizeColor(UiColorBox.Text);
 		appSettings.ReverseColors = _reverseColors;
+		appSettings.SavedColorPalettes = _savedColorPalettes.Select(ClonePalette).ToList();
 		appSettings.BorderThickness = BorderThicknessSlider.Value;
 		appSettings.ShowUnlockedBadge = false;
 		appSettings.ShowTrackInfo = ShowTrackInfoBox.IsChecked == true;
@@ -1203,15 +1548,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (System.Windows.MessageBox.Show(this, T("Reset all settings?"), "FlowLyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
 		{
-			AppSettings appSettings = new AppSettings
-			{
-				WindowLeft = _originalSettings.WindowLeft,
-				WindowTop = _originalSettings.WindowTop,
-				WindowWidth = _originalSettings.WindowWidth,
-				WindowHeight = _originalSettings.WindowHeight,
-				TrackOffsetsMs = new Dictionary<string, int>(_originalSettings.TrackOffsetsMs, StringComparer.Ordinal),
-				IsLocked = _originalSettings.IsLocked
-			};
+			AppSettings appSettings = new AppSettings();
 			_randomPaletteSeed = appSettings.RandomPaletteSeed;
 			_suppressPreview = true;
 			PopulateControls(appSettings);

@@ -2,6 +2,6 @@ namespace FlowLyrics;
 
 internal static class BuildInfo
 {
-    internal const string Version = "1.3.0-dev.6";
-    internal const string CacheNamespace = "1.3.0-dev.6";
+    internal const string Version = "1.3.0-dev.7";
+    internal const string CacheNamespace = "1.3.0-dev.7";
 }

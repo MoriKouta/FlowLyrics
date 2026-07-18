@@ -121,6 +121,8 @@ public class MainWindow : Window, IComponentConnector
 
 	private double? _pendingSpotifyVolume;
 
+	private DateTime _volumeLastInsideUtc = DateTime.MinValue;
+
 	private SettingsWindow? _settingsWindow;
 
 	private AppSettings? _settingsBeforeWindow;
@@ -300,12 +302,19 @@ public class MainWindow : Window, IComponentConnector
 		};
 		_volumePopupCloseTimer = new DispatcherTimer(DispatcherPriority.Input)
 		{
-			Interval = TimeSpan.FromMilliseconds(120L)
+			Interval = TimeSpan.FromMilliseconds(45L)
 		};
 		_volumePopupCloseTimer.Tick += delegate
 		{
-			_volumePopupCloseTimer.Stop();
-			if (!IsMouseOverVolumeControls())
+			if (!VolumePopup.IsOpen)
+			{
+				_volumePopupCloseTimer.Stop();
+			}
+			else if (IsMouseOverVolumeControls())
+			{
+				_volumeLastInsideUtc = DateTime.UtcNow;
+			}
+			else if (DateTime.UtcNow - _volumeLastInsideUtc >= TimeSpan.FromMilliseconds(90L))
 			{
 				CloseVolumePopup();
 			}
@@ -1365,7 +1374,7 @@ public class MainWindow : Window, IComponentConnector
 			_reverseColorsButton.Style = style;
 		}
 		_reverseColorsButton.Click += ReverseColorsButton_Click;
-		_reverseColorsButton.MouseEnter += delegate { _volumePopupCloseTimer?.Stop(); };
+		_reverseColorsButton.MouseEnter += delegate { CloseVolumePopup(); };
 		int index = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
 		RightControlGroup.Children.Insert(index, _reverseColorsButton);
 	}
@@ -1487,7 +1496,7 @@ public class MainWindow : Window, IComponentConnector
 		double ratio = x / PlaybackSeekSlider.ActualWidth;
 		_seekHoverText.Text = FormatPlaybackTime(TimeSpan.FromMilliseconds(_snapshot.Track.Duration.TotalMilliseconds * ratio));
 		_seekHoverText.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-		_seekHoverPopup.HorizontalOffset = x - _seekHoverText.DesiredSize.Width / 2.0;
+		_seekHoverPopup.HorizontalOffset = x - _seekHoverText.DesiredSize.Width / 2.0 + 12.0;
 		_seekHoverPopup.VerticalOffset = -_seekHoverText.DesiredSize.Height - 7.0;
 		_seekHoverPopup.IsOpen = true;
 	}
@@ -2115,7 +2124,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void VolumeHover_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
 	{
-		_volumePopupCloseTimer.Stop();
+		_volumeLastInsideUtc = DateTime.UtcNow;
 		_volumeWriteTimer.Stop();
 		_pendingSpotifyVolume = null;
 		_updatingVolume = true;
@@ -2136,12 +2145,18 @@ public class MainWindow : Window, IComponentConnector
 		}
 		_updatingVolume = false;
 		VolumePopup.IsOpen = true;
+		if (!_volumePopupCloseTimer.IsEnabled)
+		{
+			_volumePopupCloseTimer.Start();
+		}
 	}
 
 	private void VolumeHover_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
 	{
-		_volumePopupCloseTimer.Stop();
-		_volumePopupCloseTimer.Start();
+		if (VolumePopup.IsOpen && !_volumePopupCloseTimer.IsEnabled)
+		{
+			_volumePopupCloseTimer.Start();
+		}
 	}
 
 	private bool IsMouseOverVolumeControls()
@@ -2242,7 +2257,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private static CustomPopupPlacement[] PlaceVolumePopup(System.Windows.Size popupSize, System.Windows.Size targetSize, System.Windows.Point offset)
 	{
-		double x = (targetSize.Width - popupSize.Width) / 2.0 - 14.0;
+		double x = (targetSize.Width - popupSize.Width) / 2.0 - 8.0;
 		double y = 0.0 - popupSize.Height - 2.0;
 		return new CustomPopupPlacement[1]
 		{

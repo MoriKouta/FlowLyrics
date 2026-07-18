@@ -45,6 +45,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	private bool _isSearching;
 
+	private Button? _titleOnlyButton;
+
 	internal TextBlock TitleLabel;
 
 	internal TextBox TitleBox;
@@ -101,9 +103,11 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		ArtistBox.Text = track.Artist;
 		AlbumBox.Text = track.Album;
 		ApplyLanguage();
+		InitializeSearchActions();
+		InitializeContributionFooter();
 		base.Loaded += async delegate
 		{
-			await SearchAsync();
+			await SearchAsync(titleOnly: false);
 		};
 		base.Closed += delegate
 		{
@@ -130,26 +134,27 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			Color color = (Color)ColorConverter.ConvertFromString(accentColor.Trim());
 			_accentColor = $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
 			_reverseColors = reverseColors;
+			bool darkTheme = !reverseColors;
 			base.Resources["Orange"] = new SolidColorBrush(color);
-			base.Resources["WindowBackground"] = new SolidColorBrush(reverseColors
+			base.Resources["WindowBackground"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(26, 24, 27)
 				: Color.FromRgb(229, 231, 228));
-			base.Resources["Panel"] = new SolidColorBrush(reverseColors
+			base.Resources["Panel"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(34, 32, 35)
 				: Color.FromRgb(242, 243, 241));
-			base.Resources["Paper"] = new SolidColorBrush(reverseColors
+			base.Resources["Paper"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(224, 221, 223)
 				: Color.FromRgb(29, 32, 30));
-			base.Resources["Muted"] = new SolidColorBrush(reverseColors
+			base.Resources["Muted"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(188, 183, 186)
 				: Color.FromRgb(58, 63, 60));
-			base.Resources["Control"] = new SolidColorBrush(reverseColors
+			base.Resources["Control"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(48, 45, 49)
 				: Color.FromRgb(220, 223, 220));
-			base.Resources["ControlBorder"] = new SolidColorBrush(reverseColors
+			base.Resources["ControlBorder"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(88, 83, 88)
 				: Color.FromRgb(174, 180, 175));
-			base.Resources["Input"] = new SolidColorBrush(reverseColors
+			base.Resources["Input"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(42, 39, 43)
 				: Color.FromRgb(250, 250, 248));
 		}
@@ -172,7 +177,70 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	private async void Search_Click(object sender, RoutedEventArgs e)
 	{
-		await SearchAsync();
+		await SearchAsync(titleOnly: false);
+	}
+
+	private void InitializeSearchActions()
+	{
+		if (SearchButton.Parent is not Grid actions)
+		{
+			return;
+		}
+		actions.Children.Remove(SearchButton);
+		StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal };
+		_titleOnlyButton = new Button
+		{
+			Content = "TITLE ONLY",
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			ToolTip = "Search by title only"
+		};
+		_titleOnlyButton.Click += async delegate { await SearchAsync(titleOnly: true); };
+		buttons.Children.Add(_titleOnlyButton);
+		buttons.Children.Add(SearchButton);
+		Grid.SetColumn(buttons, 1);
+		actions.Children.Add(buttons);
+	}
+
+	private void InitializeContributionFooter()
+	{
+		if (base.Content is not Grid root)
+		{
+			return;
+		}
+		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		Grid.SetRow(CloseButton, 4);
+		Border panel = new Border
+		{
+			Margin = new Thickness(0.0, 10.0, 0.0, 4.0),
+			Padding = new Thickness(12.0, 9.0, 12.0, 9.0),
+			CornerRadius = new CornerRadius(7.0),
+			BorderThickness = new Thickness(1.0)
+		};
+		panel.SetResourceReference(Border.BackgroundProperty, "Panel");
+		panel.SetResourceReference(Border.BorderBrushProperty, "ControlBorder");
+		DockPanel row = new DockPanel { LastChildFill = true };
+		StackPanel links = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+		Button lrclib = new Button { Content = "LRCLIB", FontFamily = _englishDotFont, FontSize = 9.0, ToolTip = "Open LRCLIB" };
+		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
+		Button lrcget = new Button { Content = "LRCGET", FontFamily = _englishDotFont, FontSize = 9.0, ToolTip = "Open LRCGET" };
+		lrcget.Click += delegate { OpenUrl(new Uri("https://github.com/tranxuanthang/lrcget")); };
+		links.Children.Add(lrclib);
+		links.Children.Add(lrcget);
+		DockPanel.SetDock(links, Dock.Right);
+		row.Children.Add(links);
+		TextBlock message = new TextBlock
+		{
+			Text = T("Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them."),
+			TextWrapping = TextWrapping.Wrap,
+			VerticalAlignment = VerticalAlignment.Center,
+			Margin = new Thickness(0.0, 0.0, 10.0, 0.0)
+		};
+		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+		row.Children.Add(message);
+		panel.Child = row;
+		Grid.SetRow(panel, 3);
+		root.Children.Add(panel);
 	}
 
 	private void UpdateLoadingDots()
@@ -225,13 +293,17 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		return num * num * (3.0 - 2.0 * num);
 	}
 
-	private async Task SearchAsync()
+	private async Task SearchAsync(bool titleOnly)
 	{
 		int generation = ++_searchGeneration;
 		_searchCancellation?.Cancel();
 		_searchCancellation?.Dispose();
 		_searchCancellation = new CancellationTokenSource();
 		SearchButton.IsEnabled = false;
+		if (_titleOnlyButton != null)
+		{
+			_titleOnlyButton.IsEnabled = false;
+		}
 		_isSearching = true;
 		StatusText.Text = T("Searching LRCLIB…");
 		ResultsList.ItemsSource = null;
@@ -255,7 +327,10 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 					}
 				}
 			});
-			IReadOnlyList<LyricsCandidate> readOnlyList = await _lyricsService.SearchCandidatesAsync(_track, new LyricsSearchRequest(TitleBox.Text, ArtistBox.Text, AlbumBox.Text, KeywordBox.Text), _searchCancellation.Token, progress);
+			LyricsSearchRequest request = titleOnly
+				? new LyricsSearchRequest(TitleBox.Text, string.Empty, string.Empty, string.Empty)
+				: new LyricsSearchRequest(TitleBox.Text, ArtistBox.Text, AlbumBox.Text, KeywordBox.Text);
+			IReadOnlyList<LyricsCandidate> readOnlyList = await _lyricsService.SearchCandidatesAsync(_track, request, _searchCancellation.Token, progress);
 			if (generation == _searchGeneration)
 			{
 				if (readOnlyList.Count == 0)
@@ -287,6 +362,10 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 				_loadingStopwatch.Reset();
 				LoadingDotLine.Visibility = Visibility.Collapsed;
 				SearchButton.IsEnabled = true;
+				if (_titleOnlyButton != null)
+				{
+					_titleOnlyButton.IsEnabled = true;
+				}
 			}
 		}
 	}

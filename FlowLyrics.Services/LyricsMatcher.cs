@@ -257,8 +257,13 @@ public static class LyricsMatcher
 		return (from record in records
 			group record by record.Id into @group
 			select Evaluate(track, @group.First()) into candidate
-			orderby CandidatePriority(candidate), candidate.Score descending, candidate.Record.Id
+			orderby CandidatePriority(candidate), DurationPriority(candidate), candidate.Score descending, candidate.Record.Id
 			select candidate).ToArray();
+	}
+
+	private static double DurationPriority(LyricsCandidate candidate)
+	{
+		return candidate.DurationDifferenceSeconds.HasValue ? Math.Abs(candidate.DurationDifferenceSeconds.Value) : double.MaxValue;
 	}
 
 	private static bool HasSyncedLyrics(LyricsCandidate candidate)

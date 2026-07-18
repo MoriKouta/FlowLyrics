@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Spotify on Windows. It follows the track playing in the Spotify desktop app, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.0-dev.6` confirmation build. It is not the final `1.3.0` release.
+> This package is the `1.3.0-dev.7` confirmation build. It is not the final `1.3.0` release.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -21,7 +21,7 @@ It does not require a Spotify Developer account, Client ID, or account password.
 - Transparent or colored background, always-on-top mode, and click-through lock mode
 - Fluid wrapping and automatic font scaling for narrow or small windows
 - 1–12 visible lines with adjustable active-line position, alignment, spacing, and opacity
-- Ten curated color presets, custom colors, coordinated random palettes, a shared Player UI / Settings accent, and synchronized Reverse Colors controls
+- Ten curated color presets, custom colors, coordinated random palettes, named user palettes with portable `.flowpalette` import/export, a shared Player UI / Settings accent, and synchronized Reverse Colors controls
 - Adjustable font, outline, shadow, background, border, padding, and corner radius
 - Spotify previous, play/pause, next, seek, mute, and volume controls
 - Current time, track duration, and a timestamp preview when hovering over the seek bar
@@ -39,7 +39,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download `FlowLyrics-v1.3.0-dev.6-win-x64-portable.zip` from the provided development build.
+1. Download `FlowLyrics-v1.3.0-dev.7-win-x64-portable.zip` from the provided development build.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in the Spotify desktop app.

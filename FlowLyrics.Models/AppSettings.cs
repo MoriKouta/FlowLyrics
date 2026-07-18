@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using FlowLyrics.Services;
 
@@ -7,7 +8,7 @@ namespace FlowLyrics.Models;
 
 public sealed class AppSettings
 {
-	public int SettingsSchemaVersion { get; set; } = 11;
+	public int SettingsSchemaVersion { get; set; } = 12;
 
 	public string Language { get; set; } = "en-US";
 
@@ -52,6 +53,8 @@ public sealed class AppSettings
 	public string UiColor { get; set; } = "#FFFF6B2C";
 
 	public bool ReverseColors { get; set; }
+
+	public List<SavedColorPalette> SavedColorPalettes { get; set; } = new List<SavedColorPalette>();
 
 	public double BackgroundOpacity { get; set; }
 
@@ -118,7 +121,7 @@ public sealed class AppSettings
 
 	public void Normalize()
 	{
-		SettingsSchemaVersion = Math.Max(11, SettingsSchemaVersion);
+		SettingsSchemaVersion = Math.Max(12, SettingsSchemaVersion);
 		Language = LocalizationService.NormalizeLanguage(Language);
 		WindowWidth = Math.Clamp(WindowWidth, 120.0, 3840.0);
 		WindowHeight = Math.Clamp(WindowHeight, 40.0, 1200.0);
@@ -152,6 +155,13 @@ public sealed class AppSettings
 		{
 			Dictionary<string, int> dictionary = (TrackOffsetsMs = new Dictionary<string, int>(StringComparer.Ordinal));
 		}
+		SavedColorPalettes ??= new List<SavedColorPalette>();
+		SavedColorPalettes = SavedColorPalettes
+			.Where((SavedColorPalette palette) => palette != null && !string.IsNullOrWhiteSpace(palette.Name))
+			.GroupBy((SavedColorPalette palette) => palette.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+			.Select((IGrouping<string, SavedColorPalette> group) => group.Last())
+			.Take(100)
+			.ToList();
 	}
 
 }

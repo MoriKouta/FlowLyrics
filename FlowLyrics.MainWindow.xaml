@@ -86,7 +86,7 @@
                     <primitives:RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{DynamicResource UiAccentBrush}" BorderThickness="0">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
-                          <Border Height="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
+                          <Border Height="4" Margin="0,0,2,0" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:RepeatButton>
@@ -95,7 +95,7 @@
                     <primitives:RepeatButton Command="{x:Static Slider.IncreaseLarge}" Background="#42FFFFFF" BorderThickness="0">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
-                          <Border Height="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
+                          <Border Height="4" Margin="2,0,0,0" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:RepeatButton>
@@ -104,7 +104,7 @@
                     <primitives:Thumb Width="13" Height="13">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:Thumb}">
-                          <Ellipse Fill="{DynamicResource UiAccentBrush}" Stroke="#FFFFFFFF" StrokeThickness="1" />
+                          <Ellipse Fill="{DynamicResource UiAccentBrush}" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:Thumb>
@@ -129,7 +129,7 @@
                     <primitives:RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{DynamicResource UiAccentBrush}" BorderThickness="0">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
-                          <Border Width="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
+                          <Border Width="4" Margin="0,0,0,2" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:RepeatButton>
@@ -138,7 +138,7 @@
                     <primitives:RepeatButton Command="{x:Static Slider.IncreaseLarge}" Background="#42FFFFFF" BorderThickness="0">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
-                          <Border Width="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
+                          <Border Width="4" Margin="0,2,0,0" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:RepeatButton>
@@ -147,7 +147,7 @@
                     <primitives:Thumb Width="15" Height="15">
                       <Control.Template>
                         <ControlTemplate TargetType="{x:Type primitives:Thumb}">
-                          <Ellipse Fill="{DynamicResource UiAccentBrush}" Stroke="#FFFFFFFF" StrokeThickness="1" />
+                          <Ellipse Fill="{DynamicResource UiAccentBrush}" />
                         </ControlTemplate>
                       </Control.Template>
                     </primitives:Thumb>
