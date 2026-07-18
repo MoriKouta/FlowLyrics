@@ -151,6 +151,8 @@ public class MainWindow : Window, IComponentConnector
 
 	private string? _fullLyricsLayoutKey;
 
+	private int _lastFullLyricsActiveIndex = int.MinValue;
+
 	private Viewbox? _fullLyricsViewbox;
 
 	private System.Windows.Controls.Button? _reverseColorsButton;
@@ -751,6 +753,7 @@ public class MainWindow : Window, IComponentConnector
 		_plainLyricsUserScrollPaused = false;
 		_plainLyricsLayoutKey = null;
 		_fullLyricsLayoutKey = null;
+		_lastFullLyricsActiveIndex = int.MinValue;
 		_lastLineIndex = int.MinValue;
 		DisableFullLyricsViewport();
 	}
@@ -869,6 +872,7 @@ public class MainWindow : Window, IComponentConnector
 			}
 			EnableFullLyricsViewport();
 			_fullLyricsLayoutKey = layoutKey;
+			_lastFullLyricsActiveIndex = int.MinValue;
 		}
 	}
 
@@ -888,13 +892,36 @@ public class MainWindow : Window, IComponentConnector
 			}
 			active = FindActiveLine(_lyrics.Lines, _snapshot.EstimatedPosition(DateTimeOffset.UtcNow) + TimeSpan.FromMilliseconds(offset));
 		}
-		for (int i = 0; i < _lineControls.Count; i++)
+		if (active == _lastFullLyricsActiveIndex)
 		{
-			bool isActive = active >= 0 && i == active;
-			_lineControls[i].Fill = ResolveTextBrush(i, isActive || active < 0);
-			_lineControls[i].Opacity = isActive || active < 0 ? 1.0 : Math.Max(0.58, _settings.NextLineOpacity);
-			_lineControls[i].FontWeight = isActive ? FontWeights.Bold : FontWeights.SemiBold;
+			return;
 		}
+		if (_lastFullLyricsActiveIndex == int.MinValue || active < 0 || _lastFullLyricsActiveIndex < 0)
+		{
+			for (int i = 0; i < _lineControls.Count; i++)
+			{
+				ApplyFullLyricsLineStyle(i, active);
+			}
+		}
+		else
+		{
+			ApplyFullLyricsLineStyle(_lastFullLyricsActiveIndex, active);
+			ApplyFullLyricsLineStyle(active, active);
+		}
+		_lastFullLyricsActiveIndex = active;
+	}
+
+	private void ApplyFullLyricsLineStyle(int lineIndex, int activeIndex)
+	{
+		if (lineIndex < 0 || lineIndex >= _lineControls.Count)
+		{
+			return;
+		}
+		bool isActive = activeIndex >= 0 && lineIndex == activeIndex;
+		OutlinedText line = _lineControls[lineIndex];
+		line.Fill = ResolveTextBrush(lineIndex, isActive || activeIndex < 0);
+		line.Opacity = isActive || activeIndex < 0 ? 1.0 : Math.Max(0.58, _settings.NextLineOpacity);
+		line.FontWeight = isActive ? FontWeights.Bold : FontWeights.SemiBold;
 	}
 
 	private void EnableFullLyricsViewport()
@@ -1533,59 +1560,56 @@ public class MainWindow : Window, IComponentConnector
 		_volumeWaveDots.Clear();
 		Canvas icon = new Canvas
 		{
-			Width = 21.0,
-			Height = 19.0,
+			Width = 29.0,
+			Height = 20.0,
 			IsHitTestVisible = false
 		};
-		const double originX = 1.35;
+		const double originX = 1.3;
 		const double originY = 1.8;
-		const double spacing = 2.2;
-		const double dotSize = 1.8;
+		const double spacing = 2.05;
+		const double dotSize = 1.65;
 		foreach ((int column, int row) in new[]
 		{
-			(3, 0),
-			(2, 1), (3, 1),
-			(1, 2), (2, 2), (3, 2),
-			(0, 3), (1, 3), (2, 3), (3, 3),
-			(0, 4), (1, 4), (2, 4), (3, 4),
-			(1, 5), (2, 5), (3, 5),
-			(2, 6), (3, 6),
-			(3, 7)
+			(5, 0),
+			(4, 1), (5, 1),
+			(3, 2), (4, 2), (5, 2),
+			(0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3),
+			(0, 4), (1, 4), (2, 4), (3, 4), (4, 4), (5, 4),
+			(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5),
+			(3, 6), (4, 6), (5, 6),
+			(4, 7), (5, 7),
+			(5, 8)
 		})
 		{
 			AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
 		}
-		AddVolumeArc(icon, 7.95, 9.5, 4.6, -60.0, 60.0, 5, dotSize);
-		AddVolumeArc(icon, 7.95, 9.5, 9.0, -72.0, 72.0, 11, dotSize);
-		VolumeButton.Content = icon;
-	}
-
-	private void AddVolumeArc(Canvas canvas, double centerX, double centerY, double radius, double startDegrees, double endDegrees, int count, double dotSize)
-	{
-		for (int index = 0; index < count; index++)
+		foreach ((int column, int row) in new[]
 		{
-			double progress = count <= 1 ? 0.5 : (double)index / (count - 1);
-			double angle = (startDegrees + (endDegrees - startDegrees) * progress) * Math.PI / 180.0;
-			Ellipse waveDot = AddDot(canvas, centerX + Math.Cos(angle) * radius, centerY + Math.Sin(angle) * radius, dotSize);
+			(7, 2), (8, 3), (8, 4), (8, 5), (7, 6),
+			(10, 0), (11, 1), (12, 2), (12, 3), (13, 4), (12, 5), (12, 6), (11, 7), (10, 8)
+		})
+		{
+			Ellipse waveDot = AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
 			_volumeWaveDots.Add(waveDot);
 		}
+		VolumeButton.Content = icon;
 	}
 
 	private static Canvas CreateDotContrastIcon()
 	{
 		Canvas icon = new Canvas
 		{
-			Width = 21.0,
-			Height = 21.0,
+			Width = 22.0,
+			Height = 22.0,
 			IsHitTestVisible = false
 		};
-		const double center = 10.5;
-		const double radius = 8.3;
-		const double fillSpacing = 2.1;
-		const double dotSize = 1.65;
-		for (int index = 0; index < 26; index++)
+		const double center = 11.0;
+		const double radius = 8.5;
+		const double fillSpacing = 2.2;
+		const double dotSize = 1.9;
+		for (int index = 0; index < 24; index++)
 		{
-			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 26.0;
+			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 24.0;
 			AddDot(icon, center + Math.Cos(angle) * radius, center + Math.Sin(angle) * radius, dotSize);
 		}
 		for (int y = -3; y <= 3; y++)
@@ -1594,7 +1618,7 @@ public class MainWindow : Window, IComponentConnector
 			{
 				double offsetX = x * fillSpacing;
 				double offsetY = y * fillSpacing;
-				if (offsetX * offsetX + offsetY * offsetY <= 6.75 * 6.75)
+				if (offsetX * offsetX + offsetY * offsetY <= 6.7 * 6.7)
 				{
 					AddDot(icon, center + offsetX, center + offsetY, dotSize);
 				}
