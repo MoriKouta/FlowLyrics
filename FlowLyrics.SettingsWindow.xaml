@@ -1,0 +1,667 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="FlowLyrics.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:flowlyrics="clr-namespace:FlowLyrics;assembly=FlowLyrics" Title="FlowLyrics Settings" Width="820" Height="820" MinWidth="700" MinHeight="640" WindowStartupLocation="CenterOwner" Background="#FF242424" Foreground="#FFF7F2EA" ResizeMode="CanResizeWithGrip" ShowInTaskbar="False">
+  <FrameworkElement.Resources>
+    <ResourceDictionary>
+      <SolidColorBrush x:Key="Ink" Color="#FF171717" />
+      <SolidColorBrush x:Key="Panel" Color="#FF2F2F2F" />
+      <SolidColorBrush x:Key="Line" Color="#FF161616" />
+      <SolidColorBrush x:Key="Orange" Color="#FFFF8A3D" />
+      <SolidColorBrush x:Key="Paper" Color="#FFF4F1EA" />
+      <SolidColorBrush x:Key="Muted" Color="#FFB9B3AA" />
+      <FontFamily x:Key="DotFont">pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Microsoft JhengHei UI, Malgun Gothic</FontFamily>
+      <FontFamily x:Key="EnglishDotFont">pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI</FontFamily>
+      <Style x:Key="Card" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{StaticResource Panel}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Border.CornerRadius" Value="10" />
+        <Setter Property="Border.Padding" Value="20" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+      </Style>
+      <Style x:Key="SectionTitle" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="{DynamicResource Orange}" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontFamily" Value="{StaticResource EnglishDotFont}" />
+        <Setter Property="FrameworkElement.Tag" Value="NoTranslate" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+      </Style>
+      <Style x:Key="FieldLabel" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,7" />
+      </Style>
+      <Style x:Key="LyricsFieldLabel" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource FieldLabel}">
+        <Setter Property="FontFamily" Value="{StaticResource EnglishDotFont}" />
+        <Setter Property="FrameworkElement.Tag" Value="NoTranslate" />
+      </Style>
+      <Style x:Key="{x:Type TextBlock}" TargetType="{x:Type TextBlock}">
+        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+      </Style>
+      <Style x:Key="{x:Type Button}" TargetType="{x:Type Button}">
+        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Background" Value="#FF343434" />
+        <Setter Property="BorderBrush" Value="#FF161616" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Margin" Value="4" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Button}">
+              <Border Name="Surface" Padding="{TemplateBinding Control.Padding}" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}" CornerRadius="5">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="Surface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                  <Setter TargetName="Surface" Property="Border.Background" Value="#FF414141" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="Surface" Property="UIElement.Opacity" Value="0.7" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Surface" Property="UIElement.Opacity" Value="0.35" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type ComboBox}" TargetType="{x:Type ComboBox}">
+        <Setter Property="Foreground" Value="#FF111111" />
+        <Setter Property="Background" Value="{StaticResource Paper}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Orange}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+        <Setter Property="FontSize" Value="11" />
+      </Style>
+      <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Margin" Value="0,6" />
+        <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type CheckBox}">
+              <StackPanel Orientation="Horizontal">
+                <Border Name="CheckSurface" Width="18" Height="18" Margin="0,0,9,0" CornerRadius="3" Background="#FF242424" BorderBrush="#FF0F0F0F" BorderThickness="1">
+                  <Path Name="CheckMark" Visibility="Collapsed" Margin="3" Stretch="Uniform" Stroke="#FF171717" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M1,5 L4,8 L10,1" />
+                </Border>
+                <ContentPresenter VerticalAlignment="Center" />
+              </StackPanel>
+              <ControlTemplate.Triggers>
+                <Trigger Property="ToggleButton.IsChecked" Value="True">
+                  <Setter TargetName="CheckSurface" Value="{DynamicResource Orange}" Property="Border.Background" />
+                  <Setter TargetName="CheckSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                  <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                </Trigger>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="CheckSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type RadioButton}" TargetType="{x:Type RadioButton}">
+        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Background" Value="#FF3A3A3A" />
+        <Setter Property="BorderBrush" Value="#FF606060" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="13,8" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type RadioButton}">
+              <Border Name="RadioSurface" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}" CornerRadius="5" Padding="{TemplateBinding Control.Padding}">
+                <ContentPresenter HorizontalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="ToggleButton.IsChecked" Value="True">
+                  <Setter TargetName="RadioSurface" Value="{DynamicResource Orange}" Property="Border.Background" />
+                  <Setter TargetName="RadioSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                  <Setter Property="Foreground" Value="#FF111111" />
+                </Trigger>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="RadioSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SliderDecrease" TargetType="{x:Type RepeatButton}">
+        <Setter Property="Background" Value="{DynamicResource Orange}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type RepeatButton}">
+              <Border Height="6" CornerRadius="3" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SliderIncrease" TargetType="{x:Type RepeatButton}" BasedOn="{StaticResource SliderDecrease}">
+        <Setter Property="Background" Value="#FF5A5A5A" />
+      </Style>
+      <Style x:Key="{x:Type Slider}" TargetType="{x:Type Slider}">
+        <Setter Property="Height" Value="26" />
+        <Setter Property="Margin" Value="6,5" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Slider}">
+              <Track Name="PART_Track" VerticalAlignment="Center">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="{x:Static Slider.DecreaseLarge}" Style="{StaticResource SliderDecrease}" />
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="{x:Static Slider.IncreaseLarge}" Style="{StaticResource SliderIncrease}" />
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Width="18" Height="18">
+                    <Control.Template>
+                      <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Ellipse StrokeThickness="1" Fill="{DynamicResource Orange}" Stroke="{StaticResource Paper}" />
+                      </ControlTemplate>
+                    </Control.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="{x:Type TabItem}" TargetType="{x:Type TabItem}">
+        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="FontFamily" Value="{StaticResource EnglishDotFont}" />
+        <Setter Property="FrameworkElement.Tag" Value="NoTranslate" />
+        <Setter Property="Padding" Value="24,12" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type TabItem}">
+              <Border Name="TabSurface" Padding="{TemplateBinding Control.Padding}" Background="#FF2F2F2F" BorderBrush="#FF161616" BorderThickness="1" CornerRadius="6">
+                <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="TabItem.IsSelected" Value="True">
+                  <Setter TargetName="TabSurface" Value="{DynamicResource Orange}" Property="Border.Background" />
+                  <Setter TargetName="TabSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                  <Setter Property="Foreground" Value="#FF111111" />
+                </Trigger>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="TabSurface" Value="{DynamicResource Orange}" Property="Border.BorderBrush" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </FrameworkElement.Resources>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <Border Grid.Row="0" Padding="24,18" Background="#FF2B2B2B" BorderBrush="{DynamicResource Orange}" BorderThickness="0,0,0,3">
+      <Grid>
+        <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource Paper}" Text="FLOW LYRICS" Tag="NoTranslate" />
+        <Border Width="150" HorizontalAlignment="Right" Padding="13,8" CornerRadius="6" Background="#FF303030" BorderBrush="{DynamicResource Orange}" BorderThickness="2">
+          <TextBlock HorizontalAlignment="Stretch" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11" FontWeight="Bold" Text="v1.3.0-dev.3" Tag="NoTranslate" />
+        </Border>
+      </Grid>
+    </Border>
+    <TabControl Name="SettingsTabs" Grid.Row="1" Margin="18,16,18,0" Background="#00FFFFFF" BorderThickness="0" SelectionChanged="SettingsTabs_SelectionChanged">
+      <TabItem Header="Text">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,14,0,8">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Typography" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="78" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Font" />
+                  <ComboBox Name="FontFamilyBox" Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Margin="5" IsEditable="True" IsTextSearchEnabled="True">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock FontSize="14" Text="{Binding}" FontFamily="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Font Size" />
+                  <Slider Name="FontSizeSlider" Grid.Row="1" Grid.Column="1" Minimum="14" Maximum="128" TickFrequency="1" IsSnapToTickEnabled="True" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=FontSizeSlider, Path=Value, StringFormat={}{0:0}px}" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Minimum Size" />
+                  <Slider Name="MinimumFontSizeSlider" Grid.Row="2" Grid.Column="1" Minimum="4" Maximum="48" TickFrequency="1" IsSnapToTickEnabled="True" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=MinimumFontSizeSlider, Path=Value, StringFormat={}{0:0}px}" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Alignment" />
+                  <ComboBox Name="AlignmentBox" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="5">
+                    <ComboBoxItem Tag="Left" Content="Left" />
+                    <ComboBoxItem Tag="Center" Content="Center" />
+                    <ComboBoxItem Tag="Right" Content="Right" />
+                  </ComboBox>
+                  <TextBlock Grid.Row="4" Style="{StaticResource FieldLabel}" Text="Active Position" />
+                  <ComboBox Name="CurrentPositionBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="5">
+                    <ComboBoxItem Tag="Top" Content="Top" />
+                    <ComboBoxItem Tag="Center" Content="Center" />
+                    <ComboBoxItem Tag="Bottom" Content="Bottom" />
+                  </ComboBox>
+                  <TextBlock Grid.Row="5" Style="{StaticResource FieldLabel}" Text="Line Spacing" />
+                  <Slider Name="LineSpacingSlider" Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True" />
+                  <TextBlock Grid.Row="5" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=LineSpacingSlider, Path=Value, StringFormat={}{0:0}px}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Line Display" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="78" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Visible Lines" />
+                  <Slider Name="DisplayLinesSlider" Grid.Row="0" Grid.Column="1" Minimum="3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" />
+                  <TextBlock Grid.Row="0" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=DisplayLinesSlider, Path=Value, StringFormat={}{0:0}}" />
+                  <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Inactive Scale" />
+                  <Slider Name="InactiveScaleSlider" Grid.Row="1" Grid.Column="1" Minimum="0.55" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=InactiveScaleSlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Previous Opacity" />
+                  <Slider Name="PreviousOpacitySlider" Grid.Row="2" Grid.Column="1" Minimum="0.08" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=PreviousOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Next Opacity" />
+                  <Slider Name="NextOpacitySlider" Grid.Row="3" Grid.Column="1" Minimum="0.08" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=NextOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                </Grid>
+                <Slider Name="MaximumWrapLinesSlider" Visibility="Collapsed" Minimum="1" Maximum="8" />
+                <CheckBox Name="WrapLongLinesBox" Visibility="Collapsed" IsChecked="True" />
+                <CheckBox Name="AutoFitTextBox" Visibility="Collapsed" IsChecked="True" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Color">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,14,0,8">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Color Preset" />
+                <WrapPanel Margin="0,0,0,8">
+                  <Button Tag="0" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFFF4E6" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFF6B2C" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF11100F" />
+                      <TextBlock Text="Signal" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="1" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF56D9F2" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFFA47D" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF0B1820" />
+                      <TextBlock Text="Lagoon" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="2" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFF6FAE" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFFD166" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF24111D" />
+                      <TextBlock Text="Cherry" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="3" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF6EE7B7" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFF8B78" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF0D201A" />
+                      <TextBlock Text="Mint" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="4" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF8AB4FF" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFFE56A" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF101936" />
+                      <TextBlock Text="Cobalt" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="5" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFD5A1FF" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFF874F" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF1D1326" />
+                      <TextBlock Text="Violet" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="6" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF1B1917" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFF6B2C" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FFF3E7D3" />
+                      <TextBlock Text="Paper" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="7" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFC9F564" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF69C7FF" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF14190E" />
+                      <TextBlock Text="Acid" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="8" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFFFB38A" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFF27A9D" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF27161D" />
+                      <TextBlock Text="Sunset" />
+                    </StackPanel>
+                  </Button>
+                  <Button Tag="9" Click="ThemePreset_Click">
+                    <StackPanel Orientation="Horizontal">
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FFE8EDF3" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,3,0" Fill="#FF8EA6BE" />
+                      <Rectangle Width="12" Height="12" Margin="0,0,7,0" Fill="#FF12171C" />
+                      <TextBlock Text="Slate" />
+                    </StackPanel>
+                  </Button>
+                </WrapPanel>
+                <WrapPanel>
+                  <Button Content="Random" Click="RandomColors_Click" />
+                  <Button Content="Reset Colors" Click="ResetColors_Click" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Custom Colors" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="145" />
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Active Lyrics" />
+                  <Border Grid.Row="0" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=CurrentColorBox, Path=Text}" />
+                  <Button Grid.Row="0" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="CurrentColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Other Lyrics" />
+                  <Border Grid.Row="1" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=NextColorBox, Path=Text}" />
+                  <Button Grid.Row="1" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="NextColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Outline" />
+                  <Border Grid.Row="2" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=OutlineColorBox, Path=Text}" />
+                  <Button Grid.Row="2" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="OutlineColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Shadow" />
+                  <Border Grid.Row="3" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=ShadowColorBox, Path=Text}" />
+                  <Button Grid.Row="3" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="ShadowColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="4" Style="{StaticResource FieldLabel}" Text="Background" />
+                  <Border Grid.Row="4" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=BackgroundColorBox, Path=Text}" />
+                  <Button Grid.Row="4" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="BackgroundColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="5" Style="{StaticResource FieldLabel}" Text="Border" />
+                  <Border Grid.Row="5" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=BorderColorBox, Path=Text}" />
+                  <Button Grid.Row="5" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="BorderColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="6" Style="{StaticResource FieldLabel}" Text="Player UI" />
+                  <Border Grid.Row="6" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=UiColorBox, Path=Text}" />
+                  <Button Grid.Row="6" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="UiColorBox" Click="CustomColor_Click" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Effects &amp; Surface" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="78" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Outline" />
+                  <Slider Name="OutlineSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="8" TickFrequency="0.1" />
+                  <TextBlock Grid.Row="0" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=OutlineSlider, Path=Value, StringFormat={}{0:0.0}px}" />
+                  <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Shadow Distance" />
+                  <Slider Name="ShadowSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="12" TickFrequency="0.5" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=ShadowSlider, Path=Value, StringFormat={}{0:0.0}px}" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Background Opacity" />
+                  <Slider Name="BackgroundOpacitySlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=BackgroundOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Window Opacity" />
+                  <Slider Name="OverlayOpacitySlider" Grid.Row="3" Grid.Column="1" Minimum="0.15" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=OverlayOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="4" Style="{StaticResource FieldLabel}" Text="Corner Radius" />
+                  <Slider Name="CornerRadiusSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="40" TickFrequency="1" />
+                  <TextBlock Grid.Row="4" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=CornerRadiusSlider, Path=Value, StringFormat={}{0:0}px}" />
+                  <TextBlock Grid.Row="5" Style="{StaticResource FieldLabel}" Text="Padding" />
+                  <Slider Name="PanelPaddingSlider" Grid.Row="5" Grid.Column="1" Minimum="4" Maximum="60" TickFrequency="1" />
+                  <TextBlock Grid.Row="5" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=PanelPaddingSlider, Path=Value, StringFormat={}{0:0}px}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Name="LyricsTab" Header="Lyrics">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,14,0,8">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Current track" Tag="NoTranslate" />
+                <TextBlock Name="LyricsEmptyText" Margin="0,2,0,4" Foreground="{StaticResource Muted}" Text="Play a track on Spotify." TextWrapping="Wrap" />
+                <StackPanel Name="CurrentTrackPanel" Visibility="Collapsed">
+                  <TextBlock Name="CurrentTrackTitleText" FontSize="24" FontWeight="Bold" TextWrapping="Wrap" />
+                  <TextBlock Name="CurrentTrackArtistText" Margin="0,5,0,0" FontSize="16" TextWrapping="Wrap" />
+                  <TextBlock Name="CurrentTrackAlbumText" Margin="0,4,0,0" Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                  <TextBlock Name="CurrentTrackDurationText" Margin="0,4,0,14" FontFamily="{DynamicResource DotFont}" Foreground="{DynamicResource Orange}" />
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="180" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Style="{StaticResource LyricsFieldLabel}" Text="Spotify Track ID" />
+                    <TextBlock Name="SpotifyTrackIdText" Grid.Row="0" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Style="{StaticResource LyricsFieldLabel}" Text="Lyrics Source" />
+                    <TextBlock Name="LyricsSourceText" Grid.Row="1" Grid.Column="1" Margin="5,7" Foreground="{DynamicResource Orange}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Style="{StaticResource LyricsFieldLabel}" Text="LRCLIB ID" />
+                    <TextBlock Name="LrclibIdText" Grid.Row="2" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Style="{StaticResource LyricsFieldLabel}" Text="LRCLIB Title" />
+                    <TextBlock Name="LrclibTitleText" Grid.Row="3" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="4" Style="{StaticResource LyricsFieldLabel}" Text="LRCLIB Artist" />
+                    <TextBlock Name="LrclibArtistText" Grid.Row="4" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="5" Style="{StaticResource LyricsFieldLabel}" Text="LRCLIB Album" />
+                    <TextBlock Name="LrclibAlbumText" Grid.Row="5" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="6" Style="{StaticResource LyricsFieldLabel}" Text="LRCLIB Duration" />
+                    <TextBlock Name="LrclibDurationText" Grid.Row="6" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="7" Style="{StaticResource LyricsFieldLabel}" Text="Selection" />
+                    <TextBlock Name="SelectionModeText" Grid.Row="7" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="8" Style="{StaticResource LyricsFieldLabel}" Text="Loaded from Cache" />
+                    <TextBlock Name="LoadedFromCacheText" Grid.Row="8" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="9" Style="{StaticResource LyricsFieldLabel}" Text="Local LRC" />
+                    <TextBlock Name="LocalLrcStateText" Grid.Row="9" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
+                  </Grid>
+                  <TextBlock Name="LyricsGuidanceText" Margin="0,14,0,6" Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+                </StackPanel>
+                <WrapPanel Margin="-4,8,0,0">
+                  <Button Name="ChooseCandidatesButton" Content="Choose from LRCLIB" Background="{DynamicResource Orange}" Foreground="{StaticResource Ink}" BorderBrush="{DynamicResource Orange}" Click="ChooseCandidates_Click" />
+                  <Button Name="ResetManualButton" Content="Reset manual selection" Click="ResetManualSelection_Click" />
+                  <Button Name="OpenLrclibButton" Content="Open in LRCLIB" Click="OpenCurrentLrclib_Click" />
+                </WrapPanel>
+                <TextBlock Name="LyricsActionStatusText" Margin="4,8,4,0" Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Local LRC" />
+                <TextBlock Margin="0,0,0,10" Foreground="{StaticResource Muted}" Text="Place .lrc files here. Use “Artist - Title.lrc” or “Title.lrc”. Changes are detected automatically." TextWrapping="Wrap" />
+                <Button Name="ChooseLocalLrcButton" HorizontalAlignment="Left" Content="Choose local LRC" Click="ChooseLocalLrc_Click" />
+                <TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabel}" Text="LRC Folder" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBox Name="LrcFolderPathBox" Margin="4" Padding="9,7" IsReadOnly="True" Background="{StaticResource Paper}" Foreground="{StaticResource Ink}" BorderBrush="{DynamicResource Orange}" BorderThickness="1" FontFamily="Segoe UI" FontSize="12" />
+                  <Button Grid.Column="1" Content="Open Folder" Click="OpenLrcFolder_Click" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Behavior">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,14,0,8">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Lyrics Only" Click="LyricsOnly_Click" />
+                  <TextBlock Style="{StaticResource SectionTitle}" Text="Components" />
+                </DockPanel>
+                <WrapPanel>
+                  <CheckBox Name="ShowPanelBorderBox" Width="190" Content="Border" />
+                  <CheckBox Name="ShowTrackInfoBox" Width="190" Content="Track Info" />
+                  <CheckBox Name="ShowPlaybackControlsBox" Width="190" Content="Player" />
+                  <CheckBox Name="ShowProgressBarBox" Width="190" Content="Seek Bar" />
+                </WrapPanel>
+                <Grid Margin="0,10,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="78" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Style="{StaticResource FieldLabel}" Text="Border Width" />
+                  <Slider Name="BorderThicknessSlider" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="0.25" />
+                  <TextBlock Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=BorderThicknessSlider, Path=Value, StringFormat={}{0:0.0}px}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="Window" />
+                <CheckBox Name="AlwaysOnTopBox" Content="Always on Top" />
+                <CheckBox Name="HideWhenPausedBox" Content="Hide when Paused" />
+                <CheckBox Name="ShowIdleStatusBox" Content="Show while Idle" />
+                <CheckBox Name="PlainLyricsFallbackBox" Content="Plain Lyrics Fallback" />
+                <CheckBox Name="LockOnStartupBox" Content="Lock on Startup" />
+                <CheckBox Name="StartWithWindowsBox" Content="Start with Windows" />
+                <CheckBox Name="ShortcutsEnabledBox" Content="Global Shortcuts" />
+                <CheckBox Name="PauseEyeAnimationBox" Content="Pause Eye Animation" />
+                <Grid Margin="0,10,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Style="{StaticResource FieldLabel}" Text="Language" />
+                  <ComboBox Name="LanguageBox" Grid.Column="1" Margin="5">
+                    <ComboBoxItem Tag="en-US" Content="English" />
+                    <ComboBoxItem Tag="ja-JP" Content="日本語" />
+                    <ComboBoxItem Tag="zh-CN" Content="简体中文" />
+                    <ComboBoxItem Tag="zh-TW" Content="繁體中文" />
+                    <ComboBoxItem Tag="ko-KR" Content="한국어" />
+                    <ComboBoxItem Tag="es-ES" Content="Español" />
+                    <ComboBoxItem Tag="fr-FR" Content="Français" />
+                    <ComboBoxItem Tag="de-DE" Content="Deutsch" />
+                    <ComboBoxItem Tag="pt-BR" Content="Português" />
+                    <ComboBoxItem Tag="ru-RU" Content="Русский" />
+                  </ComboBox>
+                </Grid>
+                <Grid Margin="0,10,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="90" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Style="{StaticResource FieldLabel}" Text="Lyrics Timing" />
+                  <Slider Name="GlobalOffsetSlider" Grid.Column="1" Minimum="-3000" Maximum="3000" TickFrequency="100" IsSnapToTickEnabled="True" />
+                  <TextBlock Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=GlobalOffsetSlider, Path=Value, StringFormat={}{0:+0;-0;0} ms}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <Border Grid.Row="2" Padding="14" Background="#FF292929" BorderBrush="{DynamicResource Orange}" BorderThickness="0,1,0,0">
+      <DockPanel LastChildFill="False">
+        <Button DockPanel.Dock="Left" Content="Reset" Click="Reset_Click" />
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="Cancel" IsCancel="True" Click="Cancel_Click" />
+          <Button Content="Close" IsDefault="True" Background="{DynamicResource Orange}" Foreground="#FF111111" BorderBrush="{DynamicResource Orange}" Click="Save_Click" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    <Grid Visibility="Collapsed">
+      <TextBox Name="CurrentColorBox" />
+      <TextBox Name="NextColorBox" />
+      <TextBox Name="OutlineColorBox" />
+      <TextBox Name="ShadowColorBox" />
+      <TextBox Name="BackgroundColorBox" />
+      <TextBox Name="BorderColorBox" />
+      <TextBox Name="UiColorBox" />
+    </Grid>
+  </Grid>
+</Window>

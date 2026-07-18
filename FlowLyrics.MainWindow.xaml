@@ -1,0 +1,374 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="FlowLyrics.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework" xmlns:flowlyrics="clr-namespace:FlowLyrics;assembly=FlowLyrics" Title="FlowLyrics" Width="760" Height="520" MinWidth="120" MinHeight="40" MaxHeight="1200" WindowStyle="None" AllowsTransparency="True" Background="#00FFFFFF" ResizeMode="CanResize" ShowInTaskbar="False" Topmost="True" SnapsToDevicePixels="True" UseLayoutRounding="True" FontFamily="pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic">
+  <FrameworkElement.Resources>
+    <ResourceDictionary>
+      <SolidColorBrush x:Key="UiAccentBrush" Color="#FFFF6B2C" />
+      <FontFamily x:Key="DotFont">pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic</FontFamily>
+      <GeometryGroup x:Key="SkipDotGeometry">
+        <EllipseGeometry Center="2.5,2.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,5.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,11.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,14.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="5.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="8.5,5.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="8.5,11.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="11.5,2.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="11.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="11.5,14.5" RadiusX="1.1" RadiusY="1.1" />
+      </GeometryGroup>
+      <GeometryGroup x:Key="PlayDotGeometry">
+        <EllipseGeometry Center="2.5,2.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,5.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,11.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="2.5,14.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="5.5,4" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="5.5,7" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="5.5,10" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="5.5,13" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="8.5,5.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="8.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="8.5,11.5" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="11.5,7" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="11.5,10" RadiusX="1.1" RadiusY="1.1" />
+        <EllipseGeometry Center="14.5,8.5" RadiusX="1.1" RadiusY="1.1" />
+      </GeometryGroup>
+      <Style x:Key="MediaButton" TargetType="{x:Type Button}">
+        <Setter Property="Width" Value="42" />
+        <Setter Property="Height" Value="42" />
+        <Setter Property="Margin" Value="5,0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Foreground" Value="#FFFFFFFF" />
+        <Setter Property="Background" Value="#F02F2F2F" />
+        <Setter Property="BorderBrush" Value="#FF111111" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Button}">
+              <Border Name="ButtonSurface" CornerRadius="100" Background="{TemplateBinding Control.Background}" BorderBrush="{TemplateBinding Control.BorderBrush}" BorderThickness="{TemplateBinding Control.BorderThickness}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                  <Setter TargetName="ButtonSurface" Value="{DynamicResource UiAccentBrush}" Property="Border.Background" />
+                  <Setter TargetName="ButtonSurface" Value="{DynamicResource UiAccentBrush}" Property="Border.BorderBrush" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="ButtonSurface" Property="UIElement.Opacity" Value="0.72" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="ButtonSurface" Property="UIElement.Opacity" Value="0.3" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SmallMediaButton" TargetType="{x:Type Button}" BasedOn="{StaticResource MediaButton}">
+        <Setter Property="Width" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Margin" Value="3,0" />
+      </Style>
+      <Style x:Key="PlayerSeekSlider" TargetType="{x:Type Slider}">
+        <Setter Property="Height" Value="18" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Slider}">
+              <Grid VerticalAlignment="Center">
+                <primitives:Track Name="PART_Track" Height="18">
+                  <primitives:Track.DecreaseRepeatButton>
+                    <primitives:RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{DynamicResource UiAccentBrush}" BorderThickness="0">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
+                          <Border Height="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:RepeatButton>
+                  </primitives:Track.DecreaseRepeatButton>
+                  <primitives:Track.IncreaseRepeatButton>
+                    <primitives:RepeatButton Command="{x:Static Slider.IncreaseLarge}" Background="#42FFFFFF" BorderThickness="0">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
+                          <Border Height="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" VerticalAlignment="Center" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:RepeatButton>
+                  </primitives:Track.IncreaseRepeatButton>
+                  <primitives:Track.Thumb>
+                    <primitives:Thumb Width="13" Height="13">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+                          <Ellipse Fill="{DynamicResource UiAccentBrush}" Stroke="#FFFFFFFF" StrokeThickness="1" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:Thumb>
+                  </primitives:Track.Thumb>
+                </primitives:Track>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="VerticalVolumeSlider" TargetType="{x:Type Slider}">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="160" />
+        <Setter Property="Slider.Orientation" Value="Vertical" />
+        <Setter Property="FrameworkElement.Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="{x:Type Slider}">
+              <Grid HorizontalAlignment="Center">
+                <primitives:Track Name="PART_Track" Width="28" Orientation="Vertical">
+                  <primitives:Track.DecreaseRepeatButton>
+                    <primitives:RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{DynamicResource UiAccentBrush}" BorderThickness="0">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
+                          <Border Width="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:RepeatButton>
+                  </primitives:Track.DecreaseRepeatButton>
+                  <primitives:Track.IncreaseRepeatButton>
+                    <primitives:RepeatButton Command="{x:Static Slider.IncreaseLarge}" Background="#42FFFFFF" BorderThickness="0">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:RepeatButton}">
+                          <Border Width="4" CornerRadius="2" Background="{TemplateBinding Control.Background}" HorizontalAlignment="Center" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:RepeatButton>
+                  </primitives:Track.IncreaseRepeatButton>
+                  <primitives:Track.Thumb>
+                    <primitives:Thumb Width="15" Height="15">
+                      <Control.Template>
+                        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+                          <Ellipse Fill="{DynamicResource UiAccentBrush}" Stroke="#FFFFFFFF" StrokeThickness="1" />
+                        </ControlTemplate>
+                      </Control.Template>
+                    </primitives:Thumb>
+                  </primitives:Track.Thumb>
+                </primitives:Track>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </FrameworkElement.Resources>
+  <FrameworkElement.ContextMenu>
+    <ContextMenu Name="OverlayMenu" Opened="OverlayMenu_Opened">
+      <MenuItem Name="SettingsMenuItem" Header="Settings..." Click="Settings_Click" />
+      <MenuItem Name="LockMenuItem" Header="Lock" Click="Lock_Click" />
+      <MenuItem Name="HideMenuItem" Header="Hide overlay  (Ctrl+Alt+K)" Click="Hide_Click" />
+      <Separator />
+      <MenuItem Name="PlaybackMenuItem" Header="Spotify controls">
+        <MenuItem Name="PreviousMenuItem" Header="Previous track" Click="Previous_Click" />
+        <MenuItem Name="PlayPauseMenuItem" Header="Play / Pause" Click="PlayPause_Click" />
+        <MenuItem Name="NextMenuItem" Header="Next track" Click="Next_Click" />
+      </MenuItem>
+      <MenuItem Name="CurrentTrackMenuItem" Header="Current track">
+        <MenuItem Name="ReloadLyricsMenuItem" Header="Reload lyrics" Click="ReloadLyrics_Click" />
+        <MenuItem Name="ClearLyricsMenuItem" Header="Clear saved lyrics" Click="ClearLyricsCache_Click" />
+      </MenuItem>
+      <MenuItem Name="OffsetMenuItem" Header="Lyrics timing">
+        <MenuItem Name="EarlierSmallMenuItem" Header="0.1 s earlier" Click="LyricsEarlierSmall_Click" />
+        <MenuItem Name="EarlierLargeMenuItem" Header="0.5 s earlier" Click="LyricsEarlierLarge_Click" />
+        <MenuItem Name="LaterSmallMenuItem" Header="0.1 s later" Click="LyricsLaterSmall_Click" />
+        <MenuItem Name="LaterLargeMenuItem" Header="0.5 s later" Click="LyricsLaterLarge_Click" />
+        <Separator />
+        <MenuItem Name="ResetTrackOffsetMenuItem" Header="Reset track timing" Click="ResetTrackOffset_Click" />
+      </MenuItem>
+      <Separator />
+      <MenuItem Name="ExitMenuItem" Header="Exit FlowLyrics" Click="Exit_Click" />
+    </ContextMenu>
+  </FrameworkElement.ContextMenu>
+  <Grid Name="HitTestRoot" Background="#01000000">
+    <Border Name="OverlayPanel" Margin="7" Padding="24" CornerRadius="22" Background="#94111318" BorderBrush="#66FFFFFF" BorderThickness="1">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Name="HeaderRow" Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Name="FooterRow" Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid Name="HeaderPanel" Row="0" Margin="0,0,0,14">
+          <StackPanel Name="TrackInfoPanel" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse Name="StatusDot" Width="7" Height="7" Margin="0,0,7,0" Fill="#FF69E6A6" VerticalAlignment="Center" />
+              <TextBlock Name="TrackStatusText" FontFamily="{DynamicResource DotFont}" Foreground="#BFFFFFFF" FontSize="9" FontWeight="SemiBold" Text="SPOTIFY / WAITING" />
+            </StackPanel>
+            <TextBlock Name="TrackTitleText" Margin="0,4,16,0" Foreground="#F2FFFFFF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Play something in Spotify" />
+          </StackPanel>
+        </Grid>
+        <Grid Name="LyricsPanel" Row="1" ClipToBounds="True">
+          <ScrollViewer Name="LyricsScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="VerticalOnly" Focusable="False" ClipToBounds="True">
+            <StackPanel Name="LyricsStackPanel" />
+          </ScrollViewer>
+        </Grid>
+        <StackPanel Name="FooterPanel" Grid.Row="2" Margin="0,14,0,0">
+          <Slider Name="PlaybackSeekSlider" Style="{StaticResource PlayerSeekSlider}" Minimum="0" Maximum="1" Value="0" PreviewMouseLeftButtonDown="PlaybackSeekSlider_PreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="PlaybackSeekSlider_PreviewMouseLeftButtonUp" />
+          <Grid Name="ControlBar" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Name="LeftControlGroup" Grid.Column="0" HorizontalAlignment="Left" Orientation="Horizontal">
+              <Button Name="LockButton" Style="{StaticResource SmallMediaButton}" ToolTip="Lock / Unlock" Click="LockButton_Click">
+                <Path Name="LockIcon" Width="17" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF">
+                  <Path.Data>
+                    <GeometryGroup>
+                      <EllipseGeometry Center="6,2" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="9,2" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="12,2" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="3,5" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="15,5" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="3,8" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="15,8" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="3,11" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="6,11" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="9,11" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="12,11" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="15,11" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="3,14" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="9,14" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="15,14" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="3,17" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="6,17" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="9,17" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="12,17" RadiusX="1.25" RadiusY="1.25" />
+                      <EllipseGeometry Center="15,17" RadiusX="1.25" RadiusY="1.25" />
+                    </GeometryGroup>
+                  </Path.Data>
+                </Path>
+              </Button>
+            </StackPanel>
+            <StackPanel Name="TransportControlGroup" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button Name="PreviousButton" Style="{StaticResource SmallMediaButton}" ToolTip="Previous track" Click="Previous_Click">
+                <Path Width="13" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF" Data="{StaticResource SkipDotGeometry}" />
+              </Button>
+              <Button Name="PlayPauseButton" Style="{StaticResource MediaButton}" Width="50" Height="50" ToolTip="Play / Pause" Click="PlayPause_Click">
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Path Name="PlayPauseIcon" Width="17" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF" Data="{StaticResource PlayDotGeometry}" />
+                  <Grid Name="PauseEyes" Width="24" Height="21" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" Visibility="Collapsed">
+                    <UIElement.RenderTransform>
+                      <TransformGroup>
+                        <ScaleTransform x:Name="PauseBlinkTransform" />
+                        <TranslateTransform x:Name="PauseLookTransform" />
+                      </TransformGroup>
+                    </UIElement.RenderTransform>
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                      <StackPanel Margin="0,0,3,0">
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Fill="#FFFFFFFF" />
+                      </StackPanel>
+                      <StackPanel Margin="3,0,0,0">
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Margin="0,0,0,1" Fill="#FFFFFFFF" />
+                        <Ellipse Width="3" Height="3" Fill="#FFFFFFFF" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </Grid>
+              </Button>
+              <Button Name="NextButton" Style="{StaticResource SmallMediaButton}" ToolTip="Next track" Click="Next_Click">
+                <Path Width="13" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF" Data="{StaticResource SkipDotGeometry}" RenderTransformOrigin="0.5,0.5">
+                  <UIElement.RenderTransform>
+                    <ScaleTransform ScaleX="-1" />
+                  </UIElement.RenderTransform>
+                </Path>
+              </Button>
+            </StackPanel>
+            <StackPanel Name="RightControlGroup" Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal">
+              <Button Name="VolumeButton" Style="{StaticResource SmallMediaButton}" ToolTip="Volume" Click="VolumeButton_Click" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
+                <TextBlock Name="VolumeLabel" FontFamily="{DynamicResource DotFont}" FontSize="8" Foreground="#FFFFFFFF" Text="VOL" />
+              </Button>
+              <Button Name="SettingsButton" Style="{StaticResource SmallMediaButton}" ToolTip="Settings..." Click="Settings_Click">
+                <Grid Width="17" Height="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3" />
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="3" />
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="3" />
+                  </Grid.ColumnDefinitions>
+                  <Ellipse Grid.Column="0" Width="3" Height="3" Fill="#FFFFFFFF" />
+                  <Ellipse Grid.Column="2" Width="3" Height="3" Fill="#FFFFFFFF" />
+                  <Ellipse Grid.Column="4" Width="3" Height="3" Fill="#FFFFFFFF" />
+                </Grid>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <primitives:Popup Name="VolumePopup" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PlacementTarget="{Binding ElementName=VolumeButton}">
+      <Border Name="VolumePopupSurface" Margin="4" Padding="12" CornerRadius="10" Background="#F2181818" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="1" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
+        <Slider Name="VolumeSlider" Width="28" Height="160" Minimum="0" Maximum="1" Value="1" Style="{StaticResource VerticalVolumeSlider}" PreviewMouseLeftButtonDown="VolumeSlider_PreviewMouseLeftButtonDown" PreviewMouseMove="VolumeSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="VolumeSlider_PreviewMouseLeftButtonUp" ValueChanged="VolumeSlider_ValueChanged" />
+      </Border>
+    </primitives:Popup>
+    <primitives:Thumb Name="ResizeTopLeft" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="4" Cursor="SizeNWSE" PreviewMouseLeftButtonDown="ResizeCorner_PreviewMouseLeftButtonDown">
+      <Control.Template>
+        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+          <Canvas Background="#01000000">
+            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="8" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="13" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="3" Canvas.Top="8" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="8" Canvas.Top="8" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="3" Canvas.Top="13" Width="3" Height="3" Fill="#D8FFFFFF" />
+          </Canvas>
+        </ControlTemplate>
+      </Control.Template>
+    </primitives:Thumb>
+    <primitives:Thumb Name="ResizeTopRight" HorizontalAlignment="Right" VerticalAlignment="Top" Width="28" Height="28" Margin="4" Cursor="SizeNESW" PreviewMouseLeftButtonDown="ResizeCorner_PreviewMouseLeftButtonDown">
+      <Control.Template>
+        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+          <Canvas Background="#01000000">
+            <Ellipse Canvas.Left="12" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="17" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="22" Canvas.Top="3" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="17" Canvas.Top="8" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="22" Canvas.Top="8" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="22" Canvas.Top="13" Width="3" Height="3" Fill="#D8FFFFFF" />
+          </Canvas>
+        </ControlTemplate>
+      </Control.Template>
+    </primitives:Thumb>
+    <primitives:Thumb Name="ResizeBottomLeft" HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="28" Height="28" Margin="4" Cursor="SizeNESW" PreviewMouseLeftButtonDown="ResizeCorner_PreviewMouseLeftButtonDown">
+      <Control.Template>
+        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+          <Canvas Background="#01000000">
+            <Ellipse Canvas.Left="3" Canvas.Top="12" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="3" Canvas.Top="17" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="8" Canvas.Top="17" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="3" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="8" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="13" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+          </Canvas>
+        </ControlTemplate>
+      </Control.Template>
+    </primitives:Thumb>
+    <primitives:Thumb Name="ResizeBottomRight" HorizontalAlignment="Right" VerticalAlignment="Bottom" Width="28" Height="28" Margin="4" Cursor="SizeNWSE" PreviewMouseLeftButtonDown="ResizeCorner_PreviewMouseLeftButtonDown">
+      <Control.Template>
+        <ControlTemplate TargetType="{x:Type primitives:Thumb}">
+          <Canvas Background="#01000000">
+            <Ellipse Canvas.Left="22" Canvas.Top="12" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="17" Canvas.Top="17" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="22" Canvas.Top="17" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="12" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="17" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+            <Ellipse Canvas.Left="22" Canvas.Top="22" Width="3" Height="3" Fill="#D8FFFFFF" />
+          </Canvas>
+        </ControlTemplate>
+      </Control.Template>
+    </primitives:Thumb>
+  </Grid>
+</Window>

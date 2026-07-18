@@ -1,122 +1,141 @@
 # FlowLyrics
 
-**English** | [日本語](README_ja.md)
+[English](README.md) | [日本語](README.ja.md)
 
-## Download
+FlowLyrics is a customizable, always-on-top lyrics overlay for Spotify on Windows. It follows the track playing in the Spotify desktop app, displays synchronized lyrics, and can become click-through when locked.
 
-[Download the latest version of FlowLyrics](https://github.com/MoriKouta/FlowLyrics/releases/latest)
+> This package is the `1.3.0-dev.3` confirmation build. It is not the final `1.3.0` release.
 
-On the Release page, download `FlowLyrics-vX.X.X-win-x64-portable.zip` from **Assets**. The automatically generated `Source code (zip)` and `Source code (tar.gz)` files are not the Windows application.
-
-FlowLyrics is a Windows-only desktop overlay that detects the song currently playing in Spotify for Windows and displays synchronized lyrics in a transparent, always-on-top window.
-
-It does not require the Spotify Web API, a Spotify Developer account, Client ID, or password. FlowLyrics reads the title, artist, and playback position published by Spotify through Windows Global System Media Transport Controls (SMTC). Lyrics are searched through LRCLIB and cached locally on your PC.
+It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
 ## Features
 
-- Automatically follows song changes, pause/resume, and seeking in Spotify for Windows
-- Displays timestamped synchronized lyrics from LRCLIB
-- Runs multiple lyric searches in parallel to handle common title and artist variations
-- Can display plain lyrics with clearly labeled approximate timing when synchronized lyrics are unavailable
-- Fully transparent background or a colored semi-transparent panel
-- Always-on-top display with 1–12 lyric lines
-- Current-line position can be placed at the top, center, or bottom
-- Automatic wrapping and font-size reduction for long lyrics
-- 10 color presets, custom colors, and randomized color themes
-- Independent styling for the current, previous, and next lines
-- Adjustable font, opacity, outline, shadow, line spacing, padding, and corner radius
-- Independently show or hide the frame, song title, progress bar, and playback controls
-- Control previous track, play/pause, and next track from the overlay
-- Click-through window locking so mouse input reaches applications behind the overlay
-- Drag to move and resize from any corner
-- Per-song lyric timing offset
-- Register your own `.lrc` files
-- Open the local LRC folder from Settings and automatically detect file additions or updates
-- System tray support, Windows startup option, and optional global shortcuts
-- Multilingual interface with English as the default language
-- No Spotify credentials, password, Developer account, or Client ID required
+- Automatically follows track changes, playback, pause, and seeking in Spotify for Windows
+- Safer LRCLIB matching that validates title, artist, version, and duration before automatic use
+- Japanese-script preference that prevents romanized Japanese lyrics from being auto-applied
+- Editable progressive LRCLIB candidate search, metadata preview, and persistent per-track manual selection
+- Per-track cache clearing and a one-minute limit for “not found” cache entries
+- Synchronized lyrics from LRCLIB with local caching and automatic retries
+- Optional estimated timing when only plain lyrics are available
+- Local `.lrc` support with automatic file-change detection
+- Transparent or colored background, always-on-top mode, and click-through lock mode
+- Fluid wrapping and automatic font scaling for narrow or small windows
+- 1–12 visible lines with adjustable active-line position, alignment, spacing, and opacity
+- Ten curated color presets, custom colors, coordinated random palettes, a shared Player UI / Settings accent, and lightweight global or per-color blend modes
+- Adjustable font, outline, shadow, background, border, padding, and corner radius
+- Spotify previous, play/pause, next, seek, mute, and volume controls
+- Four-corner resizing, tray controls, Windows startup, and optional global shortcuts
+- UI languages: English, Japanese, Simplified Chinese, Traditional Chinese, Korean, Spanish, French, German, Brazilian Portuguese, and Russian
 
 ## Requirements
 
 - Windows 10 version 1809 or later, or Windows 11
 - Spotify desktop app for Windows
-- Internet connection only when searching for new lyrics
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) only when running from source
+- Internet access when searching for lyrics that are not already cached
 
-Both the Microsoft Store and Spotify.com versions are supported. FlowLyrics detects media sessions whose application ID contains `spotify`.
+The portable build is self-contained and does not require a separate .NET installation.
 
-## Quick Start
+## Install and run
 
-1. Download `FlowLyrics-vX.X.X-win-x64-portable.zip`from the latest Release.
-2. Double-click `FlowLyrics.exe`. No additional .NET installation is required.
-3. Start playing a song in Spotify for Windows.
-4. Drag the lyric window to the desired location and resize it from any corner.
-5. Open Settings using the three-dot button or the right-click menu.
-6. Press `Ctrl + Alt + L` to lock the overlay after positioning it.
+1. Download `FlowLyrics-v1.3.0-dev.3-win-x64-portable.zip` from the provided development build.
+2. Extract the ZIP to a folder you can write to.
+3. Run `FlowLyrics.exe`.
+4. Start playing a track in the Spotify desktop app.
+5. Open Settings with the three-dot button and choose your language and appearance.
 
-Windows SmartScreen may appear on first launch. FlowLyrics is currently an unsigned personal build. Verify that you downloaded it from this repository before choosing **More info** and running the application.
+Windows SmartScreen may appear because the current personal build is not code-signed. Verify where you downloaded the file from before choosing to run it.
 
 ## Controls
 
-| Action | Function |
+| Action | Result |
 | --- | --- |
-| Drag the window | Move the overlay |
-| Drag any corner | Resize the overlay |
-| Right-click | Open Settings, refresh lyrics, or adjust lyric timing |
-| Bottom controls | Previous track / Play or pause / Next track |
+| Drag the overlay | Move the window |
+| Drag any corner grip | Resize the window |
+| Three-dot button or right-click | Open Settings and lyric actions |
+| Player controls | Previous, play/pause, next, and seek |
+| Hover VOL | Open the vertical Spotify-only volume slider |
+| Click VOL | Mute or unmute Spotify only |
 | `Ctrl + Alt + L` | Lock or unlock the overlay |
 | `Ctrl + Alt + K` | Show or hide the overlay |
 | Double-click the tray icon | Show or hide the overlay |
 
-When locked, mouse input passes through the overlay to applications behind it, including Nuke and web browsers. Unlock it using the global shortcut or the system tray menu. Global shortcuts can be disabled in Settings if they conflict with another application.
+Global shortcuts can be disabled in Settings if they conflict with another application.
 
-## When Lyrics Are Not Displayed
+When locked, the lyrics area passes clicks through to applications behind it. Player controls remain usable while they are visible.
 
-1. Check whether the song title appears in the Windows volume or media panel.
-2. Close FlowLyrics, restart Spotify, and then launch FlowLyrics again.
-3. Use **Refresh Lyrics** from the right-click menu.
-4. When you have a timestamped LRC file, open the folder from **Settings > Local LRC** and add it there.
+VOL uses Spotify's Windows shared-mode audio sessions and searches every active output device. It never changes the system-wide master volume. Windows does not expose per-app attenuation for an exclusive-mode stream, so the slider is disabled while Spotify is using exclusive output.
 
-The local LRC folder is:
+## Lyrics selection and local LRC files
+
+Open **Settings > Lyrics** to inspect the current Spotify metadata and the LRCLIB record currently in use. If the lyrics or timing are wrong, or the automatic matcher finds more than one safe possibility, choose **Choose from LRCLIB**. You can edit Title, Artist, Album, and Keyword—including an English or romanized title—before searching.
+
+Manual LRCLIB selections are remembered for the same Spotify track. Choosing **Use these lyrics** removes the previous cache for that track, stores the selected LRCLIB record, applies it immediately, and closes the chooser. Use **Reset manual selection** when you want to return to automatic matching.
+
+Open the LRC folder from **Settings > Lyrics > Local LRC**, then place timestamped `.lrc` files in it. The default location is:
 
 ```text
 %APPDATA%\FlowLyrics\lyrics-cache
 ```
 
-Name a file `Artist - Song Title.lrc` or `Song Title.lrc` to let FlowLyrics match it automatically to the current track. Added, updated, and removed files are detected while the application is running.
+Use either filename format:
 
-## Data Location
+```text
+Artist - Title.lrc
+Title.lrc
+```
 
-Settings and cached lyrics are stored in:
+Adding, replacing, or removing an LRC file is detected automatically while FlowLyrics is running. The same folder also contains FlowLyrics cache `.json` files; storing `.lrc` files alongside them is expected and safe.
+
+## Troubleshooting
+
+If no track or lyrics appear:
+
+1. Confirm that the current Spotify track appears in the Windows media panel.
+2. Restart Spotify, then restart FlowLyrics.
+3. Open **Settings > Lyrics**. If candidates are available, review the artist, version, and duration before choosing one.
+4. Search again with an English or romanized title, or add a timestamped local LRC file.
+
+FlowLyrics deliberately leaves ambiguous results unselected. A duration difference over two seconds, a clearly different artist, or Live/Instrumental/Remix/Cover/Karaoke/TV Size mismatch prevents automatic use. LRCLIB rate limits or temporary network failures may also delay a result; FlowLyrics pauses duplicate requests, respects the server retry interval, and retries automatically.
+
+## Data and privacy
+
+FlowLyrics sends the track title, artist, album, and duration to LRCLIB when it searches for lyrics. It does not send audio, Spotify credentials, account passwords, or a complete listening history. Settings, hashed lyric cache files, logs, and manual LRCLIB selections are stored locally in:
 
 ```text
 %APPDATA%\FlowLyrics
 ```
 
-Spotify login information is not stored.
-
 ## Limitations
 
-- FlowLyrics does not follow playback occurring only on a phone or another PC.
-- It may not appear above games using exclusive fullscreen mode.
-- Detection is unavailable when Spotify or Windows does not publish a media session.
-- A manual LRC file is required when LRCLIB has no synchronized lyrics for a track.
-- Playback controls only work when Spotify permits the corresponding Windows media-session command.
+- FlowLyrics follows a Spotify media session on the same Windows PC; it cannot follow playback occurring only on a phone or another computer.
+- Exclusive fullscreen applications may appear above the overlay.
+- Detection and playback controls depend on what Spotify exposes through Windows SMTC.
+- Spotify Track ID is not exposed by every SMTC session. In that case FlowLyrics uses a stable key derived from normalized title, artist, album, and duration for cache and manual selections.
+- Tracks without synchronized lyrics require plain-lyrics fallback or a local LRC file.
 
-## Privacy
+## Build from source
 
-Only the song title, artist, album, and track duration are sent to LRCLIB when searching for lyrics. Audio data, Spotify account information, and playback-history lists are not collected or transmitted. FlowLyrics does not use its own server or database.
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), then run:
 
-## Technical Overview
+```powershell
+dotnet run --project FlowLyrics.csproj
+```
 
-- C# / WPF / .NET 10
-- SMTC access through `Windows.Media.Control`
-- LRCLIB REST API
-- Click-through behavior using Win32 extended window styles
-- No external NuGet packages
+To create the self-contained Windows x64 build:
 
-See `THIRD_PARTY_NOTICES.md` for licenses and external-service notices.
+```powershell
+dotnet publish FlowLyrics.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:PublishTrimmed=false
+```
 
-## Disclaimer
+Run the matching and cache regression tests with:
 
-FlowLyrics is an independent, unofficial application and is not affiliated with, sponsored by, or endorsed by Spotify AB or LRCLIB. Spotify is a trademark of Spotify AB. Lyrics and music remain the property of their respective rights holders.
+```powershell
+dotnet run --project FlowLyrics.Tests/FlowLyrics.Tests.csproj -c Release
+```
+
+## License and services
+
+FlowLyrics is released under the MIT License. See `LICENSE` and `THIRD_PARTY_NOTICES.md` for license and external-service information.
