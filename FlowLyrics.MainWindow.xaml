@@ -333,7 +333,7 @@
       </Grid>
     </Border>
     <primitives:Popup Name="VolumePopup" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PlacementTarget="{Binding ElementName=VolumeButton}">
-      <Border Name="VolumePopupSurface" Margin="4" Padding="12" CornerRadius="10" Background="#F2181818" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="1" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
+      <Border Name="VolumePopupSurface" Margin="4" Padding="12" CornerRadius="10" Background="#2EFFFFFF" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="1" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
         <Slider Name="VolumeSlider" Width="28" Height="160" Minimum="0" Maximum="1" Value="1" Style="{StaticResource VerticalVolumeSlider}" PreviewMouseLeftButtonDown="VolumeSlider_PreviewMouseLeftButtonDown" PreviewMouseMove="VolumeSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="VolumeSlider_PreviewMouseLeftButtonUp" ValueChanged="VolumeSlider_ValueChanged" />
       </Border>
     </primitives:Popup>

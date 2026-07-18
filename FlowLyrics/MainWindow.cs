@@ -1204,6 +1204,12 @@ public class MainWindow : Window, IComponentConnector
 		base.Opacity = _settings.OverlayOpacity;
 		base.Topmost = _settings.AlwaysOnTop;
 		_plainLyricsLayoutKey = null;
+		// The compact rebuild below replaces the Viewbox contents. In full-lyrics
+		// mode its cache key must be invalidated so RenderLyrics restores every line.
+		if (_showAllLyrics)
+		{
+			_fullLyricsLayoutKey = null;
+		}
 		RebuildLineControls();
 		UpdateChromeVisibility();
 		UpdatePlaybackChrome();
@@ -1228,9 +1234,7 @@ public class MainWindow : Window, IComponentConnector
 	private void UpdatePlayerButtonBorders()
 	{
 		System.Windows.Media.Brush accent = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
-		System.Windows.Media.Brush surface = new SolidColorBrush(_settings.ReverseColors
-			? System.Windows.Media.Color.FromArgb(218, 222, 225, 222)
-			: System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+		System.Windows.Media.Brush surface = CreatePlayerSurfaceBrush();
 		System.Windows.Media.Brush icon = _settings.ReverseColors
 			? new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30))
 			: System.Windows.Media.Brushes.White;
@@ -1251,6 +1255,13 @@ public class MainWindow : Window, IComponentConnector
 		}
 		UpdateReverseColorsButtonVisual();
 		UpdateOverlayChromeColors();
+	}
+
+	private System.Windows.Media.Brush CreatePlayerSurfaceBrush()
+	{
+		return new SolidColorBrush(_settings.ReverseColors
+			? System.Windows.Media.Color.FromArgb(218, 222, 225, 222)
+			: System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue));
 	}
 
 	private IEnumerable<System.Windows.Controls.Button> GetPlayerButtons()
@@ -1522,65 +1533,68 @@ public class MainWindow : Window, IComponentConnector
 		_volumeWaveDots.Clear();
 		Canvas icon = new Canvas
 		{
-			Width = 31.0,
-			Height = 22.0,
+			Width = 21.0,
+			Height = 19.0,
 			IsHitTestVisible = false
 		};
-		const double originX = 1.55;
-		const double originY = 1.4;
-		const double spacing = 2.18;
-		const double dotSize = 2.12;
+		const double originX = 1.35;
+		const double originY = 1.8;
+		const double spacing = 2.2;
+		const double dotSize = 1.8;
 		foreach ((int column, int row) in new[]
 		{
-			(5, 0),
-			(3, 1), (5, 1),
-			(2, 2), (3, 2), (5, 2),
-			(0, 3), (1, 3), (2, 3), (3, 3), (5, 3),
-			(0, 4), (1, 4), (2, 4), (3, 4), (5, 4),
-			(0, 5), (1, 5), (2, 5), (3, 5), (5, 5),
-			(2, 6), (3, 6), (5, 6),
-			(3, 7), (5, 7),
-			(5, 8)
+			(3, 0),
+			(2, 1), (3, 1),
+			(1, 2), (2, 2), (3, 2),
+			(0, 3), (1, 3), (2, 3), (3, 3),
+			(0, 4), (1, 4), (2, 4), (3, 4),
+			(1, 5), (2, 5), (3, 5),
+			(2, 6), (3, 6),
+			(3, 7)
 		})
 		{
 			AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
 		}
-		foreach ((int column, int row) in new[]
+		AddVolumeArc(icon, 7.95, 9.5, 4.6, -60.0, 60.0, 5, dotSize);
+		AddVolumeArc(icon, 7.95, 9.5, 9.0, -72.0, 72.0, 11, dotSize);
+		VolumeButton.Content = icon;
+	}
+
+	private void AddVolumeArc(Canvas canvas, double centerX, double centerY, double radius, double startDegrees, double endDegrees, int count, double dotSize)
+	{
+		for (int index = 0; index < count; index++)
 		{
-			(7, 2), (8, 3), (8, 4), (8, 5), (7, 6),
-			(10, 0), (11, 1), (12, 2), (12, 3), (13, 4), (12, 5), (12, 6), (11, 7), (10, 8)
-		})
-		{
-			Ellipse waveDot = AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
+			double progress = count <= 1 ? 0.5 : (double)index / (count - 1);
+			double angle = (startDegrees + (endDegrees - startDegrees) * progress) * Math.PI / 180.0;
+			Ellipse waveDot = AddDot(canvas, centerX + Math.Cos(angle) * radius, centerY + Math.Sin(angle) * radius, dotSize);
 			_volumeWaveDots.Add(waveDot);
 		}
-		VolumeButton.Content = icon;
 	}
 
 	private static Canvas CreateDotContrastIcon()
 	{
 		Canvas icon = new Canvas
 		{
-			Width = 27.0,
-			Height = 27.0,
+			Width = 21.0,
+			Height = 21.0,
 			IsHitTestVisible = false
 		};
-		const double center = 13.5;
-		const double radius = 10.5;
-		const double fillSpacing = 2.45;
-		const double dotSize = 2.15;
-		for (int index = 0; index < 30; index++)
+		const double center = 10.5;
+		const double radius = 8.3;
+		const double fillSpacing = 2.1;
+		const double dotSize = 1.65;
+		for (int index = 0; index < 26; index++)
 		{
-			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 30.0;
+			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 26.0;
 			AddDot(icon, center + Math.Cos(angle) * radius, center + Math.Sin(angle) * radius, dotSize);
 		}
-		for (int y = -4; y <= 4; y++)
+		for (int y = -3; y <= 3; y++)
 		{
-			for (int x = -4; x <= 0; x++)
+			for (int x = -3; x <= 0; x++)
 			{
 				double offsetX = x * fillSpacing;
 				double offsetY = y * fillSpacing;
-				if (offsetX * offsetX + offsetY * offsetY <= 9.15 * 9.15)
+				if (offsetX * offsetX + offsetY * offsetY <= 6.75 * 6.75)
 				{
 					AddDot(icon, center + offsetX, center + offsetY, dotSize);
 				}
@@ -1675,9 +1689,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			_seekHoverText.Foreground = contentStrong;
 		}
-		VolumePopupSurface.Background = _settings.ReverseColors
-			? new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 229, 232, 229))
-			: new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 24, 24, 24));
+		VolumePopupSurface.Background = CreatePlayerSurfaceBrush();
 		VolumePopupSurface.BorderBrush = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
 		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
 		{
