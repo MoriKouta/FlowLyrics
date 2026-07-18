@@ -11,6 +11,7 @@
     <EnableWindowsTargeting Condition="'$(UseRecoveredReferences)' != 'true'">true</EnableWindowsTargeting>
     <PlatformTarget>x64</PlatformTarget>
     <LangVersion>14.0</LangVersion>
+    <Nullable>annotations</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -24,7 +25,6 @@
 
   <ItemGroup Condition="'$(UseRecoveredReferences)' == 'true'">
     <EmbeddedResource Include="FlowLyrics.g.resources" LogicalName="FlowLyrics.g.resources" />
-    <EmbeddedResource Include="assets/branding/FlowLyrics_logo.png" LogicalName="assets/branding/FlowLyrics_logo.png" />
     <EmbeddedResource Include="assets/branding/FlowLyrics_logoF.ico" LogicalName="assets/branding/FlowLyrics_logoF.ico" />
   </ItemGroup>
 

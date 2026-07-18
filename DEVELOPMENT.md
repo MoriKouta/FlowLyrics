@@ -11,9 +11,10 @@
 
 ## Project layout
 
-- `FlowLyrics/` contains the application source reconstructed from the `v1.2.9` portable build.
+- `FlowLyrics/` contains the canonical editable application source.
 - `FlowLyrics.g.resources` contains the original WPF BAML and dot font in the resource layout required by `Application.LoadComponent`.
-- Branding files are embedded separately so the tray icon and Settings wordmark can be loaded at runtime.
+- The application icon is embedded separately; the Settings wordmark is rendered from the bundled dot font.
+- Never use a portable package, executable, `bin`, `obj`, or `publish` output as the source of a later development build. If this source tree is unavailable, stop instead of reconstructing it from a binary.
 
 ## Building
 
@@ -24,6 +25,4 @@ dotnet restore .\FlowLyrics\FlowLyrics.csproj
 dotnet build .\FlowLyrics\FlowLyrics.csproj -c Release
 ```
 
-The recovery workspace can set `UseRecoveredReferences=true` to build against reference assemblies extracted from the known-good `v1.2.9` self-contained executable.
-
-The portable EXE is rebuilt from the known-good self-contained `v1.2.9` host so its .NET 10.0.10 runtime remains unchanged. The main assembly must remain the first bundle entry.
+The compatibility workspace can set `UseRecoveredReferences=true` to compile against its local Windows Desktop reference set. This is a build-environment compatibility path only; the repository source tree remains the sole development source.

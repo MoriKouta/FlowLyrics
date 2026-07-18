@@ -219,9 +219,12 @@
     </Grid.RowDefinitions>
     <Border Grid.Row="0" Padding="24,18" Background="#FF2B2B2B" BorderBrush="{DynamicResource Orange}" BorderThickness="0,0,0,3">
       <Grid>
-        <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource Paper}" Text="FLOW LYRICS" Tag="NoTranslate" />
-        <Border Width="150" HorizontalAlignment="Right" Padding="13,8" CornerRadius="6" Background="#FF303030" BorderBrush="{DynamicResource Orange}" BorderThickness="2">
-          <TextBlock HorizontalAlignment="Stretch" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11" FontWeight="Bold" Text="v1.3.0-dev.3" Tag="NoTranslate" />
+        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center" Orientation="Horizontal" Tag="NoTranslate">
+          <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="White" Text="Flow " Tag="NoTranslate" />
+          <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
+        </StackPanel>
+        <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.4" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>
@@ -649,7 +652,7 @@
       <DockPanel LastChildFill="False">
         <Button DockPanel.Dock="Left" Content="Reset" Click="Reset_Click" />
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-          <Button Content="Cancel" IsCancel="True" Click="Cancel_Click" />
+          <Button Content="Cancel" Click="Cancel_Click" />
           <Button Content="Close" IsDefault="True" Background="{DynamicResource Orange}" Foreground="#FF111111" BorderBrush="{DynamicResource Orange}" Click="Save_Click" />
         </StackPanel>
       </DockPanel>

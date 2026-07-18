@@ -41,8 +41,8 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="Foreground" Value="#FFFFFFFF" />
         <Setter Property="Background" Value="#F02F2F2F" />
-        <Setter Property="BorderBrush" Value="#FF111111" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource UiAccentBrush}" />
+        <Setter Property="BorderThickness" Value="1.25" />
         <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />

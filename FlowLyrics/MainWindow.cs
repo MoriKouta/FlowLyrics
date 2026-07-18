@@ -123,6 +123,22 @@ public class MainWindow : Window, IComponentConnector
 
 	private double? _pendingSpotifyVolume;
 
+	private SettingsWindow? _settingsWindow;
+
+	private AppSettings? _settingsBeforeWindow;
+
+	private Action<AppSettings>? _settingsPreviewHandler;
+
+	private Grid? _playbackTimeline;
+
+	private TextBlock? _playbackPositionText;
+
+	private TextBlock? _playbackDurationText;
+
+	private Popup? _seekHoverPopup;
+
+	private TextBlock? _seekHoverText;
+
 	private bool _resizeRecenterPending;
 
 	private readonly Bitmap _backdropSampleBitmap;
@@ -252,6 +268,7 @@ public class MainWindow : Window, IComponentConnector
 		_backdropSampleGraphics = Graphics.FromImage(_backdropSampleBitmap);
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
+		InitializePlaybackTimeline();
 		_settings = _settingsService.Load();
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
@@ -908,6 +925,7 @@ public class MainWindow : Window, IComponentConnector
 		_settings.Normalize();
 		ApplyUiLanguage();
 		base.Resources["UiAccentBrush"] = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
+		UpdatePlayerButtonBorders();
 		OverlayPanel.Padding = new Thickness(_settings.PanelPadding);
 		OverlayPanel.CornerRadius = new CornerRadius(_settings.CornerRadius);
 		OverlayPanel.Background = CreateBlendBrush(_settings.BackgroundColor, _settings.BackgroundOpacity, Colors.Black, _settings.BackgroundBlendMode, ignoreSourceAlpha: true);
@@ -933,6 +951,16 @@ public class MainWindow : Window, IComponentConnector
 			{
 				SetStatus(string.Empty, string.Empty, animate: false);
 			}
+		}
+	}
+
+	private void UpdatePlayerButtonBorders()
+	{
+		System.Windows.Media.Brush accent = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
+		foreach (System.Windows.Controls.Button button in new[] { PreviousButton, PlayPauseButton, NextButton, VolumeButton, SettingsButton })
+		{
+			button.BorderBrush = accent;
+			button.BorderThickness = new Thickness(1.25);
 		}
 	}
 
@@ -983,6 +1011,10 @@ public class MainWindow : Window, IComponentConnector
 		TrackInfoPanel.Visibility = ((!(_settings.ShowTrackInfo && flag)) ? Visibility.Collapsed : Visibility.Visible);
 		HeaderPanel.Visibility = TrackInfoPanel.Visibility;
 		PlaybackSeekSlider.Visibility = ((!(_settings.ShowProgressBar && flag5)) ? Visibility.Collapsed : Visibility.Visible);
+		if (_playbackTimeline != null)
+		{
+			_playbackTimeline.Visibility = PlaybackSeekSlider.Visibility;
+		}
 		ControlBar.Visibility = ((!(_settings.ShowPlaybackControls && flag2)) ? Visibility.Collapsed : Visibility.Visible);
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
@@ -1098,13 +1130,156 @@ public class MainWindow : Window, IComponentConnector
 			{
 				PlaybackSeekSlider.Value = 0.0;
 			}
+			SetPlaybackTimeText(_playbackPositionText, TimeSpan.Zero);
+			SetPlaybackTimeText(_playbackDurationText, TimeSpan.Zero);
 			return;
 		}
-		double value = _snapshot.EstimatedPosition(DateTimeOffset.UtcNow).TotalMilliseconds / _snapshot.Track.Duration.TotalMilliseconds;
+		TimeSpan position = _isSeeking
+			? TimeSpan.FromMilliseconds(_snapshot.Track.Duration.TotalMilliseconds * Math.Clamp(PlaybackSeekSlider.Value, 0.0, 1.0))
+			: _snapshot.EstimatedPosition(DateTimeOffset.UtcNow);
+		double value = position.TotalMilliseconds / _snapshot.Track.Duration.TotalMilliseconds;
 		if (!_isSeeking)
 		{
 			PlaybackSeekSlider.Value = Math.Clamp(value, 0.0, 1.0);
 		}
+		SetPlaybackTimeText(_playbackPositionText, position);
+		SetPlaybackTimeText(_playbackDurationText, _snapshot.Track.Duration);
+	}
+
+	private void InitializePlaybackTimeline()
+	{
+		if (PlaybackSeekSlider.Parent is not System.Windows.Controls.Panel parent)
+		{
+			return;
+		}
+		int index = parent.Children.IndexOf(PlaybackSeekSlider);
+		if (index < 0)
+		{
+			return;
+		}
+		parent.Children.RemoveAt(index);
+		Grid timeline = new Grid
+		{
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		timeline.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		timeline.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
+		timeline.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		_playbackPositionText = CreatePlaybackTimeText(System.Windows.HorizontalAlignment.Left);
+		_playbackDurationText = CreatePlaybackTimeText(System.Windows.HorizontalAlignment.Right);
+		Grid.SetColumn(_playbackPositionText, 0);
+		Grid.SetColumn(PlaybackSeekSlider, 1);
+		Grid.SetColumn(_playbackDurationText, 2);
+		PlaybackSeekSlider.Margin = new Thickness(9.0, 0.0, 9.0, 0.0);
+		timeline.Children.Add(_playbackPositionText);
+		timeline.Children.Add(PlaybackSeekSlider);
+		timeline.Children.Add(_playbackDurationText);
+		parent.Children.Insert(index, timeline);
+		_playbackTimeline = timeline;
+
+		_seekHoverText = new TextBlock
+		{
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			FontWeight = FontWeights.SemiBold,
+			Foreground = System.Windows.Media.Brushes.White,
+			Text = "0:00"
+		};
+		Border hoverSurface = new Border
+		{
+			Padding = new Thickness(7.0, 4.0, 7.0, 4.0),
+			CornerRadius = new CornerRadius(4.0),
+			Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 32, 32, 32)),
+			BorderThickness = new Thickness(1.0),
+			Child = _seekHoverText,
+			IsHitTestVisible = false
+		};
+		hoverSurface.SetResourceReference(Border.BorderBrushProperty, "UiAccentBrush");
+		_seekHoverPopup = new Popup
+		{
+			Placement = PlacementMode.Relative,
+			PlacementTarget = PlaybackSeekSlider,
+			AllowsTransparency = true,
+			StaysOpen = true,
+			IsHitTestVisible = false,
+			Child = hoverSurface
+		};
+		PlaybackSeekSlider.MouseEnter += PlaybackSeekSlider_MouseEnter;
+		PlaybackSeekSlider.MouseMove += PlaybackSeekSlider_MouseMove;
+		PlaybackSeekSlider.MouseLeave += PlaybackSeekSlider_MouseLeave;
+		SetPlaybackTimeText(_playbackPositionText, TimeSpan.Zero);
+		SetPlaybackTimeText(_playbackDurationText, TimeSpan.Zero);
+	}
+
+	private TextBlock CreatePlaybackTimeText(System.Windows.HorizontalAlignment alignment)
+	{
+		return new TextBlock
+		{
+			MinWidth = 34.0,
+			HorizontalAlignment = alignment,
+			VerticalAlignment = VerticalAlignment.Center,
+			TextAlignment = alignment == System.Windows.HorizontalAlignment.Right ? TextAlignment.Right : TextAlignment.Left,
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			FontWeight = FontWeights.SemiBold,
+			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromArgb(222, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
+			Text = "0:00",
+			Tag = "NoTranslate"
+		};
+	}
+
+	private void PlaybackSeekSlider_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+	{
+		UpdateSeekHover(e);
+	}
+
+	private void PlaybackSeekSlider_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+	{
+		UpdateSeekHover(e);
+	}
+
+	private void PlaybackSeekSlider_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+	{
+		if (_seekHoverPopup != null)
+		{
+			_seekHoverPopup.IsOpen = false;
+		}
+	}
+
+	private void UpdateSeekHover(System.Windows.Input.MouseEventArgs e)
+	{
+		if (_seekHoverPopup == null || _seekHoverText == null || _snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero || PlaybackSeekSlider.ActualWidth <= 0.0)
+		{
+			return;
+		}
+		double x = Math.Clamp(e.GetPosition(PlaybackSeekSlider).X, 0.0, PlaybackSeekSlider.ActualWidth);
+		double ratio = x / PlaybackSeekSlider.ActualWidth;
+		_seekHoverText.Text = FormatPlaybackTime(TimeSpan.FromMilliseconds(_snapshot.Track.Duration.TotalMilliseconds * ratio));
+		_seekHoverPopup.HorizontalOffset = x - 25.0;
+		_seekHoverPopup.VerticalOffset = -34.0;
+		_seekHoverPopup.IsOpen = true;
+	}
+
+	private static void SetPlaybackTimeText(TextBlock? target, TimeSpan value)
+	{
+		if (target == null)
+		{
+			return;
+		}
+		string text = FormatPlaybackTime(value);
+		if (!string.Equals(target.Text, text, StringComparison.Ordinal))
+		{
+			target.Text = text;
+		}
+	}
+
+	private static string FormatPlaybackTime(TimeSpan value)
+	{
+		long totalSeconds = Math.Max(0L, (long)Math.Floor(value.TotalSeconds));
+		long hours = totalSeconds / 3600L;
+		long minutes = totalSeconds / 60L;
+		long seconds = totalSeconds % 60L;
+		return hours > 0L ? $"{hours}:{minutes % 60L:00}:{seconds:00}" : $"{minutes}:{seconds:00}";
 	}
 
 	private void SetTrackStatus(string status, System.Windows.Media.Color color)
@@ -1457,8 +1632,10 @@ public class MainWindow : Window, IComponentConnector
 	private void UpdateLockButtonVisual()
 	{
 		LockButton.ToolTip = T(_isLocked ? "Locked — click to unlock" : "Lock — click to enable");
+		System.Windows.Media.Brush accent = CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true);
 		LockButton.Background = (_isLocked ? CreateBlendBrush(_settings.UiColor, 0.42, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(46, byte.MaxValue, byte.MaxValue, byte.MaxValue)));
-		LockButton.BorderBrush = (_isLocked ? CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true) : new SolidColorBrush(System.Windows.Media.Color.FromArgb(58, byte.MaxValue, byte.MaxValue, byte.MaxValue)));
+		LockButton.BorderBrush = accent;
+		LockButton.BorderThickness = new Thickness(1.25);
 		LockIcon.Fill = (_isLocked ? CreateBlendBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), _settings.UiBlendMode, ignoreSourceAlpha: true) : System.Windows.Media.Brushes.White);
 	}
 
@@ -1487,11 +1664,14 @@ public class MainWindow : Window, IComponentConnector
 		_tray?.UpdateState(base.IsVisible, _isLocked);
 	}
 
-	private async void OpenSettings()
+	private void OpenSettings()
 	{
-		bool wasLocked = _isLocked;
-		AppSettings appSettings = _settings.Clone();
-		SetLocked(locked: false, persist: false);
+		if (_settingsWindow != null)
+		{
+			_settingsWindow.ApplyAndClose();
+			return;
+		}
+		_settingsBeforeWindow = _settings.Clone();
 		SettingsWindow settingsWindow = new SettingsWindow(_settings.Clone(), _lyricsService.LyricsDirectory, _lyricsService, () => _snapshot?.Track, () => _lyricsLookup, async delegate
 		{
 			if (_snapshot != null)
@@ -1502,26 +1682,61 @@ public class MainWindow : Window, IComponentConnector
 		{
 			Owner = this
 		};
-		settingsWindow.PreviewChanged += PreviewSettings;
-		bool valueOrDefault = settingsWindow.ShowDialog() == true;
-		settingsWindow.PreviewChanged -= PreviewSettings;
-		if (valueOrDefault)
+		_settingsPreviewHandler = PreviewSettings;
+		settingsWindow.PreviewChanged += _settingsPreviewHandler;
+		settingsWindow.Closed += SettingsWindow_Closed;
+		_settingsWindow = settingsWindow;
+		settingsWindow.Show();
+		settingsWindow.Activate();
+
+		void PreviewSettings(AppSettings preview)
 		{
-			bool startWithWindows = appSettings.StartWithWindows;
+			preview.IsLocked = _isLocked;
+			preview.WindowLeft = base.Left;
+			preview.WindowTop = base.Top;
+			preview.WindowWidth = base.Width;
+			preview.WindowHeight = base.Height;
+			bool num3 = _settings.ShortcutsEnabled != preview.ShortcutsEnabled;
+			_settings = preview;
+			if (num3)
+			{
+				ConfigureHotkeys();
+			}
+			ApplyVisualSettings();
+		}
+	}
+
+	private async void SettingsWindow_Closed(object? sender, EventArgs e)
+	{
+		if (sender is not SettingsWindow settingsWindow || !ReferenceEquals(settingsWindow, _settingsWindow))
+		{
+			return;
+		}
+		if (_settingsPreviewHandler != null)
+		{
+			settingsWindow.PreviewChanged -= _settingsPreviewHandler;
+		}
+		settingsWindow.Closed -= SettingsWindow_Closed;
+		AppSettings original = _settingsBeforeWindow ?? _settings.Clone();
+		_settingsWindow = null;
+		_settingsBeforeWindow = null;
+		_settingsPreviewHandler = null;
+		if (settingsWindow.Accepted)
+		{
 			AppSettings resultSettings = settingsWindow.ResultSettings;
-			resultSettings.IsLocked = wasLocked;
+			resultSettings.IsLocked = _isLocked;
 			resultSettings.WindowLeft = base.Left;
 			resultSettings.WindowTop = base.Top;
 			resultSettings.WindowWidth = base.Width;
 			resultSettings.WindowHeight = base.Height;
-			if (resultSettings.StartWithWindows != startWithWindows && !StartupService.TrySetEnabled(resultSettings.StartWithWindows, out string error))
+			if (resultSettings.StartWithWindows != original.StartWithWindows && !StartupService.TrySetEnabled(resultSettings.StartWithWindows, out string error))
 			{
-				resultSettings.StartWithWindows = startWithWindows;
+				resultSettings.StartWithWindows = original.StartWithWindows;
 				System.Windows.MessageBox.Show(this, string.Format(T("Could not change Windows startup settings.\n\n{0}"), error), "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 			}
-			bool num = _settings.ShortcutsEnabled != resultSettings.ShortcutsEnabled;
+			bool shortcutsChanged = _settings.ShortcutsEnabled != resultSettings.ShortcutsEnabled;
 			_settings = resultSettings;
-			if (num)
+			if (shortcutsChanged)
 			{
 				ConfigureHotkeys();
 			}
@@ -1530,25 +1745,9 @@ public class MainWindow : Window, IComponentConnector
 		}
 		else
 		{
-			bool num2 = _settings.ShortcutsEnabled != appSettings.ShortcutsEnabled;
-			_settings = appSettings;
-			if (num2)
-			{
-				ConfigureHotkeys();
-			}
-			ApplyVisualSettings();
-		}
-		SetLocked(wasLocked, persist: false);
-		void PreviewSettings(AppSettings preview)
-		{
-			preview.IsLocked = wasLocked;
-			preview.WindowLeft = base.Left;
-			preview.WindowTop = base.Top;
-			preview.WindowWidth = base.Width;
-			preview.WindowHeight = base.Height;
-			bool num3 = _settings.ShortcutsEnabled != preview.ShortcutsEnabled;
-			_settings = preview;
-			if (num3)
+			bool shortcutsChanged = _settings.ShortcutsEnabled != original.ShortcutsEnabled;
+			_settings = original;
+			if (shortcutsChanged)
 			{
 				ConfigureHotkeys();
 			}

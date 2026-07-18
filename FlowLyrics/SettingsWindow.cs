@@ -206,6 +206,8 @@ public class SettingsWindow : Window, IComponentConnector
 
 	public AppSettings ResultSettings { get; private set; }
 
+	public bool Accepted { get; private set; }
+
 	public event Action<AppSettings>? PreviewChanged;
 
 	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<Task> reloadCurrentTrack)
@@ -234,6 +236,7 @@ public class SettingsWindow : Window, IComponentConnector
 		AttachPreviewHandlers();
 		base.Loaded += delegate
 		{
+			DisableDialogOnlyButtons();
 			InitializeBranding();
 			InitializeBlendModeControls();
 			RefreshBlendModeButtons();
@@ -242,6 +245,17 @@ public class SettingsWindow : Window, IComponentConnector
 			ApplyLanguage(_currentLanguage);
 			RefreshLyricsTab();
 		};
+	}
+
+	private void DisableDialogOnlyButtons()
+	{
+		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
+		{
+			if (button.IsCancel)
+			{
+				button.IsCancel = false;
+			}
+		}
 	}
 
 	private void SettingsTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -284,31 +298,34 @@ public class SettingsWindow : Window, IComponentConnector
 		TextBlock? title = FindVisualChildren<TextBlock>(this).FirstOrDefault((TextBlock item) => string.Equals(item.Text, "FLOW LYRICS", StringComparison.Ordinal));
 		if (title != null && VisualTreeHelper.GetParent(title) is Grid header)
 		{
-			try
+			StackPanel wordmark = new StackPanel
 			{
-				using Stream? stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("assets/branding/FlowLyrics_logo.png");
-				if (stream != null)
-				{
-					BitmapFrame bitmap = BitmapFrame.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-					System.Windows.Shapes.Rectangle logo = new System.Windows.Shapes.Rectangle
-					{
-						Width = 224.0,
-						Height = 42.0,
-						HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-						VerticalAlignment = VerticalAlignment.Center,
-						OpacityMask = new ImageBrush(bitmap) { Stretch = Stretch.Uniform }
-					};
-					logo.SetResourceReference(Shape.FillProperty, "Orange");
-					header.Children.Remove(title);
-					header.Children.Add(logo);
-					_brandingInitialized = true;
-				}
-			}
-			catch
+				Orientation = System.Windows.Controls.Orientation.Horizontal,
+				HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+				VerticalAlignment = VerticalAlignment.Center,
+				Tag = "NoTranslate"
+			};
+			wordmark.Children.Add(new TextBlock
 			{
-				title.Text = "FLOW LYRICS";
-				title.FontSize = 32.0;
-			}
+				Text = "Flow ",
+				FontFamily = _englishDotFont,
+				FontSize = 31.0,
+				FontWeight = FontWeights.Bold,
+				Foreground = System.Windows.Media.Brushes.White,
+				Tag = "NoTranslate"
+			});
+			TextBlock lyrics = new TextBlock
+			{
+				Text = "Lyrics",
+				FontFamily = _englishDotFont,
+				FontSize = 31.0,
+				FontWeight = FontWeights.Bold,
+				Tag = "NoTranslate"
+			};
+			lyrics.SetResourceReference(TextBlock.ForegroundProperty, "Orange");
+			wordmark.Children.Add(lyrics);
+			header.Children.Remove(title);
+			header.Children.Add(wordmark);
 		}
 
 		_versionText = FindVisualChildren<TextBlock>(this).FirstOrDefault((TextBlock item) => item.Text?.StartsWith("v1.", StringComparison.OrdinalIgnoreCase) == true);
@@ -316,21 +333,23 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			_versionText.Text = "v" + BuildInfo.Version;
 			_versionText.TextAlignment = TextAlignment.Center;
-			_versionText.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+			_versionText.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
 			_versionText.VerticalAlignment = VerticalAlignment.Center;
-			_versionText.FontSize = 11.0;
-			_versionText.FontWeight = FontWeights.Bold;
+			_versionText.FontSize = 11.5;
+			_versionText.FontWeight = FontWeights.SemiBold;
 			_versionText.Foreground = System.Windows.Media.Brushes.White;
 			if (VisualTreeHelper.GetParent(_versionText) is Border badge)
 			{
-				badge.MinWidth = 150.0;
-				badge.Padding = new Thickness(13.0, 8.0, 13.0, 8.0);
-				badge.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(48, 48, 48));
-				badge.SetResourceReference(Border.BorderBrushProperty, "Orange");
-				badge.BorderThickness = new Thickness(2.0);
-				badge.CornerRadius = new CornerRadius(6.0);
+				badge.Width = double.NaN;
+				badge.MinWidth = 0.0;
+				badge.Padding = new Thickness(0.0);
+				badge.Background = System.Windows.Media.Brushes.Transparent;
+				badge.BorderBrush = System.Windows.Media.Brushes.Transparent;
+				badge.BorderThickness = new Thickness(0.0);
+				badge.CornerRadius = new CornerRadius(0.0);
 			}
 		}
+		_brandingInitialized = true;
 	}
 
 	private void InitializeBlendModeControls()
@@ -934,8 +953,14 @@ public class SettingsWindow : Window, IComponentConnector
 		if (TryBuildSettings(out AppSettings settings, showError: true))
 		{
 			ResultSettings = settings;
-			base.DialogResult = true;
+			Accepted = true;
+			Close();
 		}
+	}
+
+	public void ApplyAndClose()
+	{
+		Save_Click(this, new RoutedEventArgs());
 	}
 
 	private void NotifyPreviewChanged()
@@ -1055,7 +1080,8 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)
 	{
-		base.DialogResult = false;
+		Accepted = false;
+		Close();
 	}
 
 	private void Reset_Click(object sender, RoutedEventArgs e)
