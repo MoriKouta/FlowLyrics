@@ -87,7 +87,13 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private System.Windows.Controls.CheckBox? _plainLyricsAutoScrollBox;
 
+	private System.Windows.Controls.CheckBox? _showAllLyricsBox;
+
 	private bool _textControlsInitialized;
+
+	private Style? _compactComboBoxStyle;
+
+	private Style? _compactComboBoxItemStyle;
 
 	private Style? _faderScrollBarStyle;
 
@@ -266,6 +272,7 @@ public class SettingsWindow : Window, IComponentConnector
 			InitializeReverseColorsControl();
 			InitializePaletteManager();
 			InitializeBehaviorReset();
+			InitializeCompactComboBoxes();
 			ApplySoftSettingsTheme();
 			RefreshReverseColorsButton();
 			UpdateAccentColor(ResultSettings.UiColor);
@@ -296,6 +303,7 @@ public class SettingsWindow : Window, IComponentConnector
 				InitializeReverseColorsControl();
 				InitializePaletteManager();
 				InitializeBehaviorReset();
+				InitializeCompactComboBoxes();
 				CaptureLocalizableContent(this);
 				ApplyLanguage(_currentLanguage);
 				ApplySoftSettingsTheme();
@@ -467,15 +475,30 @@ public class SettingsWindow : Window, IComponentConnector
 			}
 			if (lineGrid.Parent is StackPanel lineCard)
 			{
+				WrapPanel plainLyricsOptions = new WrapPanel
+				{
+					Margin = new Thickness(0.0, 7.0, 0.0, 0.0),
+					Tag = "NoTranslate"
+				};
 				_plainLyricsAutoScrollBox = new System.Windows.Controls.CheckBox
 				{
 					IsChecked = ResultSettings.PlainLyricsAutoScroll,
-					Margin = new Thickness(0.0, 8.0, 0.0, 0.0),
+					Margin = new Thickness(0.0, 0.0, 18.0, 0.0),
 					Tag = "NoTranslate"
 				};
 				_plainLyricsAutoScrollBox.Checked += PlainLyricsAutoScroll_Changed;
 				_plainLyricsAutoScrollBox.Unchecked += PlainLyricsAutoScroll_Changed;
-				lineCard.Children.Add(_plainLyricsAutoScrollBox);
+				_showAllLyricsBox = new System.Windows.Controls.CheckBox
+				{
+					IsChecked = ResultSettings.ShowAllLyrics,
+					Margin = new Thickness(0.0),
+					Tag = "NoTranslate"
+				};
+				_showAllLyricsBox.Checked += PlainLyricsAutoScroll_Changed;
+				_showAllLyricsBox.Unchecked += PlainLyricsAutoScroll_Changed;
+				plainLyricsOptions.Children.Add(_plainLyricsAutoScrollBox);
+				plainLyricsOptions.Children.Add(_showAllLyricsBox);
+				lineCard.Children.Add(plainLyricsOptions);
 			}
 		}
 
@@ -528,11 +551,166 @@ public class SettingsWindow : Window, IComponentConnector
 		NotifyPreviewChanged();
 	}
 
+	private void InitializeCompactComboBoxes()
+	{
+		if (_compactComboBoxStyle == null || _compactComboBoxItemStyle == null)
+		{
+			const string xaml = """
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style x:Key="FlowDropDownItem" TargetType="{x:Type ComboBoxItem}">
+    <Setter Property="Foreground" Value="{DynamicResource DropDownText}" />
+    <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+          <Border x:Name="ItemSurface" MinHeight="34" Background="Transparent"
+                  BorderBrush="{DynamicResource DropDownDivider}" BorderThickness="0,0,0,1"
+                  Padding="12,7" SnapsToDevicePixels="True">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="18" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Ellipse x:Name="Indicator" Width="6" Height="6" HorizontalAlignment="Left"
+                       VerticalAlignment="Center" Fill="Transparent"
+                       Stroke="{DynamicResource DropDownText}" StrokeThickness="1" />
+              <ContentPresenter Grid.Column="1" VerticalAlignment="Center"
+                                HorizontalAlignment="Left" />
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource DropDownHover}" />
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource DropDownSelected}" />
+              <Setter TargetName="Indicator" Property="Fill" Value="{DynamicResource Orange}" />
+              <Setter TargetName="Indicator" Property="Stroke" Value="{DynamicResource Orange}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="ItemSurface" Property="Opacity" Value="0.38" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+  <Style x:Key="FlowDropDown" TargetType="{x:Type ComboBox}">
+    <Setter Property="Foreground" Value="{DynamicResource DropDownText}" />
+    <Setter Property="Background" Value="{DynamicResource InputSurface}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="MinHeight" Value="34" />
+    <Setter Property="Padding" Value="12,0,46,0" />
+    <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="MaxDropDownHeight" Value="288" />
+    <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+    <Setter Property="ItemContainerStyle" Value="{StaticResource FlowDropDownItem}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="{x:Type ComboBox}">
+          <Grid>
+            <Border x:Name="ClosedSurface" MinHeight="34"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="8" SnapsToDevicePixels="True">
+              <Grid>
+                <ToggleButton x:Name="DropDownToggle" Focusable="False" ClickMode="Press"
+                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                  <ToggleButton.Template>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                      <Border Background="Transparent" />
+                    </ControlTemplate>
+                  </ToggleButton.Template>
+                </ToggleButton>
+                <ContentPresenter x:Name="ContentSite" Margin="12,0,46,0"
+                                  VerticalAlignment="Center" HorizontalAlignment="Left"
+                                  IsHitTestVisible="False"
+                                  Content="{TemplateBinding SelectionBoxItem}"
+                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                <TextBox x:Name="PART_EditableTextBox" Margin="9,2,46,2" Padding="3,0"
+                         VerticalContentAlignment="Center" Visibility="Collapsed"
+                         Background="Transparent" BorderThickness="0"
+                         Foreground="{DynamicResource DropDownText}"
+                         FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+                         IsReadOnly="{TemplateBinding IsReadOnly}" />
+                <Ellipse Width="6" Height="6" HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Margin="0,0,31,0" Fill="{DynamicResource Orange}" />
+                <Path x:Name="Arrow" Width="9" Height="5" HorizontalAlignment="Right"
+                      VerticalAlignment="Center" Margin="0,0,12,0" Stretch="Fill"
+                      Stroke="{DynamicResource DropDownText}" StrokeThickness="1.5"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Data="M0,0 L4.5,4 L9,0" />
+              </Grid>
+            </Border>
+            <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True"
+                   PopupAnimation="Fade" Focusable="False" IsOpen="{TemplateBinding IsDropDownOpen}">
+              <Border x:Name="PopupSurface" Margin="0,3,0,0" Padding="0"
+                      MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                      MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                      Background="{DynamicResource InputSurface}"
+                      BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1"
+                      CornerRadius="8" SnapsToDevicePixels="True">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="True">
+                  <ItemsPresenter />
+                </ScrollViewer>
+              </Border>
+            </Popup>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="ClosedSurface" Property="BorderBrush" Value="{DynamicResource Orange}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+              <Setter TargetName="ClosedSurface" Property="BorderBrush" Value="{DynamicResource Orange}" />
+            </Trigger>
+            <Trigger Property="IsDropDownOpen" Value="True">
+              <Setter TargetName="ClosedSurface" Property="BorderBrush" Value="{DynamicResource Orange}" />
+              <Setter TargetName="Arrow" Property="Data" Value="M0,4 L4.5,0 L9,4" />
+            </Trigger>
+            <Trigger Property="IsEditable" Value="True">
+              <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+              <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="ClosedSurface" Property="Opacity" Value="0.38" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>
+""";
+			ResourceDictionary styles = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(xaml);
+			_compactComboBoxStyle = (Style)styles["FlowDropDown"];
+			_compactComboBoxItemStyle = (Style)styles["FlowDropDownItem"];
+		}
+
+		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
+		{
+			comboBox.Style = _compactComboBoxStyle;
+			comboBox.ItemContainerStyle = _compactComboBoxItemStyle;
+		}
+	}
+
 	private void RefreshTextControlLabels()
 	{
 		if (_plainLyricsAutoScrollBox != null)
 		{
 			_plainLyricsAutoScrollBox.Content = T("Auto scroll plain lyrics");
+		}
+		if (_showAllLyricsBox != null)
+		{
+			_showAllLyricsBox.Content = T("Show all lyrics");
 		}
 		foreach (System.Windows.Controls.RadioButton choice in _alignmentChoices.Concat(_positionChoices))
 		{
@@ -817,31 +995,29 @@ public class SettingsWindow : Window, IComponentConnector
 			return;
 		}
 		footerPanel.Children.Remove(resetButton);
-		resetButton.Content = "RESET ALL SETTINGS";
+		resetButton.Content = "RESET";
 		resetButton.FontFamily = _englishDotFont;
-		resetButton.FontSize = 9.0;
+		resetButton.FontSize = 8.5;
 		resetButton.Tag = "NoTranslate";
-		resetButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+		resetButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+		resetButton.VerticalAlignment = VerticalAlignment.Center;
+		resetButton.Padding = new Thickness(12.0, 6.0, 12.0, 6.0);
+		resetButton.Margin = new Thickness(12.0, 0.0, 0.0, 0.0);
 		Border card = new Border();
 		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
-		StackPanel panel = new StackPanel { Tag = "NoTranslate" };
-		panel.Children.Add(new TextBlock
-		{
-			Text = "RESET",
-			FontFamily = _englishDotFont,
-			FontSize = 18.0,
-			FontWeight = FontWeights.Bold,
-			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
-			Tag = "NoTranslate"
-		});
-		panel.Children.Add(new TextBlock
-		{
-			Text = "Restore every setting, including saved color palettes.",
-			TextWrapping = TextWrapping.Wrap,
-			Margin = new Thickness(0.0, 0.0, 0.0, 10.0),
-			Tag = "NoTranslate"
-		});
+		card.Padding = new Thickness(16.0, 13.0, 16.0, 13.0);
+		DockPanel panel = new DockPanel { LastChildFill = true, Tag = "NoTranslate" };
+		DockPanel.SetDock(resetButton, Dock.Right);
 		panel.Children.Add(resetButton);
+		panel.Children.Add(new TextBlock
+		{
+			Text = "RESET SETTINGS",
+			FontFamily = _englishDotFont,
+			FontSize = 11.0,
+			FontWeight = FontWeights.Bold,
+			VerticalAlignment = VerticalAlignment.Center,
+			Tag = "NoTranslate"
+		});
 		card.Child = panel;
 		behaviorStack.Children.Add(card);
 		_behaviorResetInitialized = true;
@@ -1007,6 +1183,14 @@ public class SettingsWindow : Window, IComponentConnector
 		base.Resources["Line"] = cardBorderBrush;
 		base.Resources["Paper"] = textBrush;
 		base.Resources["Muted"] = mutedBrush;
+		base.Resources["InputSurface"] = inputBrush;
+		base.Resources["ControlBorder"] = controlBorderBrush;
+		base.Resources["DropDownText"] = new SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 20, 20));
+		base.Resources["DropDownDivider"] = cardBorderBrush;
+		base.Resources["DropDownSelected"] = controlBrush;
+		base.Resources["DropDownHover"] = new SolidColorBrush(darkTheme
+			? System.Windows.Media.Color.FromRgb(57, 53, 58)
+			: System.Windows.Media.Color.FromRgb(235, 237, 234));
 
 		if (base.Content is Grid root)
 		{
@@ -1077,15 +1261,15 @@ public class SettingsWindow : Window, IComponentConnector
 			textBox.Background = inputBrush;
 			textBox.BorderBrush = controlBorderBrush;
 		}
+		InitializeCompactComboBoxes();
 		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
 		{
 			SolidColorBrush selectionText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 20, 20));
 			comboBox.Foreground = selectionText;
 			comboBox.Background = inputBrush;
 			comboBox.BorderBrush = controlBorderBrush;
-			Style itemStyle = new Style(typeof(System.Windows.Controls.ComboBoxItem));
-			itemStyle.Setters.Add(new Setter(System.Windows.Controls.Control.ForegroundProperty, selectionText));
-			comboBox.ItemContainerStyle = itemStyle;
+			comboBox.Style = _compactComboBoxStyle;
+			comboBox.ItemContainerStyle = _compactComboBoxItemStyle;
 			comboBox.ApplyTemplate();
 			foreach (System.Windows.Controls.TextBox editor in FindVisualChildren<System.Windows.Controls.TextBox>(comboBox))
 			{
@@ -1381,6 +1565,10 @@ public class SettingsWindow : Window, IComponentConnector
 		if (_plainLyricsAutoScrollBox != null)
 		{
 			_plainLyricsAutoScrollBox.IsChecked = settings.PlainLyricsAutoScroll;
+		}
+		if (_showAllLyricsBox != null)
+		{
+			_showAllLyricsBox.IsChecked = settings.ShowAllLyrics;
 		}
 		LockOnStartupBox.IsChecked = settings.LockOnStartup;
 		StartWithWindowsBox.IsChecked = settings.StartWithWindows;
@@ -1776,6 +1964,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.ShowStatusWhenIdle = ShowIdleStatusBox.IsChecked == true;
 		appSettings.EnablePlainLyricsFallback = PlainLyricsFallbackBox.IsChecked == true;
 		appSettings.PlainLyricsAutoScroll = _plainLyricsAutoScrollBox?.IsChecked != false;
+		appSettings.ShowAllLyrics = _showAllLyricsBox?.IsChecked == true;
 		appSettings.LockOnStartup = LockOnStartupBox.IsChecked == true;
 		appSettings.StartWithWindows = StartWithWindowsBox.IsChecked == true;
 		appSettings.ShortcutsEnabled = ShortcutsEnabledBox.IsChecked == true;

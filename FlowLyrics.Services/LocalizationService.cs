@@ -57,6 +57,19 @@ public static class LocalizationService
 		["ru-RU"] = D(("Plain lyrics scroll continuously. Choose from LRCLIB to look for synchronized lyrics.", "Несинхронизированный текст прокручивается непрерывно. Выберите вариант LRCLIB для поиска синхронного текста."))
 	};
 
+	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> TextOptionTranslations = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+	{
+		["ja-JP"] = D(("Auto scroll plain lyrics", "同期なし歌詞を自動スクロール"), ("Show all lyrics", "歌詞を全文表示")),
+		["zh-CN"] = D(("Auto scroll plain lyrics", "自动滚动非同步歌词"), ("Show all lyrics", "显示全部歌词")),
+		["zh-TW"] = D(("Auto scroll plain lyrics", "自動捲動非同步歌詞"), ("Show all lyrics", "顯示全部歌詞")),
+		["ko-KR"] = D(("Auto scroll plain lyrics", "비동기 가사 자동 스크롤"), ("Show all lyrics", "전체 가사 표시")),
+		["es-ES"] = D(("Auto scroll plain lyrics", "Desplazar letra no sincronizada"), ("Show all lyrics", "Mostrar toda la letra")),
+		["fr-FR"] = D(("Auto scroll plain lyrics", "Défilement des paroles non synchronisées"), ("Show all lyrics", "Afficher toutes les paroles")),
+		["de-DE"] = D(("Auto scroll plain lyrics", "Unsynchronisierten Text automatisch scrollen"), ("Show all lyrics", "Gesamten Liedtext anzeigen")),
+		["pt-BR"] = D(("Auto scroll plain lyrics", "Rolar letra sem sincronização"), ("Show all lyrics", "Mostrar toda a letra")),
+		["ru-RU"] = D(("Auto scroll plain lyrics", "Автопрокрутка несинхронного текста"), ("Show all lyrics", "Показать весь текст"))
+	};
+
 	public static string CurrentLanguage { get; private set; } = "en-US";
 
 	public static IReadOnlyList<LanguageOption> Languages { get; } = new LanguageOption[10]
@@ -114,6 +127,10 @@ public static class LocalizationService
 			return value2;
 		}
 		if (PlainLyricsTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
+		{
+			return value2;
+		}
+		if (TextOptionTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
 			return value2;
 		}

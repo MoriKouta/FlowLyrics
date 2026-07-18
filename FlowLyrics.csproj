@@ -16,6 +16,8 @@
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets/branding/FlowLyrics_logoF.ico</ApplicationIcon>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(UseRecoveredReferences)' != 'true'">
@@ -23,12 +25,12 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(UseRecoveredReferences)' == 'true'">
+  <ItemGroup>
     <EmbeddedResource Include="FlowLyrics.g.resources" LogicalName="FlowLyrics.g.resources" />
     <EmbeddedResource Include="assets/branding/FlowLyrics_logoF.ico" LogicalName="assets/branding/FlowLyrics_logoF.ico" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(UseRecoveredReferences)' == 'true'">
     <Reference Include="WindowsBase" HintPath="../recovered/bundle-all/WindowsBase.dll" />
     <Reference Include="PresentationCore" HintPath="../recovered/bundle-all/PresentationCore.dll" />
     <Reference Include="PresentationFramework" HintPath="../recovered/bundle-all/PresentationFramework.dll" />

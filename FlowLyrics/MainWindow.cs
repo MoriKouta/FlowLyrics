@@ -153,11 +153,11 @@ public class MainWindow : Window, IComponentConnector
 
 	private Viewbox? _fullLyricsViewbox;
 
-	private System.Windows.Controls.Button? _showAllLyricsButton;
-
 	private System.Windows.Controls.Button? _reverseColorsButton;
 
-	private TextBlock? _reverseColorsLabel;
+	private Canvas? _reverseColorsIcon;
+
+	private readonly List<Ellipse> _volumeWaveDots = new List<Ellipse>();
 
 	private System.Windows.Media.Color _trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 
@@ -278,10 +278,11 @@ public class MainWindow : Window, IComponentConnector
 		InitializeComponent();
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
+		InitializeVolumeIcon();
 		InitializePlaybackTimeline();
 		EnsureReverseColorsButton();
-		EnsureShowAllLyricsButton();
 		_settings = _settingsService.Load();
+		_showAllLyrics = _settings.ShowAllLyrics;
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
 		_mediaTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -745,18 +746,13 @@ public class MainWindow : Window, IComponentConnector
 
 	private void ResetLyricsPresentationState()
 	{
-		_showAllLyrics = false;
+		_showAllLyrics = _settings.ShowAllLyrics;
 		_plainLyricsScrollMode = false;
 		_plainLyricsUserScrollPaused = false;
 		_plainLyricsLayoutKey = null;
 		_fullLyricsLayoutKey = null;
 		_lastLineIndex = int.MinValue;
 		DisableFullLyricsViewport();
-		if (_showAllLyricsButton != null)
-		{
-			_showAllLyricsButton.Opacity = 0.72;
-			_showAllLyricsButton.ToolTip = T("Show all lyrics");
-		}
 	}
 
 	private void EnsurePlainLyricsLayout()
@@ -1185,6 +1181,18 @@ public class MainWindow : Window, IComponentConnector
 	private void ApplyVisualSettings()
 	{
 		_settings.Normalize();
+		bool showAllChanged = _showAllLyrics != _settings.ShowAllLyrics;
+		_showAllLyrics = _settings.ShowAllLyrics;
+		if (showAllChanged)
+		{
+			_fullLyricsLayoutKey = null;
+			_plainLyricsLayoutKey = null;
+			_lastLineIndex = int.MinValue;
+			if (!_showAllLyrics)
+			{
+				DisableFullLyricsViewport();
+			}
+		}
 		ApplyUiLanguage();
 		base.Resources["UiAccentBrush"] = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
 		UpdatePlayerButtonBorders();
@@ -1250,10 +1258,6 @@ public class MainWindow : Window, IComponentConnector
 		yield return PreviousButton;
 		yield return PlayPauseButton;
 		yield return NextButton;
-		if (_showAllLyricsButton != null)
-		{
-			yield return _showAllLyricsButton;
-		}
 		if (_reverseColorsButton != null)
 		{
 			yield return _reverseColorsButton;
@@ -1293,10 +1297,6 @@ public class MainWindow : Window, IComponentConnector
 		NextButton.ToolTip = T("Next track");
 		VolumeButton.ToolTip = T("Volume");
 		SettingsButton.ToolTip = T("Settings...");
-		if (_showAllLyricsButton != null)
-		{
-			_showAllLyricsButton.ToolTip = T(_showAllLyrics ? "Return to following lyrics" : "Show all lyrics");
-		}
 		UpdateReverseColorsButtonVisual();
 		_tray?.UpdateLanguage(_settings.Language);
 		UpdateLockButtonVisual();
@@ -1328,10 +1328,6 @@ public class MainWindow : Window, IComponentConnector
 		}
 		LockButton.Visibility = Visibility.Visible;
 		SettingsButton.Visibility = Visibility.Visible;
-		if (_showAllLyricsButton != null)
-		{
-			_showAllLyricsButton.Visibility = flag4 ? Visibility.Visible : Visibility.Collapsed;
-		}
 		bool flag6 = num < 68.0;
 		PlayPauseButton.Width = (flag6 ? 34 : 50);
 		PlayPauseButton.Height = (flag6 ? 34 : 50);
@@ -1520,25 +1516,89 @@ public class MainWindow : Window, IComponentConnector
 		SetPlaybackTimeText(_playbackDurationText, TimeSpan.Zero);
 	}
 
+	private void InitializeVolumeIcon()
+	{
+		VolumeLabel.Visibility = Visibility.Collapsed;
+		_volumeWaveDots.Clear();
+		Canvas icon = new Canvas
+		{
+			Width = 21.0,
+			Height = 18.0,
+			IsHitTestVisible = false
+		};
+		foreach ((double x, double y) in new[]
+		{
+			(2.0, 7.0), (2.0, 10.5),
+			(5.0, 5.5), (5.0, 8.0), (5.0, 10.5), (5.0, 13.0),
+			(8.0, 4.0), (8.0, 6.5), (8.0, 9.0), (8.0, 11.5), (8.0, 14.0)
+		})
+		{
+			AddDot(icon, x, y, 2.1);
+		}
+		foreach ((double x, double y) in new[]
+		{
+			(12.0, 5.5), (12.8, 9.0), (12.0, 12.5),
+			(16.0, 3.0), (17.0, 6.0), (17.4, 9.0), (17.0, 12.0), (16.0, 15.0)
+		})
+		{
+			Ellipse waveDot = AddDot(icon, x, y, 2.1);
+			_volumeWaveDots.Add(waveDot);
+		}
+		VolumeButton.Content = icon;
+	}
+
+	private static Canvas CreateDotContrastIcon()
+	{
+		Canvas icon = new Canvas
+		{
+			Width = 18.0,
+			Height = 18.0,
+			IsHitTestVisible = false
+		};
+		foreach ((double x, double y) in new[]
+		{
+			(9.0, 1.5), (5.2, 2.5), (2.5, 5.2), (1.5, 9.0), (2.5, 12.8), (5.2, 15.5),
+			(9.0, 16.5), (12.8, 15.5), (15.5, 12.8), (16.5, 9.0), (15.5, 5.2), (12.8, 2.5),
+			(5.0, 6.0), (8.0, 6.0), (4.2, 9.0), (7.2, 9.0), (5.0, 12.0), (8.0, 12.0)
+		})
+		{
+			AddDot(icon, x, y, 2.0);
+		}
+		return icon;
+	}
+
+	private static Ellipse AddDot(Canvas canvas, double centerX, double centerY, double size)
+	{
+		Ellipse dot = new Ellipse
+		{
+			Width = size,
+			Height = size,
+			Fill = System.Windows.Media.Brushes.White
+		};
+		Canvas.SetLeft(dot, centerX - size / 2.0);
+		Canvas.SetTop(dot, centerY - size / 2.0);
+		canvas.Children.Add(dot);
+		return dot;
+	}
+
+	private void UpdateVolumeIcon(bool muted)
+	{
+		foreach (Ellipse dot in _volumeWaveDots)
+		{
+			dot.Opacity = muted ? 0.18 : 1.0;
+		}
+	}
+
 	private void EnsureReverseColorsButton()
 	{
 		if (_reverseColorsButton != null)
 		{
 			return;
 		}
-		_reverseColorsLabel = new TextBlock
-		{
-			Text = "REV",
-			FontFamily = _englishDotFont,
-			FontSize = 7.5,
-			FontWeight = FontWeights.Bold,
-			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-			VerticalAlignment = VerticalAlignment.Center,
-			Tag = "NoTranslate"
-		};
+		_reverseColorsIcon = CreateDotContrastIcon();
 		_reverseColorsButton = new System.Windows.Controls.Button
 		{
-			Content = _reverseColorsLabel,
+			Content = _reverseColorsIcon,
 			ToolTip = "Reverse Colors",
 			Tag = "NoTranslate"
 		};
@@ -1552,57 +1612,6 @@ public class MainWindow : Window, IComponentConnector
 		RightControlGroup.Children.Insert(index, _reverseColorsButton);
 	}
 
-	private void EnsureShowAllLyricsButton()
-	{
-		if (_showAllLyricsButton != null)
-		{
-			return;
-		}
-		_showAllLyricsButton = new System.Windows.Controls.Button
-		{
-			Content = "ALL",
-			FontFamily = _englishDotFont,
-			FontSize = 7.0,
-			FontWeight = FontWeights.Bold,
-			Tag = "NoTranslate",
-			ToolTip = "Show all lyrics",
-			Opacity = 0.72
-		};
-		if (base.Resources["SmallMediaButton"] is Style style)
-		{
-			_showAllLyricsButton.Style = style;
-		}
-		_showAllLyricsButton.Click += ShowAllLyricsButton_Click;
-		LeftControlGroup.Children.Add(_showAllLyricsButton);
-	}
-
-	private void ShowAllLyricsButton_Click(object sender, RoutedEventArgs e)
-	{
-		SetShowAllLyrics(!_showAllLyrics);
-	}
-
-	private void SetShowAllLyrics(bool enabled)
-	{
-		_showAllLyrics = enabled && _lyrics != null && (_lyrics.HasSyncedLyrics || _lyrics.HasPlainLyrics);
-		if (!_showAllLyrics)
-		{
-			DisableFullLyricsViewport();
-			_plainLyricsLayoutKey = null;
-			_lastLineIndex = int.MinValue;
-		}
-		else
-		{
-			_plainLyricsUserScrollPaused = true;
-			_fullLyricsLayoutKey = null;
-		}
-		if (_showAllLyricsButton != null)
-		{
-			_showAllLyricsButton.Opacity = _showAllLyrics ? 1.0 : 0.72;
-			_showAllLyricsButton.ToolTip = T(_showAllLyrics ? "Return to following lyrics" : "Show all lyrics");
-		}
-		RenderLyrics();
-	}
-
 	private void ReverseColorsButton_Click(object sender, RoutedEventArgs e)
 	{
 		_settings.ReverseColors = !_settings.ReverseColors;
@@ -1613,12 +1622,12 @@ public class MainWindow : Window, IComponentConnector
 
 	private void UpdateReverseColorsButtonVisual()
 	{
-		if (_reverseColorsButton == null || _reverseColorsLabel == null)
+		if (_reverseColorsButton == null || _reverseColorsIcon == null)
 		{
 			return;
 		}
-		_reverseColorsLabel.Text = _settings.ReverseColors ? "REV" : "REV";
 		_reverseColorsButton.ToolTip = _settings.ReverseColors ? "Reverse Colors: On" : "Reverse Colors: Off";
+		_reverseColorsIcon.Opacity = _settings.ReverseColors ? 1.0 : 0.72;
 	}
 
 	private void UpdateOverlayChromeColors()
@@ -1934,7 +1943,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			return true;
 		}
-		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_showAllLyricsButton == null || !IsPointOverElement(_showAllLyricsButton, screenPoint)) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
+		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
 		{
 			return IsPointOverElement(VolumeSlider, screenPoint);
 		}
@@ -2384,11 +2393,13 @@ public class MainWindow : Window, IComponentConnector
 			_lastSpotifyVolume = volume;
 			VolumeSlider.Value = _lastSpotifyVolume;
 			VolumeLabel.Text = (muted ? "MUTE" : "VOL");
+			UpdateVolumeIcon(muted);
 		}
 		else
 		{
 			VolumeSlider.Value = _lastSpotifyVolume;
 			VolumeLabel.Text = "VOL";
+			UpdateVolumeIcon(muted: false);
 		}
 		_updatingVolume = false;
 		VolumePopup.IsOpen = true;
@@ -2511,6 +2522,7 @@ public class MainWindow : Window, IComponentConnector
 			_lastSpotifyVolume = e.NewValue;
 			_pendingSpotifyVolume = e.NewValue;
 			VolumeLabel.Text = "VOL";
+			UpdateVolumeIcon(muted: false);
 			if (!_volumeWriteTimer.IsEnabled)
 			{
 				_volumeWriteTimer.Start();
@@ -2528,6 +2540,7 @@ public class MainWindow : Window, IComponentConnector
 			_lastSpotifyVolume = volume;
 			VolumeSlider.Value = volume;
 			VolumeLabel.Text = (muted ? "MUTE" : "VOL");
+			UpdateVolumeIcon(muted);
 			_updatingVolume = false;
 		}
 	}

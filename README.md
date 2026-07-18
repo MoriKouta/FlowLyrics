@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Spotify on Windows. It follows the track playing in the Spotify desktop app, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.0-dev.9` confirmation build. It is not the final `1.3.0` release.
+> This package is the `1.3.0-dev.10` confirmation build. It is not the final `1.3.0` release.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -17,7 +17,7 @@ It does not require a Spotify Developer account, Client ID, or account password.
 - Per-track cache clearing and a one-minute limit for “not found” cache entries
 - Synchronized lyrics from LRCLIB with local caching and automatic retries
 - Continuous full-text scrolling when only plain lyrics are available, with manual-scroll pause and an auto-scroll switch
-- An `ALL` player control that fits the complete lyrics into the current overlay window
+- A Settings checkbox that fits the complete lyrics into the current overlay window and stays enabled while Settings is open
 - Local `.lrc` support with automatic file-change detection
 - Transparent or colored background, always-on-top mode, and click-through lock mode
 - Fluid wrapping and automatic font scaling for narrow or small windows
@@ -40,7 +40,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download `FlowLyrics-v1.3.0-dev.9-win-x64-portable.zip` from the provided development build.
+1. Download `FlowLyrics-v1.3.0-dev.10-win-x64-portable.zip` from the provided development build.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in the Spotify desktop app.
@@ -56,9 +56,9 @@ Windows SmartScreen may appear because the current personal build is not code-si
 | Drag any corner grip | Resize the window |
 | Three-dot button or right-click | Open Settings and lyric actions |
 | Player controls | Previous, play/pause, next, and seek |
-| Hover VOL | Open the vertical Spotify-only volume slider |
-| Click VOL | Mute or unmute Spotify only |
-| Click REV | Reverse overlay colors while preserving the Player UI accent |
+| Hover the dot volume icon | Open the vertical Spotify-only volume slider |
+| Click the dot volume icon | Mute or unmute Spotify only |
+| Click the dot contrast icon | Reverse overlay colors while preserving the Player UI accent |
 | `Ctrl + Alt + L` | Lock or unlock the overlay |
 | `Ctrl + Alt + K` | Show or hide the overlay |
 | Double-click the tray icon | Show or hide the overlay |
@@ -67,7 +67,7 @@ Global shortcuts can be disabled in Settings if they conflict with another appli
 
 When locked, the lyrics area passes clicks through to applications behind it. Player controls remain usable while they are visible.
 
-VOL uses Spotify's Windows shared-mode audio sessions and searches every active output device. It never changes the system-wide master volume. Windows does not expose per-app attenuation for an exclusive-mode stream, so the slider is disabled while Spotify is using exclusive output.
+The volume control uses Spotify's Windows shared-mode audio sessions and searches every active output device. It never changes the system-wide master volume. Windows does not expose per-app attenuation for an exclusive-mode stream, so the slider is disabled while Spotify is using exclusive output.
 
 ## Lyrics selection and local LRC files
 

@@ -8,7 +8,7 @@ namespace FlowLyrics.Models;
 
 public sealed class AppSettings
 {
-	public int SettingsSchemaVersion { get; set; } = 13;
+	public int SettingsSchemaVersion { get; set; } = 14;
 
 	public string Language { get; set; } = "en-US";
 
@@ -112,6 +112,8 @@ public sealed class AppSettings
 
 	public bool PlainLyricsAutoScroll { get; set; } = true;
 
+	public bool ShowAllLyrics { get; set; }
+
 	public int GlobalLyricsOffsetMs { get; set; }
 
 	public Dictionary<string, int> TrackOffsetsMs { get; set; } = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -123,7 +125,7 @@ public sealed class AppSettings
 
 	public void Normalize()
 	{
-		SettingsSchemaVersion = Math.Max(13, SettingsSchemaVersion);
+		SettingsSchemaVersion = Math.Max(14, SettingsSchemaVersion);
 		Language = LocalizationService.NormalizeLanguage(Language);
 		WindowWidth = Math.Clamp(WindowWidth, 120.0, 3840.0);
 		WindowHeight = Math.Clamp(WindowHeight, 40.0, 1200.0);

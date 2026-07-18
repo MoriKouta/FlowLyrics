@@ -288,7 +288,30 @@
             </StackPanel>
             <StackPanel Name="RightControlGroup" Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal">
               <Button Name="VolumeButton" Style="{StaticResource SmallMediaButton}" ToolTip="Volume" Click="VolumeButton_Click" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
-                <TextBlock Name="VolumeLabel" FontFamily="{DynamicResource DotFont}" FontSize="8" Foreground="#FFFFFFFF" Text="VOL" />
+                <Grid>
+                  <TextBlock Name="VolumeLabel" Visibility="Collapsed" FontFamily="{DynamicResource DotFont}" FontSize="8" Foreground="#FFFFFFFF" Text="VOL" />
+                  <Canvas Width="21" Height="18" IsHitTestVisible="False">
+                    <Ellipse Canvas.Left="0.95" Canvas.Top="5.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="0.95" Canvas.Top="9.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="3.95" Canvas.Top="4.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="3.95" Canvas.Top="6.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="3.95" Canvas.Top="9.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="3.95" Canvas.Top="11.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="6.95" Canvas.Top="2.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="6.95" Canvas.Top="5.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="6.95" Canvas.Top="7.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="6.95" Canvas.Top="10.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="6.95" Canvas.Top="12.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="10.95" Canvas.Top="4.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="11.75" Canvas.Top="7.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="10.95" Canvas.Top="11.45" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="14.95" Canvas.Top="1.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="15.95" Canvas.Top="4.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="16.35" Canvas.Top="7.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="15.95" Canvas.Top="10.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                    <Ellipse Canvas.Left="14.95" Canvas.Top="13.95" Width="2.1" Height="2.1" Fill="#FFFFFFFF" />
+                  </Canvas>
+                </Grid>
               </Button>
               <Button Name="SettingsButton" Style="{StaticResource SmallMediaButton}" ToolTip="Settings..." Click="Settings_Click">
                 <Grid Width="17" Height="3" HorizontalAlignment="Center" VerticalAlignment="Center">

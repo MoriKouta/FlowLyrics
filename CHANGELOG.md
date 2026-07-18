@@ -12,12 +12,14 @@
 - Added current time, track duration, and a Spotify-style seek hover timestamp to the playback bar.
 - Added corrected dot-font punctuation and common accented Latin letters.
 - Added a plain-lyrics auto-scroll setting that pauses after manual scrolling.
-- Added an overlay `ALL` control that fits the complete lyric text into the current window.
+- Added a persistent Show All Lyrics setting beside plain-lyrics auto-scroll.
+- Added compact rounded dropdowns with selected-item dots and chevrons for language, font, and other selectors.
+- Added dot-style volume and contrast icons to the player.
 - Added compact toggle selectors for text alignment and active-line position.
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.9`.
+- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.10`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
@@ -36,6 +38,8 @@
 - Replaced the visible-lines control with automatic lyric-window sizing.
 - Replaced native Settings scrollbars with slim Player UI-colored faders.
 - Unified the redundant Cancel and Close actions into one Close button.
+- Moved full-lyrics display out of the player and into Settings, next to plain-lyrics auto-scroll.
+- Simplified Reset Settings into a compact single-row control.
 
 ### Fixed
 
@@ -61,6 +65,7 @@
 - Fixed Color Preset labels at their logical XAML source so Reverse Colors and the English dot font apply regardless of tab realization timing.
 - Fixed the VOL hover gap between the button and popup so the slider remains reachable without delaying dismissal elsewhere.
 - Removed transient Working and Updated messages after clearing a track selection/cache.
+- Kept Show All Lyrics active when Settings is opened, previewed, or closed.
 
 ### Notes
 
