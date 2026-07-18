@@ -11,8 +11,8 @@
       <FontFamily x:Key="DotFont">pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Microsoft JhengHei UI, Malgun Gothic</FontFamily>
       <FontFamily x:Key="EnglishDotFont">pack://application:,,,/Assets/Fonts/#Flow Dots, Segoe UI</FontFamily>
       <Style x:Key="Card" TargetType="{x:Type Border}">
-        <Setter Property="Background" Value="{StaticResource Panel}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+        <Setter Property="Background" Value="{DynamicResource Panel}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Line}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Border.CornerRadius" Value="10" />
         <Setter Property="Border.Padding" Value="20" />
@@ -27,7 +27,7 @@
         <Setter Property="Margin" Value="0,0,0,14" />
       </Style>
       <Style x:Key="FieldLabel" TargetType="{x:Type TextBlock}">
-        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Foreground" Value="{DynamicResource Paper}" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
         <Setter Property="FontSize" Value="11" />
@@ -39,10 +39,10 @@
         <Setter Property="FrameworkElement.Tag" Value="NoTranslate" />
       </Style>
       <Style x:Key="{x:Type TextBlock}" TargetType="{x:Type TextBlock}">
-        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Foreground" Value="{DynamicResource Paper}" />
       </Style>
       <Style x:Key="{x:Type Button}" TargetType="{x:Type Button}">
-        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Foreground" Value="{DynamicResource Paper}" />
         <Setter Property="Background" Value="#FFDCDFDC" />
         <Setter Property="BorderBrush" Value="#FFAEB4AF" />
         <Setter Property="BorderThickness" Value="1" />
@@ -84,7 +84,7 @@
         <Setter Property="FontSize" Value="11" />
       </Style>
       <Style x:Key="{x:Type CheckBox}" TargetType="{x:Type CheckBox}">
-        <Setter Property="Foreground" Value="{StaticResource Paper}" />
+        <Setter Property="Foreground" Value="{DynamicResource Paper}" />
         <Setter Property="Margin" Value="0,6" />
         <Setter Property="FontFamily" Value="{DynamicResource DotFont}" />
         <Setter Property="FontSize" Value="11" />
@@ -172,7 +172,7 @@
                   <Thumb Width="18" Height="18">
                     <Control.Template>
                       <ControlTemplate TargetType="{x:Type Thumb}">
-                        <Ellipse StrokeThickness="1" Fill="{DynamicResource Orange}" Stroke="{StaticResource Paper}" />
+                        <Ellipse StrokeThickness="1" Fill="{DynamicResource Orange}" Stroke="{DynamicResource Paper}" />
                       </ControlTemplate>
                     </Control.Template>
                   </Thumb>
@@ -183,7 +183,7 @@
         </Setter>
       </Style>
       <Style x:Key="{x:Type TabItem}" TargetType="{x:Type TabItem}">
-        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+        <Setter Property="Foreground" Value="{DynamicResource Muted}" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="FontFamily" Value="{StaticResource EnglishDotFont}" />
         <Setter Property="FrameworkElement.Tag" Value="NoTranslate" />
@@ -224,7 +224,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.5" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.6" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>

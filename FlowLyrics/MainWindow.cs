@@ -300,16 +300,17 @@ public class MainWindow : Window, IComponentConnector
 		};
 		_volumePopupCloseTimer = new DispatcherTimer(DispatcherPriority.Input)
 		{
-			Interval = TimeSpan.FromMilliseconds(450L)
+			Interval = TimeSpan.FromMilliseconds(120L)
 		};
 		_volumePopupCloseTimer.Tick += delegate
 		{
 			_volumePopupCloseTimer.Stop();
-			if (!VolumeButton.IsMouseOver && !VolumePopupSurface.IsMouseOver)
+			if (!IsMouseOverVolumeControls())
 			{
-				VolumePopup.IsOpen = false;
+				CloseVolumePopup();
 			}
 		};
+		base.Deactivated += delegate { CloseVolumePopup(); };
 		_volumeWriteTimer = new DispatcherTimer(DispatcherPriority.Input)
 		{
 			Interval = TimeSpan.FromMilliseconds(40L)
@@ -493,7 +494,7 @@ public class MainWindow : Window, IComponentConnector
 				TrackStatusText.Text = "SPOTIFY / WAITING";
 				TrackTitleText.Text = T("Play something in Spotify");
 				_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
-				StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
+				StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 				if (_settings.ShowStatusWhenIdle)
 				{
 					SetStatus(T("Play something in Spotify"), T("Following Spotify for Windows automatically"), animate: false);
@@ -523,7 +524,7 @@ public class MainWindow : Window, IComponentConnector
 					TrackStatusText.Text = "SPOTIFY / CHECKING CACHE";
 					TrackTitleText.Text = playbackSnapshot.Track.DisplayName;
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
-					StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
+					StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 					SetStatus(T("Checking saved lyrics…"), playbackSnapshot.Track.DisplayName, animate: false);
 					LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
 				}
@@ -745,8 +746,8 @@ public class MainWindow : Window, IComponentConnector
 		}
 
 		RebuildLineControls(lines.Count, lines, 0);
-		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(8.0, LyricsScrollViewer.ViewportHeight * 0.12), 0.0,
-			Math.Max(16.0, LyricsScrollViewer.ViewportHeight * 0.45));
+		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(6.0, LyricsScrollViewer.ViewportHeight * 0.07), 0.0,
+			Math.Max(10.0, LyricsScrollViewer.ViewportHeight * 0.14));
 		_activeLineIndex = -1;
 		_lastLineIndex = int.MinValue;
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -754,7 +755,11 @@ public class MainWindow : Window, IComponentConnector
 			OutlinedText line = _lineControls[i];
 			line.Fill = ResolveTextBrush(i, isActive: true);
 			line.FontWeight = FontWeights.SemiBold;
-			line.FontSize = _settings.FontSize * Math.Max(0.78, _settings.InactiveFontScale);
+			line.FontSize = Math.Max(_settings.MinimumFontSize, _settings.FontSize * Math.Max(0.68, _settings.InactiveFontScale * 0.86));
+			line.MaximumLines = Math.Max(8, _settings.MaximumWrapLines);
+			line.AutoFit = true;
+			line.Wrap = true;
+			line.Margin = new Thickness(0.0, _settings.LineSpacing * 0.25, 0.0, _settings.LineSpacing * 0.25);
 			line.Opacity = 1.0;
 		}
 		LyricsStackPanel.UpdateLayout();
@@ -1317,16 +1322,6 @@ public class MainWindow : Window, IComponentConnector
 			Foreground = System.Windows.Media.Brushes.White,
 			Text = "0:00"
 		};
-		Border hoverSurface = new Border
-		{
-			Padding = new Thickness(7.0, 4.0, 7.0, 4.0),
-			CornerRadius = new CornerRadius(4.0),
-			Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(242, 32, 32, 32)),
-			BorderThickness = new Thickness(1.0),
-			Child = _seekHoverText,
-			IsHitTestVisible = false
-		};
-		hoverSurface.SetResourceReference(Border.BorderBrushProperty, "UiAccentBrush");
 		_seekHoverPopup = new Popup
 		{
 			Placement = PlacementMode.Relative,
@@ -1334,7 +1329,7 @@ public class MainWindow : Window, IComponentConnector
 			AllowsTransparency = true,
 			StaysOpen = true,
 			IsHitTestVisible = false,
-			Child = hoverSurface
+			Child = _seekHoverText
 		};
 		PlaybackSeekSlider.MouseEnter += PlaybackSeekSlider_MouseEnter;
 		PlaybackSeekSlider.MouseMove += PlaybackSeekSlider_MouseMove;
@@ -1403,7 +1398,7 @@ public class MainWindow : Window, IComponentConnector
 			: System.Windows.Media.Brushes.White;
 		TrackStatusText.Foreground = content;
 		TrackTitleText.Foreground = contentStrong;
-		StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
+		StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 		if (_playbackPositionText != null)
 		{
 			_playbackPositionText.Foreground = content;
@@ -1491,8 +1486,9 @@ public class MainWindow : Window, IComponentConnector
 		double x = Math.Clamp(e.GetPosition(PlaybackSeekSlider).X, 0.0, PlaybackSeekSlider.ActualWidth);
 		double ratio = x / PlaybackSeekSlider.ActualWidth;
 		_seekHoverText.Text = FormatPlaybackTime(TimeSpan.FromMilliseconds(_snapshot.Track.Duration.TotalMilliseconds * ratio));
-		_seekHoverPopup.HorizontalOffset = x - 25.0;
-		_seekHoverPopup.VerticalOffset = -34.0;
+		_seekHoverText.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+		_seekHoverPopup.HorizontalOffset = x - _seekHoverText.DesiredSize.Width / 2.0;
+		_seekHoverPopup.VerticalOffset = -_seekHoverText.DesiredSize.Height - 7.0;
 		_seekHoverPopup.IsOpen = true;
 	}
 
@@ -1523,7 +1519,7 @@ public class MainWindow : Window, IComponentConnector
 		TrackStatusText.Text = "SPOTIFY / " + status;
 		TrackTitleText.Text = _snapshot?.Track.DisplayName ?? "FlowLyrics";
 		_trackStatusColor = color;
-		StatusDot.Fill = new SolidColorBrush(ApplyReverseColor(_trackStatusColor));
+		StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 	}
 
 	private static int FindActiveLine(IReadOnlyList<LyricLine> lines, TimeSpan position)
@@ -1766,6 +1762,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void OpenSettings()
 	{
+		CloseVolumePopup();
 		if (_settingsWindow != null)
 		{
 			_settingsWindow.ApplyAndClose();
@@ -2147,6 +2144,37 @@ public class MainWindow : Window, IComponentConnector
 		_volumePopupCloseTimer.Start();
 	}
 
+	private bool IsMouseOverVolumeControls()
+	{
+		if (!VolumePopup.IsOpen)
+		{
+			return false;
+		}
+		try
+		{
+			System.Windows.Point screenPoint = PointToScreen(Mouse.GetPosition(this));
+			return IsPointOverElement(VolumeButton, screenPoint) || IsPointOverElement(VolumePopupSurface, screenPoint);
+		}
+		catch (InvalidOperationException)
+		{
+			return false;
+		}
+	}
+
+	private void CloseVolumePopup()
+	{
+		_volumePopupCloseTimer.Stop();
+		VolumePopup.IsOpen = false;
+		if (_isDirectVolumeDrag)
+		{
+			_isDirectVolumeDrag = false;
+			if (VolumeSlider.IsMouseCaptured)
+			{
+				VolumeSlider.ReleaseMouseCapture();
+			}
+		}
+	}
+
 	private void VolumeSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 	{
 		if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) == null && VolumeSlider.ActualHeight > 0.0)
@@ -2214,7 +2242,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private static CustomPopupPlacement[] PlaceVolumePopup(System.Windows.Size popupSize, System.Windows.Size targetSize, System.Windows.Point offset)
 	{
-		double x = (targetSize.Width - popupSize.Width) / 2.0 - 3.0;
+		double x = (targetSize.Width - popupSize.Width) / 2.0 - 14.0;
 		double y = 0.0 - popupSize.Height - 2.0;
 		return new CustomPopupPlacement[1]
 		{

@@ -37,6 +37,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	private string _accentColor;
 
+	private bool _reverseColors;
+
 	private CancellationTokenSource? _searchCancellation;
 
 	private int _searchGeneration;
@@ -75,7 +77,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	public event EventHandler? SelectionApplied;
 
-	public CandidateSearchWindow(TrackInfo track, LyricsService lyricsService, string language, bool plainFallbackEnabled, string accentColor)
+	public CandidateSearchWindow(TrackInfo track, LyricsService lyricsService, string language, bool plainFallbackEnabled, string accentColor, bool reverseColors)
 	{
 		InitializeComponent();
 		_englishDotFont = (FontFamily)base.Resources["DotFont"];
@@ -84,7 +86,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		_language = LocalizationService.NormalizeLanguage(language);
 		_plainFallbackEnabled = plainFallbackEnabled;
 		_accentColor = accentColor;
-		SetAccentColor(accentColor);
+		_reverseColors = reverseColors;
+		SetAppearance(accentColor, reverseColors);
 		_loadingDots = LoadingDotLine.Children.OfType<Ellipse>().ToArray();
 		_loadingTimer = new DispatcherTimer(DispatcherPriority.Render)
 		{
@@ -117,11 +120,38 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	public void SetAccentColor(string value)
 	{
+		SetAppearance(value, _reverseColors);
+	}
+
+	public void SetAppearance(string accentColor, bool reverseColors)
+	{
 		try
 		{
-			Color color = (Color)ColorConverter.ConvertFromString(value.Trim());
+			Color color = (Color)ColorConverter.ConvertFromString(accentColor.Trim());
 			_accentColor = $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+			_reverseColors = reverseColors;
 			base.Resources["Orange"] = new SolidColorBrush(color);
+			base.Resources["WindowBackground"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(26, 24, 27)
+				: Color.FromRgb(229, 231, 228));
+			base.Resources["Panel"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(34, 32, 35)
+				: Color.FromRgb(242, 243, 241));
+			base.Resources["Paper"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(224, 221, 223)
+				: Color.FromRgb(29, 32, 30));
+			base.Resources["Muted"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(188, 183, 186)
+				: Color.FromRgb(58, 63, 60));
+			base.Resources["Control"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(48, 45, 49)
+				: Color.FromRgb(220, 223, 220));
+			base.Resources["ControlBorder"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(88, 83, 88)
+				: Color.FromRgb(174, 180, 175));
+			base.Resources["Input"] = new SolidColorBrush(reverseColors
+				? Color.FromRgb(42, 39, 43)
+				: Color.FromRgb(250, 250, 248));
 		}
 		catch
 		{

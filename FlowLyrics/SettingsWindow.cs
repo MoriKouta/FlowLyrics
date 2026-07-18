@@ -261,8 +261,10 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			base.Dispatcher.BeginInvoke((Action)delegate
 			{
+				InitializeReverseColorsControl();
 				CaptureLocalizableContent(this);
 				ApplyLanguage(_currentLanguage);
+				ApplySoftSettingsTheme();
 				RefreshLyricsTab();
 			});
 		}
@@ -383,6 +385,8 @@ public class SettingsWindow : Window, IComponentConnector
 		_reverseColorsSettingsButton.Click += delegate
 		{
 			_reverseColors = !_reverseColors;
+			ResultSettings.ReverseColors = _reverseColors;
+			ApplySoftSettingsTheme();
 			RefreshReverseColorsButton();
 			NotifyPreviewChanged();
 		};
@@ -393,20 +397,39 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void ApplySoftSettingsTheme()
 	{
-		if (_softThemeInitialized)
-		{
-			return;
-		}
-
-		SolidColorBrush windowBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(229, 231, 228));
-		SolidColorBrush cardBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(242, 243, 241));
-		SolidColorBrush cardBorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(207, 211, 207));
-		SolidColorBrush controlBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 223, 220));
-		SolidColorBrush controlBorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(174, 180, 175));
-		SolidColorBrush textBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 43, 41));
-		SolidColorBrush mutedBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(94, 100, 97));
-		SolidColorBrush headerBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(48, 50, 49));
-		SolidColorBrush footerBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(218, 221, 218));
+		SolidColorBrush windowBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(26, 24, 27)
+			: System.Windows.Media.Color.FromRgb(229, 231, 228));
+		SolidColorBrush cardBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(34, 32, 35)
+			: System.Windows.Media.Color.FromRgb(242, 243, 241));
+		SolidColorBrush cardBorderBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(67, 63, 67)
+			: System.Windows.Media.Color.FromRgb(207, 211, 207));
+		SolidColorBrush controlBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(48, 45, 49)
+			: System.Windows.Media.Color.FromRgb(220, 223, 220));
+		SolidColorBrush controlBorderBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(88, 83, 88)
+			: System.Windows.Media.Color.FromRgb(174, 180, 175));
+		SolidColorBrush textBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(224, 221, 223)
+			: System.Windows.Media.Color.FromRgb(29, 32, 30));
+		SolidColorBrush mutedBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(188, 183, 186)
+			: System.Windows.Media.Color.FromRgb(58, 63, 60));
+		SolidColorBrush headerBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(220, 222, 220)
+			: System.Windows.Media.Color.FromRgb(48, 50, 49));
+		SolidColorBrush headerTextBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(29, 32, 30)
+			: System.Windows.Media.Colors.White);
+		SolidColorBrush footerBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(37, 34, 38)
+			: System.Windows.Media.Color.FromRgb(218, 221, 218));
+		SolidColorBrush inputBrush = new SolidColorBrush(_reverseColors
+			? System.Windows.Media.Color.FromRgb(42, 39, 43)
+			: System.Windows.Media.Color.FromRgb(250, 250, 248));
 		SolidColorBrush accent = ParseColorBrush(UiColorBox.Text, System.Windows.Media.Color.FromRgb(byte.MaxValue, 138, 61));
 
 		base.Background = windowBrush;
@@ -433,9 +456,10 @@ public class SettingsWindow : Window, IComponentConnector
 			}
 		}
 
+		object? cardStyle = base.Resources["Card"];
 		foreach (Border border in FindVisualChildren<Border>(this))
 		{
-			if (border.CornerRadius.TopLeft >= 9.0 && !IsInsideHeader(border))
+			if ((ReferenceEquals(border.Style, cardStyle) || border.CornerRadius.TopLeft >= 9.0) && !IsInsideHeader(border))
 			{
 				border.Background = cardBrush;
 				border.BorderBrush = cardBorderBrush;
@@ -456,12 +480,13 @@ public class SettingsWindow : Window, IComponentConnector
 
 		foreach (TextBlock text in FindVisualChildren<TextBlock>(this))
 		{
-			if (IsInsideHeader(text) || IsAccentBrush(text.Foreground, accent.Color))
+			if (IsAccentBrush(text.Foreground, accent.Color))
 			{
 				continue;
 			}
-			if (text.Foreground is SolidColorBrush brush && GetLuminance(brush.Color) < 95.0)
+			if (IsInsideHeader(text))
 			{
+				text.Foreground = headerTextBrush;
 				continue;
 			}
 			text.Foreground = text.FontWeight >= FontWeights.SemiBold ? textBrush : mutedBrush;
@@ -480,13 +505,13 @@ public class SettingsWindow : Window, IComponentConnector
 		foreach (System.Windows.Controls.TextBox textBox in FindVisualChildren<System.Windows.Controls.TextBox>(this))
 		{
 			textBox.Foreground = textBrush;
-			textBox.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(250, 250, 248));
+			textBox.Background = inputBrush;
 			textBox.BorderBrush = controlBorderBrush;
 		}
 		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
 		{
 			comboBox.Foreground = textBrush;
-			comboBox.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(250, 250, 248));
+			comboBox.Background = inputBrush;
 			comboBox.BorderBrush = controlBorderBrush;
 		}
 		ControlTemplate softTabTemplate = CreateSoftTabTemplate(accent);
@@ -500,10 +525,11 @@ public class SettingsWindow : Window, IComponentConnector
 
 		if (_versionText != null)
 		{
-			_versionText.Foreground = System.Windows.Media.Brushes.White;
+			_versionText.Foreground = headerTextBrush;
 		}
 		RefreshReverseColorsButton();
 		_softThemeInitialized = true;
+		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
 	}
 
 	private ControlTemplate CreateSoftButtonTemplate(System.Windows.Media.Brush accent)
@@ -625,8 +651,12 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		else
 		{
-			_reverseColorsSettingsButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 223, 220));
-			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(50, 54, 52));
+			_reverseColorsSettingsButton.Background = new SolidColorBrush(_reverseColors
+				? System.Windows.Media.Color.FromRgb(48, 45, 49)
+				: System.Windows.Media.Color.FromRgb(220, 223, 220));
+			_reverseColorsSettingsButton.Foreground = new SolidColorBrush(_reverseColors
+				? System.Windows.Media.Color.FromRgb(224, 221, 223)
+				: System.Windows.Media.Color.FromRgb(29, 32, 30));
 		}
 	}
 
@@ -634,6 +664,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		_reverseColors = enabled;
 		ResultSettings.ReverseColors = enabled;
+		ApplySoftSettingsTheme();
 		RefreshReverseColorsButton();
 	}
 
@@ -926,7 +957,7 @@ public class SettingsWindow : Window, IComponentConnector
 			_candidateSearchWindow.Activate();
 			return;
 		}
-		CandidateSearchWindow window = new CandidateSearchWindow(trackInfo, _lyricsService, _currentLanguage, ResultSettings.EnablePlainLyricsFallback, UiColorBox.Text)
+		CandidateSearchWindow window = new CandidateSearchWindow(trackInfo, _lyricsService, _currentLanguage, ResultSettings.EnablePlainLyricsFallback, UiColorBox.Text, _reverseColors)
 		{
 			Owner = this
 		};
@@ -1252,6 +1283,8 @@ public class SettingsWindow : Window, IComponentConnector
 		BorderColorBox.Text = appSettings.BorderColor;
 		UiColorBox.Text = appSettings.UiColor;
 		_reverseColors = false;
+		ResultSettings.ReverseColors = false;
+		ApplySoftSettingsTheme();
 		RefreshReverseColorsButton();
 		_suppressPreview = false;
 		NotifyPreviewChanged();
@@ -1284,24 +1317,15 @@ public class SettingsWindow : Window, IComponentConnector
 			base.Resources["Orange"] = new SolidColorBrush(color);
 			if (_softThemeInitialized)
 			{
-				SolidColorBrush accent = new SolidColorBrush(color);
-				ControlTemplate template = CreateSoftButtonTemplate(accent);
-				foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
-				{
-					button.Template = template;
-				}
-				ControlTemplate tabTemplate = CreateSoftTabTemplate(accent);
-				foreach (TabItem tab in FindVisualChildren<TabItem>(this))
-				{
-					tab.Template = tabTemplate;
-				}
-				RefreshReverseColorsButton();
+				ApplySoftSettingsTheme();
 			}
 			if (_versionText != null)
 			{
-				_versionText.Foreground = System.Windows.Media.Brushes.White;
+				_versionText.Foreground = _reverseColors
+					? new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30))
+					: System.Windows.Media.Brushes.White;
 			}
-			_candidateSearchWindow?.SetAccentColor(value);
+			_candidateSearchWindow?.SetAppearance(value, _reverseColors);
 		}
 		catch
 		{
