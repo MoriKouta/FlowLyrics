@@ -629,21 +629,21 @@ public class SettingsWindow : Window, IComponentConnector
                     </ControlTemplate>
                   </ToggleButton.Template>
                 </ToggleButton>
-                <ContentPresenter x:Name="ContentSite" Margin="12,0,46,0"
-                                  VerticalAlignment="Center" HorizontalAlignment="Left"
-                                  IsHitTestVisible="False"
-                                  Content="{TemplateBinding SelectionBoxItem}"
-                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
-                <TextBox x:Name="PART_EditableTextBox" Margin="9,2,46,2" Padding="3,0"
-                         VerticalContentAlignment="Center" Visibility="Collapsed"
-                         Background="Transparent" BorderThickness="0"
-                         Foreground="{DynamicResource DropDownText}"
-                         FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
-                         IsReadOnly="{TemplateBinding IsReadOnly}" />
-                <Ellipse Width="6" Height="6" HorizontalAlignment="Right" VerticalAlignment="Center"
-                         Margin="0,0,31,0" Fill="{DynamicResource Orange}" />
-                <Path x:Name="Arrow" Width="9" Height="5" HorizontalAlignment="Right"
+				<Ellipse Width="6" Height="6" HorizontalAlignment="Left" VerticalAlignment="Center"
+				         Margin="12,0,0,0" Fill="{DynamicResource Orange}" />
+				<ContentPresenter x:Name="ContentSite" Margin="28,0,29,0"
+				                  VerticalAlignment="Center" HorizontalAlignment="Left"
+				                  IsHitTestVisible="False"
+				                  Content="{TemplateBinding SelectionBoxItem}"
+				                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+				                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+				<TextBox x:Name="PART_EditableTextBox" Margin="25,2,29,2" Padding="3,0"
+				         VerticalContentAlignment="Center" Visibility="Collapsed"
+				         Background="Transparent" BorderThickness="0"
+				         Foreground="{DynamicResource DropDownText}"
+				         FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+				         IsReadOnly="{TemplateBinding IsReadOnly}" />
+				<Path x:Name="Arrow" Width="9" Height="5" HorizontalAlignment="Right"
                       VerticalAlignment="Center" Margin="0,0,12,0" Stretch="Fill"
                       Stroke="{DynamicResource DropDownText}" StrokeThickness="1.5"
                       StrokeStartLineCap="Round" StrokeEndLineCap="Round"
@@ -1185,7 +1185,10 @@ public class SettingsWindow : Window, IComponentConnector
 		base.Resources["Muted"] = mutedBrush;
 		base.Resources["InputSurface"] = inputBrush;
 		base.Resources["ControlBorder"] = controlBorderBrush;
-		base.Resources["DropDownText"] = new SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 20, 20));
+		SolidColorBrush selectionText = new SolidColorBrush(darkTheme
+			? System.Windows.Media.Color.FromRgb(245, 245, 245)
+			: System.Windows.Media.Color.FromRgb(20, 20, 20));
+		base.Resources["DropDownText"] = selectionText;
 		base.Resources["DropDownDivider"] = cardBorderBrush;
 		base.Resources["DropDownSelected"] = controlBrush;
 		base.Resources["DropDownHover"] = new SolidColorBrush(darkTheme
@@ -1264,7 +1267,6 @@ public class SettingsWindow : Window, IComponentConnector
 		InitializeCompactComboBoxes();
 		foreach (System.Windows.Controls.ComboBox comboBox in FindVisualChildren<System.Windows.Controls.ComboBox>(this))
 		{
-			SolidColorBrush selectionText = new SolidColorBrush(System.Windows.Media.Color.FromRgb(20, 20, 20));
 			comboBox.Foreground = selectionText;
 			comboBox.Background = inputBrush;
 			comboBox.BorderBrush = controlBorderBrush;
@@ -1880,6 +1882,18 @@ public class SettingsWindow : Window, IComponentConnector
 		Save_Click(this, new RoutedEventArgs());
 	}
 
+	protected override void OnClosing(CancelEventArgs e)
+	{
+		// Settings are applied live. Treat the title-bar close button exactly like Close
+		// so presentation-only options (including Show All Lyrics) are never rolled back.
+		if (!Accepted && TryBuildSettings(out AppSettings settings, showError: false))
+		{
+			ResultSettings = settings;
+			Accepted = true;
+		}
+		base.OnClosing(e);
+	}
+
 	private void NotifyPreviewChanged()
 	{
 		if (!_suppressPreview && base.IsLoaded && TryBuildSettings(out AppSettings settings, showError: false))
@@ -1963,8 +1977,8 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.HideWhenPaused = HideWhenPausedBox.IsChecked == true;
 		appSettings.ShowStatusWhenIdle = ShowIdleStatusBox.IsChecked == true;
 		appSettings.EnablePlainLyricsFallback = PlainLyricsFallbackBox.IsChecked == true;
-		appSettings.PlainLyricsAutoScroll = _plainLyricsAutoScrollBox?.IsChecked != false;
-		appSettings.ShowAllLyrics = _showAllLyricsBox?.IsChecked == true;
+		appSettings.PlainLyricsAutoScroll = _plainLyricsAutoScrollBox?.IsChecked ?? ResultSettings.PlainLyricsAutoScroll;
+		appSettings.ShowAllLyrics = _showAllLyricsBox?.IsChecked ?? ResultSettings.ShowAllLyrics;
 		appSettings.LockOnStartup = LockOnStartupBox.IsChecked == true;
 		appSettings.StartWithWindows = StartWithWindowsBox.IsChecked == true;
 		appSettings.ShortcutsEnabled = ShortcutsEnabledBox.IsChecked == true;

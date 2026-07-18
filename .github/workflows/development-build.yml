@@ -27,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '1.3.0-dev.10'
+          $version = '1.3.0-dev.11'
           $publish = Join-Path $PWD 'publish'
           $package = Join-Path $PWD "FlowLyrics-v$version-win-x64-portable.zip"
 
@@ -49,7 +49,7 @@ jobs:
       - name: Upload confirmation build
         uses: actions/upload-artifact@v4
         with:
-          name: FlowLyrics-v1.3.0-dev.10-win-x64-portable
-          path: FlowLyrics-v1.3.0-dev.10-win-x64-portable.zip
+          name: FlowLyrics-v1.3.0-dev.11-win-x64-portable
+          path: FlowLyrics-v1.3.0-dev.11-win-x64-portable.zip
           if-no-files-found: error
           retention-days: 14

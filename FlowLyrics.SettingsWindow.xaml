@@ -231,7 +231,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.10" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.11" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>

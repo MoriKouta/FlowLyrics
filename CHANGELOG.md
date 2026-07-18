@@ -19,7 +19,7 @@
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.10`.
+- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.11`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
@@ -43,6 +43,10 @@
 
 ### Fixed
 
+- Rebuilt the player contrast and volume symbols on uniform dot grids with larger, cleaner marks.
+- Kept Show All Lyrics enabled when Settings is closed from the title bar or reopened.
+- Made compact dropdown text follow Reverse Colors and moved the selected-value dot before its label.
+- Rounded the LRCLIB full-search and title-only action buttons.
 - Improved VOL popup dismissal with continuous pointer monitoring and refined its horizontal alignment.
 - Improved seek timestamp alignment above the pointer.
 - Kept Color Preset names in the English dot font without changing their size.

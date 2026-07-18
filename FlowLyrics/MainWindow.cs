@@ -1522,26 +1522,36 @@ public class MainWindow : Window, IComponentConnector
 		_volumeWaveDots.Clear();
 		Canvas icon = new Canvas
 		{
-			Width = 21.0,
-			Height = 18.0,
+			Width = 31.0,
+			Height = 22.0,
 			IsHitTestVisible = false
 		};
-		foreach ((double x, double y) in new[]
+		const double originX = 1.55;
+		const double originY = 1.4;
+		const double spacing = 2.18;
+		const double dotSize = 2.12;
+		foreach ((int column, int row) in new[]
 		{
-			(2.0, 7.0), (2.0, 10.5),
-			(5.0, 5.5), (5.0, 8.0), (5.0, 10.5), (5.0, 13.0),
-			(8.0, 4.0), (8.0, 6.5), (8.0, 9.0), (8.0, 11.5), (8.0, 14.0)
+			(5, 0),
+			(3, 1), (5, 1),
+			(2, 2), (3, 2), (5, 2),
+			(0, 3), (1, 3), (2, 3), (3, 3), (5, 3),
+			(0, 4), (1, 4), (2, 4), (3, 4), (5, 4),
+			(0, 5), (1, 5), (2, 5), (3, 5), (5, 5),
+			(2, 6), (3, 6), (5, 6),
+			(3, 7), (5, 7),
+			(5, 8)
 		})
 		{
-			AddDot(icon, x, y, 2.1);
+			AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
 		}
-		foreach ((double x, double y) in new[]
+		foreach ((int column, int row) in new[]
 		{
-			(12.0, 5.5), (12.8, 9.0), (12.0, 12.5),
-			(16.0, 3.0), (17.0, 6.0), (17.4, 9.0), (17.0, 12.0), (16.0, 15.0)
+			(7, 2), (8, 3), (8, 4), (8, 5), (7, 6),
+			(10, 0), (11, 1), (12, 2), (12, 3), (13, 4), (12, 5), (12, 6), (11, 7), (10, 8)
 		})
 		{
-			Ellipse waveDot = AddDot(icon, x, y, 2.1);
+			Ellipse waveDot = AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
 			_volumeWaveDots.Add(waveDot);
 		}
 		VolumeButton.Content = icon;
@@ -1551,18 +1561,30 @@ public class MainWindow : Window, IComponentConnector
 	{
 		Canvas icon = new Canvas
 		{
-			Width = 18.0,
-			Height = 18.0,
+			Width = 27.0,
+			Height = 27.0,
 			IsHitTestVisible = false
 		};
-		foreach ((double x, double y) in new[]
+		const double center = 13.5;
+		const double radius = 10.5;
+		const double fillSpacing = 2.45;
+		const double dotSize = 2.15;
+		for (int index = 0; index < 30; index++)
 		{
-			(9.0, 1.5), (5.2, 2.5), (2.5, 5.2), (1.5, 9.0), (2.5, 12.8), (5.2, 15.5),
-			(9.0, 16.5), (12.8, 15.5), (15.5, 12.8), (16.5, 9.0), (15.5, 5.2), (12.8, 2.5),
-			(5.0, 6.0), (8.0, 6.0), (4.2, 9.0), (7.2, 9.0), (5.0, 12.0), (8.0, 12.0)
-		})
+			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 30.0;
+			AddDot(icon, center + Math.Cos(angle) * radius, center + Math.Sin(angle) * radius, dotSize);
+		}
+		for (int y = -4; y <= 4; y++)
 		{
-			AddDot(icon, x, y, 2.0);
+			for (int x = -4; x <= 0; x++)
+			{
+				double offsetX = x * fillSpacing;
+				double offsetY = y * fillSpacing;
+				if (offsetX * offsetX + offsetY * offsetY <= 9.15 * 9.15)
+				{
+					AddDot(icon, center + offsetX, center + offsetY, dotSize);
+				}
+			}
 		}
 		return icon;
 	}

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Markup;
 using System.Windows.Media;
@@ -105,6 +106,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		AlbumBox.Text = track.Album;
 		ApplyLanguage();
 		InitializeSearchActions();
+		ApplySearchActionChrome();
 		InitializeContributionFooter();
 		base.Loaded += async delegate
 		{
@@ -201,6 +203,49 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		buttons.Children.Add(SearchButton);
 		Grid.SetColumn(buttons, 1);
 		actions.Children.Add(buttons);
+	}
+
+	private void ApplySearchActionChrome()
+	{
+		ControlTemplate template = CreateRoundedActionButtonTemplate();
+		foreach (Button button in new[] { _titleOnlyButton, SearchButton }.OfType<Button>())
+		{
+			button.Template = template;
+			button.MinHeight = 38.0;
+			button.Padding = new Thickness(15.0, 8.0, 15.0, 8.0);
+			button.BorderThickness = new Thickness(1.0);
+		}
+		if (_titleOnlyButton != null)
+		{
+			_titleOnlyButton.Margin = new Thickness(4.0, 4.0, 7.0, 4.0);
+		}
+	}
+
+	private static ControlTemplate CreateRoundedActionButtonTemplate()
+	{
+		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border), "Surface");
+		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(8.0));
+		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		surface.AppendChild(presenter);
+		ControlTemplate template = new ControlTemplate(typeof(Button)) { VisualTree = surface };
+		Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+		hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.86, "Surface"));
+		template.Triggers.Add(hover);
+		Trigger pressed = new Trigger { Property = Button.IsPressedProperty, Value = true };
+		pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.7, "Surface"));
+		template.Triggers.Add(pressed);
+		Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
+		disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.38, "Surface"));
+		template.Triggers.Add(disabled);
+		return template;
 	}
 
 	private void InitializeContributionFooter()
