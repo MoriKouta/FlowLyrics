@@ -8,6 +8,19 @@ internal static class RuntimeTranslations
 	private const string ContributionKey = "Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them.";
 	private const string ClearSelectionKey = "Clear selection and cache";
 
+	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> NewUiValues = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+	{
+		["ja-JP"] = D(("Auto scroll plain lyrics", "同期なし歌詞を自動スクロール"), ("Show all lyrics", "歌詞を全文表示"), ("Return to following lyrics", "再生追従表示に戻す")),
+		["zh-CN"] = D(("Auto scroll plain lyrics", "自动滚动非同步歌词"), ("Show all lyrics", "显示全部歌词"), ("Return to following lyrics", "返回跟随播放")),
+		["zh-TW"] = D(("Auto scroll plain lyrics", "自動捲動非同步歌詞"), ("Show all lyrics", "顯示全部歌詞"), ("Return to following lyrics", "返回跟隨播放")),
+		["ko-KR"] = D(("Auto scroll plain lyrics", "비동기 가사 자동 스크롤"), ("Show all lyrics", "전체 가사 표시"), ("Return to following lyrics", "재생 추적으로 돌아가기")),
+		["es-ES"] = D(("Auto scroll plain lyrics", "Desplazar automáticamente la letra no sincronizada"), ("Show all lyrics", "Mostrar toda la letra"), ("Return to following lyrics", "Volver al seguimiento")),
+		["fr-FR"] = D(("Auto scroll plain lyrics", "Défilement automatique des paroles non synchronisées"), ("Show all lyrics", "Afficher toutes les paroles"), ("Return to following lyrics", "Revenir au suivi")),
+		["de-DE"] = D(("Auto scroll plain lyrics", "Unsynchronisierten Text automatisch scrollen"), ("Show all lyrics", "Gesamten Liedtext anzeigen"), ("Return to following lyrics", "Zur Wiedergabefolge zurückkehren")),
+		["pt-BR"] = D(("Auto scroll plain lyrics", "Rolar automaticamente a letra não sincronizada"), ("Show all lyrics", "Mostrar a letra completa"), ("Return to following lyrics", "Voltar a acompanhar")),
+		["ru-RU"] = D(("Auto scroll plain lyrics", "Автопрокрутка несинхронного текста"), ("Show all lyrics", "Показать весь текст"), ("Return to following lyrics", "Вернуться к слежению"))
+	};
+
 	private static readonly IReadOnlyDictionary<string, string> ContributionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 	{
 		["ja-JP"] = "歌詞が見つかりませんか？LRCGETからLRCLIBへ投稿して、最初の投稿者になりましょう。",
@@ -67,6 +80,10 @@ internal static class RuntimeTranslations
 			return true;
 		}
 		if (string.Equals(key, ClearSelectionKey, StringComparison.Ordinal) && ClearSelectionValues.TryGetValue(language, out value!))
+		{
+			return true;
+		}
+		if (NewUiValues.TryGetValue(language, out IReadOnlyDictionary<string, string> newUi) && newUi.TryGetValue(key, out value!))
 		{
 			return true;
 		}

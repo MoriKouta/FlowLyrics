@@ -145,6 +145,16 @@ public class MainWindow : Window, IComponentConnector
 
 	private string? _plainLyricsLayoutKey;
 
+	private bool _plainLyricsUserScrollPaused;
+
+	private bool _showAllLyrics;
+
+	private string? _fullLyricsLayoutKey;
+
+	private Viewbox? _fullLyricsViewbox;
+
+	private System.Windows.Controls.Button? _showAllLyricsButton;
+
 	private System.Windows.Controls.Button? _reverseColorsButton;
 
 	private TextBlock? _reverseColorsLabel;
@@ -270,6 +280,7 @@ public class MainWindow : Window, IComponentConnector
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializePlaybackTimeline();
 		EnsureReverseColorsButton();
+		EnsureShowAllLyricsButton();
 		_settings = _settingsService.Load();
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
@@ -314,7 +325,7 @@ public class MainWindow : Window, IComponentConnector
 			{
 				_volumeLastInsideUtc = DateTime.UtcNow;
 			}
-			else if (DateTime.UtcNow - _volumeLastInsideUtc >= TimeSpan.FromMilliseconds(90L))
+			else if (DateTime.UtcNow - _volumeLastInsideUtc >= TimeSpan.FromMilliseconds(150L))
 			{
 				CloseVolumePopup();
 			}
@@ -345,9 +356,7 @@ public class MainWindow : Window, IComponentConnector
 			if (_snapshot != null)
 			{
 				_lyrics = null;
-				_plainLyricsScrollMode = false;
-				_plainLyricsLayoutKey = null;
-				_lastLineIndex = int.MinValue;
+				ResetLyricsPresentationState();
 				await LoadLyricsAsync(_snapshot.Track, forceRefresh: false);
 			}
 		};
@@ -370,7 +379,12 @@ public class MainWindow : Window, IComponentConnector
 		{
 			CaptureWindowBounds();
 			UpdateChromeVisibility();
-			if (_plainLyricsScrollMode)
+			if (_showAllLyrics)
+			{
+				_fullLyricsLayoutKey = null;
+				UpdateFullLyricsViewport();
+			}
+			else if (_plainLyricsScrollMode)
 			{
 				_plainLyricsLayoutKey = null;
 			}
@@ -379,6 +393,8 @@ public class MainWindow : Window, IComponentConnector
 				QueueActiveLineRecentering();
 			}
 		};
+		LyricsScrollViewer.PreviewMouseWheel += LyricsScrollViewer_PreviewMouseWheel;
+		LyricsScrollViewer.PreviewTouchMove += LyricsScrollViewer_PreviewTouchMove;
 		base.MouseLeftButtonDown += MainWindow_MouseLeftButtonDown;
 		base.Width = _settings.WindowWidth;
 		base.Height = _settings.WindowHeight;
@@ -495,10 +511,8 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsRetryScheduled = false;
 					_lyrics = null;
 					_lyricsLookup = null;
-					_plainLyricsScrollMode = false;
-					_plainLyricsLayoutKey = null;
+					ResetLyricsPresentationState();
 					_lyricsCancellation?.Cancel();
-					_lastLineIndex = int.MinValue;
 				}
 				TrackStatusText.Text = "SPOTIFY / WAITING";
 				TrackTitleText.Text = T("Play something in Spotify");
@@ -527,9 +541,7 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsRetryScheduled = false;
 					_lyrics = null;
 					_lyricsLookup = null;
-					_plainLyricsScrollMode = false;
-					_plainLyricsLayoutKey = null;
-					_lastLineIndex = int.MinValue;
+					ResetLyricsPresentationState();
 					TrackStatusText.Text = "SPOTIFY / CHECKING CACHE";
 					TrackTitleText.Text = playbackSnapshot.Track.DisplayName;
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
@@ -568,9 +580,7 @@ public class MainWindow : Window, IComponentConnector
 				_lyricsRetryScheduled = false;
 				_lyricsLookup = lyricsLookupResult;
 				LyricsResult lyrics = lyricsLookupResult.Lyrics;
-				_plainLyricsScrollMode = false;
-				_plainLyricsLayoutKey = null;
-				_lastLineIndex = int.MinValue;
+				ResetLyricsPresentationState();
 				if (lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				{
 					_lyrics = null;
@@ -702,6 +712,12 @@ public class MainWindow : Window, IComponentConnector
 	private void RenderLyrics()
 	{
 		UpdatePlaybackProgress();
+		if (_showAllLyrics && _lyrics != null && (_lyrics.HasSyncedLyrics || _lyrics.HasPlainLyrics))
+		{
+			EnsureFullLyricsLayout();
+			UpdateFullLyricsHighlight();
+			return;
+		}
 		if (_plainLyricsScrollMode && _lyrics?.HasPlainLyrics == true)
 		{
 			EnsurePlainLyricsLayout();
@@ -727,6 +743,22 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 
+	private void ResetLyricsPresentationState()
+	{
+		_showAllLyrics = false;
+		_plainLyricsScrollMode = false;
+		_plainLyricsUserScrollPaused = false;
+		_plainLyricsLayoutKey = null;
+		_fullLyricsLayoutKey = null;
+		_lastLineIndex = int.MinValue;
+		DisableFullLyricsViewport();
+		if (_showAllLyricsButton != null)
+		{
+			_showAllLyricsButton.Opacity = 0.72;
+			_showAllLyricsButton.ToolTip = T("Show all lyrics");
+		}
+	}
+
 	private void EnsurePlainLyricsLayout()
 	{
 		if (_lyrics?.PlainLyrics == null)
@@ -741,14 +773,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 
-		List<LyricLine> lines = _lyrics.PlainLyrics
-			.Replace("\r\n", "\n", StringComparison.Ordinal)
-			.Split('\n')
-			.Select((string line) => line.Trim())
-			.Where((string line) => !string.IsNullOrWhiteSpace(line))
-			.Where((string line) => !line.StartsWith('[') || !line.EndsWith(']'))
-			.Select((string line) => new LyricLine(TimeSpan.Zero, line))
-			.ToList();
+		List<LyricLine> lines = ParsePlainLyrics(_lyrics.PlainLyrics);
 		if (lines.Count == 0)
 		{
 			return;
@@ -777,7 +802,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void UpdatePlainLyricsScroll()
 	{
-		if (_snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero || LyricsScrollViewer.ViewportHeight <= 0.0)
+		if (!_settings.PlainLyricsAutoScroll || _plainLyricsUserScrollPaused || _showAllLyrics || _snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero || LyricsScrollViewer.ViewportHeight <= 0.0)
 		{
 			return;
 		}
@@ -785,6 +810,139 @@ public class MainWindow : Window, IComponentConnector
 		double ratio = Math.Clamp(_snapshot.EstimatedPosition(DateTimeOffset.UtcNow).TotalMilliseconds /
 			_snapshot.Track.Duration.TotalMilliseconds, 0.0, 1.0);
 		LyricsScrollViewer.ScrollToVerticalOffset(maxOffset * ratio);
+	}
+
+	private static List<LyricLine> ParsePlainLyrics(string plainLyrics)
+	{
+		return plainLyrics
+			.Replace("\r\n", "\n", StringComparison.Ordinal)
+			.Split('\n')
+			.Select((string line) => line.Trim())
+			.Where((string line) => !string.IsNullOrWhiteSpace(line))
+			.Where((string line) => !line.StartsWith('[') || !line.EndsWith(']'))
+			.Select((string line) => new LyricLine(TimeSpan.Zero, line))
+			.ToList();
+	}
+
+	private void LyricsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+	{
+		PausePlainLyricsAutoScroll();
+	}
+
+	private void LyricsScrollViewer_PreviewTouchMove(object sender, TouchEventArgs e)
+	{
+		PausePlainLyricsAutoScroll();
+	}
+
+	private void PausePlainLyricsAutoScroll()
+	{
+		if (_plainLyricsScrollMode && _settings.PlainLyricsAutoScroll && !_showAllLyrics)
+		{
+			_plainLyricsUserScrollPaused = true;
+		}
+	}
+
+	private void EnsureFullLyricsLayout()
+	{
+		if (_lyrics == null)
+		{
+			return;
+		}
+		IReadOnlyList<LyricLine> lines = _lyrics.HasSyncedLyrics
+			? _lyrics.Lines
+			: ParsePlainLyrics(_lyrics.PlainLyrics ?? string.Empty);
+		if (lines.Count == 0)
+		{
+			return;
+		}
+		string layoutKey = string.Join("|", _activeTrackKey, lines.Count, _settings.FontFamily, _settings.FontSize,
+			_settings.MinimumFontSize, _settings.TextAlignment, _settings.LineSpacing, LyricsScrollViewer.ViewportWidth, LyricsScrollViewer.ViewportHeight);
+		if (!string.Equals(_fullLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
+		{
+			RebuildLineControls(lines.Count, lines, 0);
+			LyricsStackPanel.Margin = new Thickness(2.0);
+			for (int i = 0; i < _lineControls.Count; i++)
+			{
+				OutlinedText line = _lineControls[i];
+				line.FontSize = _settings.FontSize;
+				line.MinimumFontSize = Math.Min(4.0, _settings.MinimumFontSize);
+				line.MaximumLines = Math.Max(8, _settings.MaximumWrapLines);
+				line.AutoFit = true;
+				line.Wrap = true;
+				line.Margin = new Thickness(0.0, Math.Min(2.0, _settings.LineSpacing * 0.18), 0.0, Math.Min(2.0, _settings.LineSpacing * 0.18));
+			}
+			EnableFullLyricsViewport();
+			_fullLyricsLayoutKey = layoutKey;
+		}
+	}
+
+	private void UpdateFullLyricsHighlight()
+	{
+		if (_lyrics == null || _lineControls.Count == 0)
+		{
+			return;
+		}
+		int active = -1;
+		if (_lyrics.HasSyncedLyrics && _snapshot != null)
+		{
+			int offset = _settings.GlobalLyricsOffsetMs;
+			if (_settings.TrackOffsetsMs.TryGetValue(_snapshot.Track.CacheKey, out int trackOffset))
+			{
+				offset += trackOffset;
+			}
+			active = FindActiveLine(_lyrics.Lines, _snapshot.EstimatedPosition(DateTimeOffset.UtcNow) + TimeSpan.FromMilliseconds(offset));
+		}
+		for (int i = 0; i < _lineControls.Count; i++)
+		{
+			bool isActive = active >= 0 && i == active;
+			_lineControls[i].Fill = ResolveTextBrush(i, isActive || active < 0);
+			_lineControls[i].Opacity = isActive || active < 0 ? 1.0 : Math.Max(0.58, _settings.NextLineOpacity);
+			_lineControls[i].FontWeight = isActive ? FontWeights.Bold : FontWeights.SemiBold;
+		}
+	}
+
+	private void EnableFullLyricsViewport()
+	{
+		if (_fullLyricsViewbox == null)
+		{
+			LyricsScrollViewer.Content = null;
+			_fullLyricsViewbox = new Viewbox
+			{
+				Stretch = Stretch.Uniform,
+				StretchDirection = StretchDirection.DownOnly,
+				HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+				VerticalAlignment = VerticalAlignment.Top,
+				Child = LyricsStackPanel
+			};
+			LyricsScrollViewer.Content = _fullLyricsViewbox;
+		}
+		UpdateFullLyricsViewport();
+		LyricsScrollViewer.ScrollToTop();
+	}
+
+	private void UpdateFullLyricsViewport()
+	{
+		if (_fullLyricsViewbox == null)
+		{
+			return;
+		}
+		double width = Math.Max(1.0, LyricsScrollViewer.ViewportWidth);
+		double height = Math.Max(1.0, LyricsScrollViewer.ViewportHeight);
+		_fullLyricsViewbox.Width = width;
+		_fullLyricsViewbox.Height = height;
+		LyricsStackPanel.Width = width;
+	}
+
+	private void DisableFullLyricsViewport()
+	{
+		if (_fullLyricsViewbox != null)
+		{
+			_fullLyricsViewbox.Child = null;
+			LyricsScrollViewer.Content = LyricsStackPanel;
+			_fullLyricsViewbox = null;
+		}
+		LyricsStackPanel.Width = double.NaN;
+		_fullLyricsLayoutKey = null;
 	}
 
 	private void DisplayLyricContext(IReadOnlyList<LyricLine> lines, int activeIndex, bool animate)
@@ -835,7 +993,10 @@ public class MainWindow : Window, IComponentConnector
 
 	private void EnsureLyricWindow(IReadOnlyList<LyricLine> lines, int activeIndex)
 	{
-		int num = Math.Min(lines.Count, Math.Clamp(Math.Max(15, _settings.DisplayLines * 3), 15, 30));
+		double viewportHeight = Math.Max(180.0, LyricsScrollViewer.ViewportHeight);
+		double estimatedLineHeight = Math.Max(18.0, _settings.FontSize * Math.Max(0.58, _settings.InactiveFontScale) + _settings.LineSpacing);
+		int automaticWindow = (int)Math.Ceiling(viewportHeight / estimatedLineHeight) + 12;
+		int num = Math.Min(lines.Count, Math.Clamp(automaticWindow, 15, 40));
 		int num2 = _visibleFirstLineIndex + Math.Min(4, Math.Max(1, _lineControls.Count / 4));
 		int num3 = _visibleFirstLineIndex + _lineControls.Count - Math.Min(5, Math.Max(2, _lineControls.Count / 4));
 		bool flag = _visibleFirstLineIndex == 0;
@@ -1089,6 +1250,10 @@ public class MainWindow : Window, IComponentConnector
 		yield return PreviousButton;
 		yield return PlayPauseButton;
 		yield return NextButton;
+		if (_showAllLyricsButton != null)
+		{
+			yield return _showAllLyricsButton;
+		}
 		if (_reverseColorsButton != null)
 		{
 			yield return _reverseColorsButton;
@@ -1128,6 +1293,10 @@ public class MainWindow : Window, IComponentConnector
 		NextButton.ToolTip = T("Next track");
 		VolumeButton.ToolTip = T("Volume");
 		SettingsButton.ToolTip = T("Settings...");
+		if (_showAllLyricsButton != null)
+		{
+			_showAllLyricsButton.ToolTip = T(_showAllLyrics ? "Return to following lyrics" : "Show all lyrics");
+		}
 		UpdateReverseColorsButtonVisual();
 		_tray?.UpdateLanguage(_settings.Language);
 		UpdateLockButtonVisual();
@@ -1159,6 +1328,10 @@ public class MainWindow : Window, IComponentConnector
 		}
 		LockButton.Visibility = Visibility.Visible;
 		SettingsButton.Visibility = Visibility.Visible;
+		if (_showAllLyricsButton != null)
+		{
+			_showAllLyricsButton.Visibility = flag4 ? Visibility.Visible : Visibility.Collapsed;
+		}
 		bool flag6 = num < 68.0;
 		PlayPauseButton.Width = (flag6 ? 34 : 50);
 		PlayPauseButton.Height = (flag6 ? 34 : 50);
@@ -1377,6 +1550,57 @@ public class MainWindow : Window, IComponentConnector
 		_reverseColorsButton.MouseEnter += delegate { CloseVolumePopup(); };
 		int index = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
 		RightControlGroup.Children.Insert(index, _reverseColorsButton);
+	}
+
+	private void EnsureShowAllLyricsButton()
+	{
+		if (_showAllLyricsButton != null)
+		{
+			return;
+		}
+		_showAllLyricsButton = new System.Windows.Controls.Button
+		{
+			Content = "ALL",
+			FontFamily = _englishDotFont,
+			FontSize = 7.0,
+			FontWeight = FontWeights.Bold,
+			Tag = "NoTranslate",
+			ToolTip = "Show all lyrics",
+			Opacity = 0.72
+		};
+		if (base.Resources["SmallMediaButton"] is Style style)
+		{
+			_showAllLyricsButton.Style = style;
+		}
+		_showAllLyricsButton.Click += ShowAllLyricsButton_Click;
+		LeftControlGroup.Children.Add(_showAllLyricsButton);
+	}
+
+	private void ShowAllLyricsButton_Click(object sender, RoutedEventArgs e)
+	{
+		SetShowAllLyrics(!_showAllLyrics);
+	}
+
+	private void SetShowAllLyrics(bool enabled)
+	{
+		_showAllLyrics = enabled && _lyrics != null && (_lyrics.HasSyncedLyrics || _lyrics.HasPlainLyrics);
+		if (!_showAllLyrics)
+		{
+			DisableFullLyricsViewport();
+			_plainLyricsLayoutKey = null;
+			_lastLineIndex = int.MinValue;
+		}
+		else
+		{
+			_plainLyricsUserScrollPaused = true;
+			_fullLyricsLayoutKey = null;
+		}
+		if (_showAllLyricsButton != null)
+		{
+			_showAllLyricsButton.Opacity = _showAllLyrics ? 1.0 : 0.72;
+			_showAllLyricsButton.ToolTip = T(_showAllLyrics ? "Return to following lyrics" : "Show all lyrics");
+		}
+		RenderLyrics();
 	}
 
 	private void ReverseColorsButton_Click(object sender, RoutedEventArgs e)
@@ -1710,7 +1934,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			return true;
 		}
-		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
+		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_showAllLyricsButton == null || !IsPointOverElement(_showAllLyricsButton, screenPoint)) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
 		{
 			return IsPointOverElement(VolumeSlider, screenPoint);
 		}
@@ -1821,7 +2045,12 @@ public class MainWindow : Window, IComponentConnector
 			preview.WindowWidth = base.Width;
 			preview.WindowHeight = base.Height;
 			bool num3 = _settings.ShortcutsEnabled != preview.ShortcutsEnabled;
+			bool autoScrollResumed = !_settings.PlainLyricsAutoScroll && preview.PlainLyricsAutoScroll;
 			_settings = preview;
+			if (autoScrollResumed)
+			{
+				_plainLyricsUserScrollPaused = false;
+			}
 			if (num3)
 			{
 				ConfigureHotkeys();
@@ -2185,8 +2414,38 @@ public class MainWindow : Window, IComponentConnector
 		}
 		try
 		{
-			System.Windows.Point screenPoint = PointToScreen(Mouse.GetPosition(this));
-			return IsPointOverElement(VolumeButton, screenPoint) || IsPointOverElement(VolumePopupSurface, screenPoint);
+			System.Drawing.Point cursor = System.Windows.Forms.Cursor.Position;
+			System.Windows.Point screenPoint = new System.Windows.Point(cursor.X, cursor.Y);
+			if (IsPointOverElement(VolumeButton, screenPoint) || IsPointOverElement(VolumePopupSurface, screenPoint))
+			{
+				return true;
+			}
+			if (TryGetElementScreenRect(VolumeButton, out Rect buttonRect) && TryGetElementScreenRect(VolumePopupSurface, out Rect popupRect))
+			{
+				Rect hoverBridge = Rect.Union(buttonRect, popupRect);
+				hoverBridge.Inflate(5.0, 6.0);
+				return hoverBridge.Contains(screenPoint);
+			}
+			return false;
+		}
+		catch (InvalidOperationException)
+		{
+			return false;
+		}
+	}
+
+	private static bool TryGetElementScreenRect(FrameworkElement element, out Rect rect)
+	{
+		rect = Rect.Empty;
+		if (element.Visibility != Visibility.Visible || element.ActualWidth <= 0.0 || element.ActualHeight <= 0.0)
+		{
+			return false;
+		}
+		try
+		{
+			System.Windows.Point origin = element.PointToScreen(new System.Windows.Point(0.0, 0.0));
+			rect = new Rect(origin.X, origin.Y, element.ActualWidth, element.ActualHeight);
+			return true;
 		}
 		catch (InvalidOperationException)
 		{

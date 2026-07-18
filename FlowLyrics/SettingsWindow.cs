@@ -73,9 +73,23 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private readonly List<SavedColorPalette> _savedColorPalettes;
 
+	private readonly List<System.Windows.Controls.Button> _presetButtons = new List<System.Windows.Controls.Button>();
+
+	private readonly List<System.Windows.Controls.RadioButton> _alignmentChoices = new List<System.Windows.Controls.RadioButton>();
+
+	private readonly List<System.Windows.Controls.RadioButton> _positionChoices = new List<System.Windows.Controls.RadioButton>();
+
 	private System.Windows.Controls.TextBox? _paletteNameBox;
 
 	private System.Windows.Controls.ComboBox? _savedPaletteBox;
+
+	private System.Windows.Controls.Button? _uiColorPickButton;
+
+	private System.Windows.Controls.CheckBox? _plainLyricsAutoScrollBox;
+
+	private bool _textControlsInitialized;
+
+	private Style? _faderScrollBarStyle;
 
 	private Border? _settingsHeaderBorder;
 
@@ -248,6 +262,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			DisableDialogOnlyButtons();
 			InitializeBranding();
+			InitializeTextControls();
 			InitializeReverseColorsControl();
 			InitializePaletteManager();
 			InitializeBehaviorReset();
@@ -277,6 +292,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			base.Dispatcher.BeginInvoke((Action)delegate
 			{
+				InitializeTextControls();
 				InitializeReverseColorsControl();
 				InitializePaletteManager();
 				InitializeBehaviorReset();
@@ -375,9 +391,9 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			return;
 		}
-		System.Windows.Controls.Button? pickButton = FindVisualChildren<System.Windows.Controls.Button>(this)
+		System.Windows.Controls.Button? pickButton = _uiColorPickButton ?? FindVisualChildren<System.Windows.Controls.Button>(this)
 			.FirstOrDefault((System.Windows.Controls.Button button) => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
-		if (pickButton == null || VisualTreeHelper.GetParent(pickButton) is not Grid colorGrid || VisualTreeHelper.GetParent(colorGrid) is not StackPanel colorCard)
+		if (pickButton == null || pickButton.Parent is not Grid colorGrid || colorGrid.Parent is not StackPanel colorCard)
 		{
 			return;
 		}
@@ -429,22 +445,135 @@ public class SettingsWindow : Window, IComponentConnector
 		return tab?.Content is ScrollViewer scroll && scroll.Content is StackPanel stack ? stack : null;
 	}
 
-	private void InitializePaletteManager()
+	private void InitializeTextControls()
 	{
-		if (_paletteManagerInitialized || GetTabStack("Color") is not StackPanel colorStack)
+		if (_textControlsInitialized)
+		{
+			RefreshTextControlLabels();
+			RefreshChoiceSelectors();
+			return;
+		}
+
+		if (DisplayLinesSlider.Parent is Grid lineGrid)
+		{
+			int row = Grid.GetRow(DisplayLinesSlider);
+			foreach (UIElement child in lineGrid.Children.Cast<UIElement>().Where((UIElement child) => Grid.GetRow(child) == row).ToArray())
+			{
+				child.Visibility = Visibility.Collapsed;
+			}
+			if (row >= 0 && row < lineGrid.RowDefinitions.Count)
+			{
+				lineGrid.RowDefinitions[row].Height = new GridLength(0.0);
+			}
+			if (lineGrid.Parent is StackPanel lineCard)
+			{
+				_plainLyricsAutoScrollBox = new System.Windows.Controls.CheckBox
+				{
+					IsChecked = ResultSettings.PlainLyricsAutoScroll,
+					Margin = new Thickness(0.0, 8.0, 0.0, 0.0),
+					Tag = "NoTranslate"
+				};
+				_plainLyricsAutoScrollBox.Checked += PlainLyricsAutoScroll_Changed;
+				_plainLyricsAutoScrollBox.Unchecked += PlainLyricsAutoScroll_Changed;
+				lineCard.Children.Add(_plainLyricsAutoScrollBox);
+			}
+		}
+
+		InitializeChoiceSelector(AlignmentBox, _alignmentChoices, "TextAlignment", new[] { "Left", "Center", "Right" });
+		InitializeChoiceSelector(CurrentPositionBox, _positionChoices, "CurrentLinePosition", new[] { "Top", "Center", "Bottom" });
+		_textControlsInitialized = true;
+		RefreshTextControlLabels();
+		RefreshChoiceSelectors();
+	}
+
+	private void InitializeChoiceSelector(System.Windows.Controls.ComboBox source, List<System.Windows.Controls.RadioButton> choices, string groupName, IEnumerable<string> values)
+	{
+		if (source.Parent is not Grid grid)
 		{
 			return;
 		}
-		Border card = new Border();
-		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		WrapPanel panel = new WrapPanel
+		{
+			Margin = new Thickness(5.0, 3.0, 5.0, 3.0),
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		Grid.SetRow(panel, Grid.GetRow(source));
+		Grid.SetColumn(panel, Grid.GetColumn(source));
+		Grid.SetColumnSpan(panel, Math.Max(1, Grid.GetColumnSpan(source)));
+		foreach (string value in values)
+		{
+			System.Windows.Controls.RadioButton choice = new System.Windows.Controls.RadioButton
+			{
+				Tag = value,
+				GroupName = groupName,
+				Content = T(value),
+				FontFamily = _englishDotFont,
+				FontSize = 9.0,
+				Margin = new Thickness(0.0, 0.0, 7.0, 0.0)
+			};
+			choice.Checked += delegate
+			{
+				SelectItemByTag(source, value);
+				NotifyPreviewChanged();
+			};
+			choices.Add(choice);
+			panel.Children.Add(choice);
+		}
+		source.Visibility = Visibility.Collapsed;
+		grid.Children.Add(panel);
+	}
+
+	private void PlainLyricsAutoScroll_Changed(object sender, RoutedEventArgs e)
+	{
+		NotifyPreviewChanged();
+	}
+
+	private void RefreshTextControlLabels()
+	{
+		if (_plainLyricsAutoScrollBox != null)
+		{
+			_plainLyricsAutoScrollBox.Content = T("Auto scroll plain lyrics");
+		}
+		foreach (System.Windows.Controls.RadioButton choice in _alignmentChoices.Concat(_positionChoices))
+		{
+			choice.Content = T(choice.Tag?.ToString() ?? string.Empty);
+		}
+	}
+
+	private void RefreshChoiceSelectors()
+	{
+		string alignment = GetSelectedTag(AlignmentBox, "Left");
+		string position = GetSelectedTag(CurrentPositionBox, "Center");
+		foreach (System.Windows.Controls.RadioButton choice in _alignmentChoices)
+		{
+			choice.IsChecked = string.Equals(choice.Tag?.ToString(), alignment, StringComparison.OrdinalIgnoreCase);
+		}
+		foreach (System.Windows.Controls.RadioButton choice in _positionChoices)
+		{
+			choice.IsChecked = string.Equals(choice.Tag?.ToString(), position, StringComparison.OrdinalIgnoreCase);
+		}
+	}
+
+	private void InitializePaletteManager()
+	{
+		if (_paletteManagerInitialized)
+		{
+			return;
+		}
+		System.Windows.Controls.Button? pickButton = _uiColorPickButton ?? FindVisualChildren<System.Windows.Controls.Button>(this)
+			.FirstOrDefault((System.Windows.Controls.Button button) => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
+		if (pickButton == null || pickButton.Parent is not Grid colorGrid || colorGrid.Parent is not StackPanel colorCard)
+		{
+			return;
+		}
 		StackPanel content = new StackPanel { Tag = "NoTranslate" };
 		content.Children.Add(new TextBlock
 		{
 			Text = "MY PALETTES",
 			FontFamily = _englishDotFont,
-			FontSize = 18.0,
+			FontSize = 13.0,
 			FontWeight = FontWeights.Bold,
-			Margin = new Thickness(0.0, 0.0, 0.0, 10.0),
+			Margin = new Thickness(0.0, 16.0, 0.0, 8.0),
 			Tag = "NoTranslate"
 		});
 
@@ -473,8 +602,8 @@ public class SettingsWindow : Window, IComponentConnector
 		manageRow.Children.Add(CreatePaletteButton("EXPORT", ExportPalette_Click));
 		manageRow.Children.Add(CreatePaletteButton("IMPORT", ImportPalette_Click));
 		content.Children.Add(manageRow);
-		card.Child = content;
-		colorStack.Children.Insert(Math.Min(1, colorStack.Children.Count), card);
+		int insertIndex = Math.Min(colorCard.Children.Count, colorCard.Children.IndexOf(colorGrid) + 1);
+		colorCard.Children.Insert(insertIndex, content);
 		RefreshSavedPaletteList();
 		_paletteManagerInitialized = true;
 	}
@@ -723,15 +852,17 @@ public class SettingsWindow : Window, IComponentConnector
 		System.Windows.Media.Brush nameBrush = _reverseColors
 			? System.Windows.Media.Brushes.Black
 			: System.Windows.Media.Brushes.White;
-		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
+		foreach (System.Windows.Controls.Button button in _presetButtons)
 		{
-			if (button.Tag is string tag && int.TryParse(tag, out int index) && index >= 0 && index < ColorPalettes.Themes.Count)
+			if (button.Content is System.Windows.Controls.Panel content)
 			{
-				TextBlock? name = FindVisualChildren<TextBlock>(button).LastOrDefault();
+				TextBlock? name = content.Children.OfType<TextBlock>().LastOrDefault();
 				if (name != null)
 				{
 					name.Foreground = nameBrush;
 					name.FontFamily = _englishDotFont;
+					name.FontSize = 9.0;
+					name.FontWeight = FontWeights.SemiBold;
 					name.Tag = "NoTranslate";
 				}
 			}
@@ -769,6 +900,67 @@ public class SettingsWindow : Window, IComponentConnector
 				}
 			}
 		});
+	}
+
+	private void ApplyFaderScrollBars(System.Windows.Media.Brush accent, System.Windows.Media.Brush trackBrush, System.Windows.Media.Brush gripBrush)
+	{
+		base.Resources["FaderAccentBrush"] = accent;
+		base.Resources["FaderTrackBrush"] = trackBrush;
+		base.Resources["FaderGripBrush"] = gripBrush;
+		Style style = _faderScrollBarStyle ??= CreateFaderScrollBarStyle();
+		base.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = style;
+		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
+		{
+			foreach (System.Windows.Controls.Primitives.ScrollBar scrollBar in FindVisualChildren<System.Windows.Controls.Primitives.ScrollBar>(this))
+			{
+				scrollBar.Style = style;
+			}
+		});
+	}
+
+	private static Style CreateFaderScrollBarStyle()
+	{
+		const string xaml = """
+<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       TargetType="{x:Type ScrollBar}">
+  <Setter Property="Width" Value="16" />
+  <Setter Property="Orientation" Value="Vertical" />
+  <Setter Property="Template">
+    <Setter.Value>
+      <ControlTemplate TargetType="{x:Type ScrollBar}">
+        <Grid Width="16" Background="Transparent">
+          <Border Width="2" HorizontalAlignment="Center" Background="{DynamicResource FaderTrackBrush}" CornerRadius="1" />
+          <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True">
+            <Track.DecreaseRepeatButton>
+              <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Background="Transparent" BorderThickness="0" Opacity="0.01" />
+            </Track.DecreaseRepeatButton>
+            <Track.IncreaseRepeatButton>
+              <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Background="Transparent" BorderThickness="0" Opacity="0.01" />
+            </Track.IncreaseRepeatButton>
+            <Track.Thumb>
+              <Thumb Width="12" MinHeight="34">
+                <Thumb.Template>
+                  <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="{DynamicResource FaderAccentBrush}" CornerRadius="3">
+                      <Grid Width="7" Height="9" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Rectangle Height="1" VerticalAlignment="Top" Fill="{DynamicResource FaderGripBrush}" />
+                        <Rectangle Height="1" VerticalAlignment="Center" Fill="{DynamicResource FaderGripBrush}" />
+                        <Rectangle Height="1" VerticalAlignment="Bottom" Fill="{DynamicResource FaderGripBrush}" />
+                      </Grid>
+                    </Border>
+                  </ControlTemplate>
+                </Thumb.Template>
+              </Thumb>
+            </Track.Thumb>
+          </Track>
+        </Grid>
+      </ControlTemplate>
+    </Setter.Value>
+  </Setter>
+</Style>
+""";
+		return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
 	}
 
 	private void ApplySoftSettingsTheme()
@@ -923,6 +1115,7 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		StylePresetLabels();
 		ApplySliderChrome();
+		ApplyFaderScrollBars(accent, controlBorderBrush, darkTheme ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Black);
 		RefreshReverseColorsButton();
 		_softThemeInitialized = true;
 		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
@@ -1185,6 +1378,10 @@ public class SettingsWindow : Window, IComponentConnector
 		HideWhenPausedBox.IsChecked = settings.HideWhenPaused;
 		ShowIdleStatusBox.IsChecked = settings.ShowStatusWhenIdle;
 		PlainLyricsFallbackBox.IsChecked = settings.EnablePlainLyricsFallback;
+		if (_plainLyricsAutoScrollBox != null)
+		{
+			_plainLyricsAutoScrollBox.IsChecked = settings.PlainLyricsAutoScroll;
+		}
 		LockOnStartupBox.IsChecked = settings.LockOnStartup;
 		StartWithWindowsBox.IsChecked = settings.StartWithWindows;
 		ShortcutsEnabledBox.IsChecked = settings.ShortcutsEnabled;
@@ -1192,6 +1389,7 @@ public class SettingsWindow : Window, IComponentConnector
 		GlobalOffsetSlider.Value = settings.GlobalLyricsOffsetMs;
 		RefreshReverseColorsButton();
 		SelectItemByTag(LanguageBox, settings.Language);
+		RefreshChoiceSelectors();
 	}
 
 	private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1268,6 +1466,8 @@ public class SettingsWindow : Window, IComponentConnector
 			string key6 = value;
 			headeredContentControl.Header = T(key6);
 		}
+		RefreshTextControlLabels();
+		StylePresetLabels();
 		RefreshLyricsTab();
 	}
 
@@ -1434,9 +1634,9 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		try
 		{
-			LyricsActionStatusText.Text = T("Working…");
+			LyricsActionStatusText.Text = string.Empty;
 			await action();
-			LyricsActionStatusText.Text = T("Updated.");
+			LyricsActionStatusText.Text = string.Empty;
 		}
 		catch (Exception ex)
 		{
@@ -1575,6 +1775,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.HideWhenPaused = HideWhenPausedBox.IsChecked == true;
 		appSettings.ShowStatusWhenIdle = ShowIdleStatusBox.IsChecked == true;
 		appSettings.EnablePlainLyricsFallback = PlainLyricsFallbackBox.IsChecked == true;
+		appSettings.PlainLyricsAutoScroll = _plainLyricsAutoScrollBox?.IsChecked != false;
 		appSettings.LockOnStartup = LockOnStartupBox.IsChecked == true;
 		appSettings.StartWithWindows = StartWithWindowsBox.IsChecked == true;
 		appSettings.ShortcutsEnabled = ShortcutsEnabledBox.IsChecked == true;
@@ -1807,34 +2008,18 @@ public class SettingsWindow : Window, IComponentConnector
 			AutoFitTextBox = (System.Windows.Controls.CheckBox)target;
 			break;
 		case 15:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 16:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 17:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 18:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 19:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 20:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 21:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 22:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 23:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
-			break;
 		case 24:
-			((System.Windows.Controls.Button)target).Click += ThemePreset_Click;
+			System.Windows.Controls.Button presetButton = (System.Windows.Controls.Button)target;
+			_presetButtons.Add(presetButton);
+			presetButton.Click += ThemePreset_Click;
 			break;
 		case 25:
 			((System.Windows.Controls.Button)target).Click += RandomColors_Click;
@@ -1843,25 +2028,18 @@ public class SettingsWindow : Window, IComponentConnector
 			((System.Windows.Controls.Button)target).Click += ResetColors_Click;
 			break;
 		case 27:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 28:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 29:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 30:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 31:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 32:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
-			break;
 		case 33:
-			((System.Windows.Controls.Button)target).Click += CustomColor_Click;
+			System.Windows.Controls.Button colorButton = (System.Windows.Controls.Button)target;
+			if (string.Equals(colorButton.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal))
+			{
+				_uiColorPickButton = colorButton;
+			}
+			colorButton.Click += CustomColor_Click;
 			break;
 		case 34:
 			OutlineSlider = (Slider)target;
@@ -2012,7 +2190,7 @@ public class SettingsWindow : Window, IComponentConnector
 			((System.Windows.Controls.Button)target).Click += Reset_Click;
 			break;
 		case 82:
-			((System.Windows.Controls.Button)target).Click += Cancel_Click;
+			((System.Windows.Controls.Button)target).Visibility = Visibility.Collapsed;
 			break;
 		case 83:
 			((System.Windows.Controls.Button)target).Click += Save_Click;

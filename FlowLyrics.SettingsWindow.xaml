@@ -231,7 +231,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.8" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.0-dev.9" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>
@@ -298,14 +298,12 @@
                     <ColumnDefinition Width="78" />
                   </Grid.ColumnDefinitions>
                   <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="0" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Visible Lines" />
-                  <Slider Name="DisplayLinesSlider" Grid.Row="0" Grid.Column="1" Minimum="3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" />
-                  <TextBlock Grid.Row="0" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=DisplayLinesSlider, Path=Value, StringFormat={}{0:0}}" />
+                  <Slider Name="DisplayLinesSlider" Grid.Row="0" Grid.Column="1" Visibility="Collapsed" Minimum="3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" />
                   <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Inactive Scale" />
                   <Slider Name="InactiveScaleSlider" Grid.Row="1" Grid.Column="1" Minimum="0.55" Maximum="1" TickFrequency="0.05" />
                   <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=InactiveScaleSlider, Path=Value, StringFormat={}{0:P0}}" />
@@ -659,7 +657,6 @@
       <DockPanel LastChildFill="False">
         <Button DockPanel.Dock="Left" Content="Reset" Click="Reset_Click" />
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-          <Button Content="Cancel" Click="Cancel_Click" />
           <Button Content="Close" IsDefault="True" Background="{DynamicResource Orange}" Foreground="#FF111111" BorderBrush="{DynamicResource Orange}" Click="Save_Click" />
         </StackPanel>
       </DockPanel>

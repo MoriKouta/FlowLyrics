@@ -11,10 +11,13 @@
 - Added the new FlowLyrics application icon and dot-font Settings wordmark.
 - Added current time, track duration, and a Spotify-style seek hover timestamp to the playback bar.
 - Added corrected dot-font punctuation and common accented Latin letters.
+- Added a plain-lyrics auto-scroll setting that pauses after manual scrolling.
+- Added an overlay `ALL` control that fits the complete lyric text into the current window.
+- Added compact toggle selectors for text alignment and active-line position.
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.8`.
+- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.9`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
@@ -29,6 +32,10 @@
 - Removed blend modes and all background-screen sampling.
 - Reverse Colors now switches the Settings and LRCLIB candidate windows between coordinated light and dark surfaces while preserving the Player UI accent.
 - Plain lyrics use a denser automatic layout to keep more lines visible in small windows.
+- Merged My Palettes into Custom Colors directly below Player UI.
+- Replaced the visible-lines control with automatic lyric-window sizing.
+- Replaced native Settings scrollbars with slim Player UI-colored faders.
+- Unified the redundant Cancel and Close actions into one Close button.
 
 ### Fixed
 
@@ -51,6 +58,9 @@
 - Simplified the LRCLIB contribution hint to unobtrusive text links without a framed panel.
 - Renamed the per-track reset action to Clear selection and cache and made it remove both the manual override and only that track's cache.
 - Shifted the seek hover timestamp farther right to align above the pointer.
+- Fixed Color Preset labels at their logical XAML source so Reverse Colors and the English dot font apply regardless of tab realization timing.
+- Fixed the VOL hover gap between the button and popup so the slider remains reachable without delaying dismissal elsewhere.
+- Removed transient Working and Updated messages after clearing a track selection/cache.
 
 ### Notes
 

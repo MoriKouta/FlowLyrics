@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Spotify on Windows. It follows the track playing in the Spotify desktop app, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.0-dev.8` confirmation build. It is not the final `1.3.0` release.
+> This package is the `1.3.0-dev.9` confirmation build. It is not the final `1.3.0` release.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -16,11 +16,12 @@ It does not require a Spotify Developer account, Client ID, or account password.
 - Editable progressive LRCLIB candidate search, metadata preview, and persistent per-track manual selection
 - Per-track cache clearing and a one-minute limit for “not found” cache entries
 - Synchronized lyrics from LRCLIB with local caching and automatic retries
-- Continuous full-text scrolling when only plain lyrics are available
+- Continuous full-text scrolling when only plain lyrics are available, with manual-scroll pause and an auto-scroll switch
+- An `ALL` player control that fits the complete lyrics into the current overlay window
 - Local `.lrc` support with automatic file-change detection
 - Transparent or colored background, always-on-top mode, and click-through lock mode
 - Fluid wrapping and automatic font scaling for narrow or small windows
-- 1–12 visible lines with adjustable active-line position, alignment, spacing, and opacity
+- Automatically sized lyric context with adjustable active-line position, alignment, spacing, and opacity
 - Ten curated color presets, custom colors, coordinated random palettes, named user palettes with portable `.flowpalette` import/export, a shared Player UI / Settings accent, and synchronized Reverse Colors controls
 - Adjustable font, outline, shadow, background, border, padding, and corner radius
 - Spotify previous, play/pause, next, seek, mute, and volume controls
@@ -39,7 +40,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download `FlowLyrics-v1.3.0-dev.8-win-x64-portable.zip` from the provided development build.
+1. Download `FlowLyrics-v1.3.0-dev.9-win-x64-portable.zip` from the provided development build.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in the Spotify desktop app.
