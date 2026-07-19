@@ -3,7 +3,6 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1568,7 +1567,7 @@ public class MainWindow : Window, IComponentConnector
 	private void InitializeVolumeIcon()
 	{
 		VolumeLabel.Visibility = Visibility.Collapsed;
-		using Stream stream = typeof(MainWindow).Assembly.GetManifestResourceStream("assets/player/volume.png")
+		using System.IO.Stream stream = typeof(MainWindow).Assembly.GetManifestResourceStream("assets/player/volume.png")
 			?? throw new InvalidOperationException("The volume icon resource is missing.");
 		// Decode a small copy and crop the transparent source canvas once. At runtime the
 		// alpha channel is used as a brush mask, so the selected player color remains live.
