@@ -5,7 +5,7 @@ namespace FlowLyrics.Services;
 
 internal static class RuntimeTranslations
 {
-	private const string ContributionKey = "Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them.";
+	private const string ContributionKey = "No good match? Create synchronized lyrics yourself and help the next listener find them.";
 	private const string ClearSelectionKey = "Clear selection and cache";
 
 	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> NewUiValues = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
@@ -23,15 +23,15 @@ internal static class RuntimeTranslations
 
 	private static readonly IReadOnlyDictionary<string, string> ContributionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 	{
-		["ja-JP"] = "歌詞が見つかりませんか？LRCGETからLRCLIBへ投稿して、最初の投稿者になりましょう。",
-		["zh-CN"] = "找不到歌词？通过 LRCGET 向 LRCLIB 投稿，成为第一个分享者。",
-		["zh-TW"] = "找不到歌詞？透過 LRCGET 投稿到 LRCLIB，成為第一位分享者。",
-		["ko-KR"] = "가사를 찾을 수 없나요? LRCGET으로 LRCLIB에 올려 첫 공유자가 되어 보세요.",
-		["es-ES"] = "¿No encuentras la letra? Compártela en LRCLIB con LRCGET y sé la primera persona en publicarla.",
-		["fr-FR"] = "Paroles introuvables ? Publiez-les sur LRCLIB avec LRCGET et soyez la première personne à les partager.",
-		["de-DE"] = "Kein Liedtext gefunden? Teilen Sie ihn mit LRCGET auf LRCLIB und seien Sie die erste Person.",
-		["pt-BR"] = "Não encontrou a letra? Envie-a ao LRCLIB com o LRCGET e seja a primeira pessoa a compartilhar.",
-		["ru-RU"] = "Не нашли текст? Опубликуйте его в LRCLIB через LRCGET и станьте первым автором."
+		["ja-JP"] = "いい候補が見つかりませんか？あなたの手で同期歌詞を作り、次に聴く人へ届けましょう。",
+		["zh-CN"] = "没有合适的结果？亲手制作同步歌词，帮助下一位听众找到它。",
+		["zh-TW"] = "沒有合適的結果？親手製作同步歌詞，讓下一位聽眾也能找到。",
+		["ko-KR"] = "좋은 결과가 없나요? 직접 동기화 가사를 만들어 다음 청취자에게 전해 보세요.",
+		["es-ES"] = "¿No hay una coincidencia adecuada? Crea la letra sincronizada y ayuda a que la encuentre la próxima persona.",
+		["fr-FR"] = "Aucun résultat convaincant ? Créez les paroles synchronisées et aidez la prochaine personne à les trouver.",
+		["de-DE"] = "Kein passender Treffer? Erstellen Sie selbst synchronisierten Liedtext und helfen Sie dem nächsten Hörer.",
+		["pt-BR"] = "Nenhum resultado adequado? Crie a letra sincronizada e ajude o próximo ouvinte a encontrá-la.",
+		["ru-RU"] = "Нет подходящего варианта? Создайте синхронный текст и помогите следующему слушателю найти его."
 	};
 
 	private static readonly IReadOnlyDictionary<string, string> ClearSelectionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

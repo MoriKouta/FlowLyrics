@@ -28,6 +28,7 @@
   <ItemGroup>
     <EmbeddedResource Include="FlowLyrics.g.resources" LogicalName="FlowLyrics.g.resources" />
     <EmbeddedResource Include="assets/branding/FlowLyrics_logoF.ico" LogicalName="assets/branding/FlowLyrics_logoF.ico" />
+    <EmbeddedResource Include="assets/player/volume.png" LogicalName="assets/player/volume.png" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseRecoveredReferences)' == 'true'">

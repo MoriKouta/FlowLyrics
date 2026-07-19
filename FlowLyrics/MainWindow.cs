@@ -3,6 +3,7 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using FlowLyrics.Controls;
@@ -141,6 +143,10 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _resizeRecenterPending;
 
+	private bool _isInteractiveResize;
+
+	private bool _resizeRefreshPending;
+
 	private bool _plainLyricsScrollMode;
 
 	private string? _plainLyricsLayoutKey;
@@ -157,9 +163,9 @@ public class MainWindow : Window, IComponentConnector
 
 	private System.Windows.Controls.Button? _reverseColorsButton;
 
-	private Canvas? _reverseColorsIcon;
+	private FrameworkElement? _reverseColorsIcon;
 
-	private readonly List<Ellipse> _volumeWaveDots = new List<Ellipse>();
+	private FrameworkElement? _volumeIcon;
 
 	private System.Windows.Media.Color _trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 
@@ -381,6 +387,11 @@ public class MainWindow : Window, IComponentConnector
 		base.SizeChanged += delegate
 		{
 			CaptureWindowBounds();
+			if (_isInteractiveResize)
+			{
+				_resizeRefreshPending = true;
+				return;
+			}
 			UpdateChromeVisibility();
 			if (_showAllLyrics)
 			{
@@ -1557,95 +1568,59 @@ public class MainWindow : Window, IComponentConnector
 	private void InitializeVolumeIcon()
 	{
 		VolumeLabel.Visibility = Visibility.Collapsed;
-		_volumeWaveDots.Clear();
-		Canvas icon = new Canvas
+		using Stream stream = typeof(MainWindow).Assembly.GetManifestResourceStream("assets/player/volume.png")
+			?? throw new InvalidOperationException("The volume icon resource is missing.");
+		// Decode a small copy and crop the transparent source canvas once. At runtime the
+		// alpha channel is used as a brush mask, so the selected player color remains live.
+		BitmapImage bitmap = new BitmapImage();
+		bitmap.BeginInit();
+		bitmap.StreamSource = stream;
+		bitmap.DecodePixelWidth = 256;
+		bitmap.CacheOption = BitmapCacheOption.OnLoad;
+		bitmap.EndInit();
+		bitmap.Freeze();
+		CroppedBitmap cropped = new CroppedBitmap(bitmap, new Int32Rect(41, 47, 175, 153));
+		cropped.Freeze();
+		ImageBrush mask = new ImageBrush(cropped)
 		{
-			Width = 29.0,
-			Height = 20.0,
+			Stretch = Stretch.Uniform
+		};
+		mask.Freeze();
+		Rectangle icon = new Rectangle
+		{
+			Width = 19.0,
+			Height = 16.5,
+			Fill = System.Windows.Media.Brushes.White,
+			OpacityMask = mask,
 			IsHitTestVisible = false
 		};
-		const double originX = 1.3;
-		const double originY = 1.8;
-		const double spacing = 2.05;
-		const double dotSize = 1.65;
-		foreach ((int column, int row) in new[]
-		{
-			(5, 0),
-			(4, 1), (5, 1),
-			(3, 2), (4, 2), (5, 2),
-			(0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3),
-			(0, 4), (1, 4), (2, 4), (3, 4), (4, 4), (5, 4),
-			(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5),
-			(3, 6), (4, 6), (5, 6),
-			(4, 7), (5, 7),
-			(5, 8)
-		})
-		{
-			AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
-		}
-		foreach ((int column, int row) in new[]
-		{
-			(7, 2), (8, 3), (8, 4), (8, 5), (7, 6),
-			(10, 0), (11, 1), (12, 2), (12, 3), (13, 4), (12, 5), (12, 6), (11, 7), (10, 8)
-		})
-		{
-			Ellipse waveDot = AddDot(icon, originX + column * spacing, originY + row * spacing, dotSize);
-			_volumeWaveDots.Add(waveDot);
-		}
+		_volumeIcon = icon;
 		VolumeButton.Content = icon;
 	}
 
-	private static Canvas CreateDotContrastIcon()
+	private TextBlock CreateDotReverseIcon()
 	{
-		Canvas icon = new Canvas
+		TextBlock icon = new TextBlock
 		{
-			Width = 22.0,
-			Height = 22.0,
+			Text = "R",
+			FontFamily = _englishDotFont,
+			FontSize = 18.0,
+			FontWeight = FontWeights.Bold,
+			LineHeight = 18.0,
+			TextAlignment = TextAlignment.Center,
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
 			IsHitTestVisible = false
 		};
-		const double center = 11.0;
-		const double radius = 8.5;
-		const double fillSpacing = 2.2;
-		const double dotSize = 1.9;
-		for (int index = 0; index < 24; index++)
-		{
-			double angle = -Math.PI / 2.0 + index * Math.PI * 2.0 / 24.0;
-			AddDot(icon, center + Math.Cos(angle) * radius, center + Math.Sin(angle) * radius, dotSize);
-		}
-		for (int y = -3; y <= 3; y++)
-		{
-			for (int x = -3; x <= 0; x++)
-			{
-				double offsetX = x * fillSpacing;
-				double offsetY = y * fillSpacing;
-				if (offsetX * offsetX + offsetY * offsetY <= 6.7 * 6.7)
-				{
-					AddDot(icon, center + offsetX, center + offsetY, dotSize);
-				}
-			}
-		}
+		TextOptions.SetTextFormattingMode(icon, TextFormattingMode.Display);
 		return icon;
-	}
-
-	private static Ellipse AddDot(Canvas canvas, double centerX, double centerY, double size)
-	{
-		Ellipse dot = new Ellipse
-		{
-			Width = size,
-			Height = size,
-			Fill = System.Windows.Media.Brushes.White
-		};
-		Canvas.SetLeft(dot, centerX - size / 2.0);
-		Canvas.SetTop(dot, centerY - size / 2.0);
-		canvas.Children.Add(dot);
-		return dot;
 	}
 
 	private void UpdateVolumeIcon(bool muted)
 	{
-		foreach (Ellipse dot in _volumeWaveDots)
+		if (_volumeIcon != null)
 		{
-			dot.Opacity = muted ? 0.18 : 1.0;
+			_volumeIcon.Opacity = muted ? 0.34 : 1.0;
 		}
 	}
 
@@ -1655,7 +1630,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			return;
 		}
-		_reverseColorsIcon = CreateDotContrastIcon();
+		_reverseColorsIcon = CreateDotReverseIcon();
 		_reverseColorsButton = new System.Windows.Controls.Button
 		{
 			Content = _reverseColorsIcon,
@@ -1980,6 +1955,22 @@ public class MainWindow : Window, IComponentConnector
 
 	private nint WindowMessageHook(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
 	{
+		const int WmEnterSizeMove = 0x0231;
+		const int WmExitSizeMove = 0x0232;
+		if (message == WmEnterSizeMove)
+		{
+			_isInteractiveResize = true;
+			_resizeRefreshPending = false;
+			_renderTimer.Stop();
+			return IntPtr.Zero;
+		}
+		if (message == WmExitSizeMove)
+		{
+			_isInteractiveResize = false;
+			CaptureWindowBounds();
+			QueueResizeRefresh();
+			return IntPtr.Zero;
+		}
 		if (message != 132 || !_isLocked)
 		{
 			return IntPtr.Zero;
@@ -1993,6 +1984,41 @@ public class MainWindow : Window, IComponentConnector
 		}
 		handled = true;
 		return new IntPtr(-1);
+	}
+
+	private void QueueResizeRefresh()
+	{
+		if (!_resizeRefreshPending)
+		{
+			if (_isInitialized)
+			{
+				_renderTimer.Start();
+			}
+			return;
+		}
+		_resizeRefreshPending = false;
+		base.Dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)delegate
+		{
+			UpdateChromeVisibility();
+			if (_showAllLyrics)
+			{
+				_fullLyricsLayoutKey = null;
+				UpdateFullLyricsViewport();
+			}
+			else if (_plainLyricsScrollMode)
+			{
+				_plainLyricsLayoutKey = null;
+			}
+			else
+			{
+				QueueActiveLineRecentering();
+			}
+			RenderLyrics();
+			if (_isInitialized)
+			{
+				_renderTimer.Start();
+			}
+		});
 	}
 
 	private bool IsPointOverPlaybackButton(System.Windows.Point screenPoint)
@@ -2183,7 +2209,10 @@ public class MainWindow : Window, IComponentConnector
 			_settings.WindowTop = base.Top;
 			_settings.WindowWidth = base.ActualWidth;
 			_settings.WindowHeight = base.ActualHeight;
-			ScheduleSettingsSave();
+			if (!_isInteractiveResize)
+			{
+				ScheduleSettingsSave();
+			}
 		}
 	}
 

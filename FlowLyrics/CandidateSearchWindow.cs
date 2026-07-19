@@ -271,7 +271,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			Opacity = 0.72
 		};
 		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
-		message.Inlines.Add(new Run(T("Can’t find the lyrics? Contribute them to LRCLIB and become the first person to share them.")) + "  ");
+		message.Inlines.Add(new Run(T("No good match? Create synchronized lyrics yourself and help the next listener find them.")) + "  ");
 		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
 		lrclib.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
