@@ -19,12 +19,13 @@
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.14`.
+- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.15`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
 - Replaced the generated volume symbol with the supplied `volume.png` artwork as a lightweight color-aware mask, and changed Reverse Colors to a bold dotted `R`.
 - Updated the LRCLIB/LRCGET contribution prompt in every supported language to invite users to create synchronized lyrics when no good match exists.
+- Reduced the lock, Reverse Colors, volume, and Settings controls as a coordinated compact group; optically centered the dotted `R`; and refined the volume popup outline.
 - Replaced the Settings image wordmark with a lightweight two-color dot-font title.
 - Simplified the version display to high-contrast text without a badge frame.
 - Player controls and the unlocked lock button now use the selected Player UI color for their outlines.

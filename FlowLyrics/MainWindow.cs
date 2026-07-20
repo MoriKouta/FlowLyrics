@@ -283,6 +283,7 @@ public class MainWindow : Window, IComponentConnector
 	public MainWindow()
 	{
 		InitializeComponent();
+		ApplyCompactUtilityControlSizing();
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializeVolumeIcon();
@@ -1597,18 +1598,47 @@ public class MainWindow : Window, IComponentConnector
 		VolumeButton.Content = icon;
 	}
 
+	private void ApplyCompactUtilityControlSizing()
+	{
+		foreach (System.Windows.Controls.Button button in new[] { LockButton, VolumeButton, SettingsButton })
+		{
+			button.Width = 30.0;
+			button.Height = 30.0;
+			button.Margin = new Thickness(2.0, 0.0, 2.0, 0.0);
+		}
+		LockIcon.Width = 15.0;
+		LockIcon.Height = 16.0;
+		if (SettingsButton.Content is Grid settingsGlyph)
+		{
+			settingsGlyph.Width = 15.0;
+			settingsGlyph.Height = 2.6;
+			double[] columns = { 2.6, 3.6, 2.6, 3.6, 2.6 };
+			for (int index = 0; index < Math.Min(columns.Length, settingsGlyph.ColumnDefinitions.Count); index++)
+			{
+				settingsGlyph.ColumnDefinitions[index].Width = new GridLength(columns[index]);
+			}
+			foreach (Ellipse dot in settingsGlyph.Children.OfType<Ellipse>())
+			{
+				dot.Width = 2.6;
+				dot.Height = 2.6;
+			}
+		}
+		VolumePopupSurface.BorderThickness = new Thickness(0.65);
+	}
+
 	private TextBlock CreateDotReverseIcon()
 	{
 		TextBlock icon = new TextBlock
 		{
 			Text = "R",
 			FontFamily = _englishDotFont,
-			FontSize = 18.0,
+			FontSize = 16.5,
 			FontWeight = FontWeights.Bold,
-			LineHeight = 18.0,
+			LineHeight = 16.5,
 			TextAlignment = TextAlignment.Center,
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
 			VerticalAlignment = VerticalAlignment.Center,
+			RenderTransform = new TranslateTransform(1.2, 0.0),
 			IsHitTestVisible = false
 		};
 		TextOptions.SetTextFormattingMode(icon, TextFormattingMode.Display);
@@ -1634,7 +1664,10 @@ public class MainWindow : Window, IComponentConnector
 		{
 			Content = _reverseColorsIcon,
 			ToolTip = "Reverse Colors",
-			Tag = "NoTranslate"
+			Tag = "NoTranslate",
+			Width = 30.0,
+			Height = 30.0,
+			Margin = new Thickness(2.0, 0.0, 2.0, 0.0)
 		};
 		if (base.Resources["SmallMediaButton"] is Style style)
 		{

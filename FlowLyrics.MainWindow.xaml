@@ -218,8 +218,8 @@
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <StackPanel Name="LeftControlGroup" Grid.Column="0" HorizontalAlignment="Left" Orientation="Horizontal">
-              <Button Name="LockButton" Style="{StaticResource SmallMediaButton}" ToolTip="Lock / Unlock" Click="LockButton_Click">
-                <Path Name="LockIcon" Width="17" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF">
+              <Button Name="LockButton" Style="{StaticResource SmallMediaButton}" Width="30" Height="30" Margin="2,0" ToolTip="Lock / Unlock" Click="LockButton_Click">
+                <Path Name="LockIcon" Width="15" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Uniform" Fill="#FFFFFFFF">
                   <Path.Data>
                     <GeometryGroup>
                       <EllipseGeometry Center="6,2" RadiusX="1.25" RadiusY="1.25" />
@@ -287,7 +287,7 @@
               </Button>
             </StackPanel>
             <StackPanel Name="RightControlGroup" Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal">
-              <Button Name="VolumeButton" Style="{StaticResource SmallMediaButton}" ToolTip="Volume" Click="VolumeButton_Click" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
+              <Button Name="VolumeButton" Style="{StaticResource SmallMediaButton}" Width="30" Height="30" Margin="2,0" ToolTip="Volume" Click="VolumeButton_Click" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
                 <Grid>
                   <TextBlock Name="VolumeLabel" Visibility="Collapsed" FontFamily="{DynamicResource DotFont}" FontSize="8" Foreground="#FFFFFFFF" Text="VOL" />
                   <Canvas Width="21" Height="18" IsHitTestVisible="False">
@@ -313,18 +313,18 @@
                   </Canvas>
                 </Grid>
               </Button>
-              <Button Name="SettingsButton" Style="{StaticResource SmallMediaButton}" ToolTip="Settings..." Click="Settings_Click">
-                <Grid Width="17" Height="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Button Name="SettingsButton" Style="{StaticResource SmallMediaButton}" Width="30" Height="30" Margin="2,0" ToolTip="Settings..." Click="Settings_Click">
+                <Grid Width="15" Height="2.6" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="3" />
-                    <ColumnDefinition Width="4" />
-                    <ColumnDefinition Width="3" />
-                    <ColumnDefinition Width="4" />
-                    <ColumnDefinition Width="3" />
+                    <ColumnDefinition Width="2.6" />
+                    <ColumnDefinition Width="3.6" />
+                    <ColumnDefinition Width="2.6" />
+                    <ColumnDefinition Width="3.6" />
+                    <ColumnDefinition Width="2.6" />
                   </Grid.ColumnDefinitions>
-                  <Ellipse Grid.Column="0" Width="3" Height="3" Fill="#FFFFFFFF" />
-                  <Ellipse Grid.Column="2" Width="3" Height="3" Fill="#FFFFFFFF" />
-                  <Ellipse Grid.Column="4" Width="3" Height="3" Fill="#FFFFFFFF" />
+                  <Ellipse Grid.Column="0" Width="2.6" Height="2.6" Fill="#FFFFFFFF" />
+                  <Ellipse Grid.Column="2" Width="2.6" Height="2.6" Fill="#FFFFFFFF" />
+                  <Ellipse Grid.Column="4" Width="2.6" Height="2.6" Fill="#FFFFFFFF" />
                 </Grid>
               </Button>
             </StackPanel>
@@ -333,7 +333,7 @@
       </Grid>
     </Border>
     <primitives:Popup Name="VolumePopup" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PlacementTarget="{Binding ElementName=VolumeButton}">
-      <Border Name="VolumePopupSurface" Margin="4" Padding="12" CornerRadius="10" Background="#2EFFFFFF" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="1" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
+      <Border Name="VolumePopupSurface" Margin="4" Padding="12" CornerRadius="10" Background="#2EFFFFFF" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="0.65" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
         <Slider Name="VolumeSlider" Width="28" Height="160" Minimum="0" Maximum="1" Value="1" Style="{StaticResource VerticalVolumeSlider}" PreviewMouseLeftButtonDown="VolumeSlider_PreviewMouseLeftButtonDown" PreviewMouseMove="VolumeSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="VolumeSlider_PreviewMouseLeftButtonUp" ValueChanged="VolumeSlider_ValueChanged" />
       </Border>
     </primitives:Popup>

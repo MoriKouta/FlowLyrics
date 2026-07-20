@@ -5,7 +5,7 @@ namespace FlowLyrics.Services;
 
 internal static class RuntimeTranslations
 {
-	private const string ContributionKey = "No good match? Create synchronized lyrics yourself and help the next listener find them.";
+	private const string ContributionKey = "No good match? Try creating synchronized lyrics yourself and share them with the next listener.";
 	private const string ClearSelectionKey = "Clear selection and cache";
 
 	private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> NewUiValues = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
@@ -23,15 +23,15 @@ internal static class RuntimeTranslations
 
 	private static readonly IReadOnlyDictionary<string, string> ContributionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 	{
-		["ja-JP"] = "いい候補が見つかりませんか？あなたの手で同期歌詞を作り、次に聴く人へ届けましょう。",
-		["zh-CN"] = "没有合适的结果？亲手制作同步歌词，帮助下一位听众找到它。",
-		["zh-TW"] = "沒有合適的結果？親手製作同步歌詞，讓下一位聽眾也能找到。",
-		["ko-KR"] = "좋은 결과가 없나요? 직접 동기화 가사를 만들어 다음 청취자에게 전해 보세요.",
-		["es-ES"] = "¿No hay una coincidencia adecuada? Crea la letra sincronizada y ayuda a que la encuentre la próxima persona.",
-		["fr-FR"] = "Aucun résultat convaincant ? Créez les paroles synchronisées et aidez la prochaine personne à les trouver.",
-		["de-DE"] = "Kein passender Treffer? Erstellen Sie selbst synchronisierten Liedtext und helfen Sie dem nächsten Hörer.",
-		["pt-BR"] = "Nenhum resultado adequado? Crie a letra sincronizada e ajude o próximo ouvinte a encontrá-la.",
-		["ru-RU"] = "Нет подходящего варианта? Создайте синхронный текст и помогите следующему слушателю найти его."
+		["ja-JP"] = "ぴったりの候補が見つかりませんか？あなたの手で同期歌詞を作って、次に聴く人へ共有してみましょう。",
+		["zh-CN"] = "没有合适的结果？试着亲手制作同步歌词，并分享给下一位听众。",
+		["zh-TW"] = "沒有合適的結果？試著親手製作同步歌詞，分享給下一位聽眾。",
+		["ko-KR"] = "좋은 결과가 없나요? 직접 동기화 가사를 만들어 다음 청취자와 나눠 보세요.",
+		["es-ES"] = "¿No hay una buena coincidencia? Anímate a crear la letra sincronizada y compártela con quien escuche después.",
+		["fr-FR"] = "Aucun bon résultat ? Essayez de créer les paroles synchronisées et partagez-les avec la prochaine personne qui écoutera ce titre.",
+		["de-DE"] = "Kein guter Treffer? Erstellen Sie doch selbst einen synchronisierten Liedtext und teilen Sie ihn mit dem nächsten Hörer.",
+		["pt-BR"] = "Nenhum resultado adequado? Que tal criar a letra sincronizada e compartilhá-la com o próximo ouvinte?",
+		["ru-RU"] = "Нет подходящего варианта? Попробуйте создать синхронный текст сами и поделиться им со следующим слушателем."
 	};
 
 	private static readonly IReadOnlyDictionary<string, string> ClearSelectionValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
