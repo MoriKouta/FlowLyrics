@@ -1608,10 +1608,12 @@ public class MainWindow : Window, IComponentConnector
 		}
 		LockIcon.Width = 15.0;
 		LockIcon.Height = 16.0;
+		LockIcon.RenderTransform = new TranslateTransform(-1.0, 0.0);
 		if (SettingsButton.Content is Grid settingsGlyph)
 		{
 			settingsGlyph.Width = 15.0;
 			settingsGlyph.Height = 2.6;
+			settingsGlyph.RenderTransform = new TranslateTransform(-0.8, 0.0);
 			double[] columns = { 2.6, 3.6, 2.6, 3.6, 2.6 };
 			for (int index = 0; index < Math.Min(columns.Length, settingsGlyph.ColumnDefinitions.Count); index++)
 			{
@@ -1623,7 +1625,10 @@ public class MainWindow : Window, IComponentConnector
 				dot.Height = 2.6;
 			}
 		}
-		VolumePopupSurface.BorderThickness = new Thickness(0.65);
+		VolumePopupSurface.Padding = new Thickness(7.0, 10.0, 7.0, 10.0);
+		VolumePopupSurface.CornerRadius = new CornerRadius(8.5);
+		VolumePopupSurface.BorderThickness = new Thickness(0.5);
+		VolumeSlider.Width = 22.0;
 	}
 
 	private TextBlock CreateDotReverseIcon()
