@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.3.0 - 2026-07-20
+
 ### Added
 
 - Added named user color palettes with version-persistent storage and portable `.flowpalette` import/export.
@@ -19,7 +21,7 @@
 
 ### Changed
 
-- Advanced the `1.3.0` development cycle to confirmation build `1.3.0-dev.16`.
+- Released FlowLyrics `1.3.0`.
 - Reverse Colors now uses the dark Settings surface when off and the light surface when on; the Language selector remains dark and readable in the light state.
 - Slider rails now keep a small rounded gap around borderless thumbs across Settings, seek, and volume controls.
 - Regenerable lyrics caches are isolated by development build while settings, manual LRCLIB selections, and the Local LRC folder remain shared.
@@ -79,7 +81,3 @@
 - Fixed the VOL hover gap between the button and popup so the slider remains reachable without delaying dismissal elsewhere.
 - Removed transient Working and Updated messages after clearing a track selection/cache.
 - Kept Show All Lyrics active when Settings is opened, previewed, or closed.
-
-### Notes
-
-- No `1.3.0` release, Git tag, or GitHub Release is created until the release is explicitly approved.
