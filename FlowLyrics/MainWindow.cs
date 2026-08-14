@@ -290,6 +290,7 @@ public class MainWindow : Window, IComponentConnector
 		InitializePlaybackTimeline();
 		EnsureReverseColorsButton();
 		_settings = _settingsService.Load();
+		_mediaSessionService.ConfigureSelection(_settings.PreferredMediaSourceId, _settings.IgnoredMediaSourceIds);
 		_showAllLyrics = _settings.ShowAllLyrics;
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
@@ -510,7 +511,7 @@ public class MainWindow : Window, IComponentConnector
 		_mediaPollRunning = true;
 		try
 		{
-			PlaybackSnapshot playbackSnapshot = await _mediaSessionService.GetSpotifySnapshotAsync();
+			PlaybackSnapshot? playbackSnapshot = await _mediaSessionService.GetSnapshotAsync();
 			if ((object)playbackSnapshot == null)
 			{
 				_snapshot = null;
@@ -528,13 +529,13 @@ public class MainWindow : Window, IComponentConnector
 					ResetLyricsPresentationState();
 					_lyricsCancellation?.Cancel();
 				}
-				TrackStatusText.Text = "SPOTIFY / WAITING";
-				TrackTitleText.Text = T("Play something in Spotify");
+				TrackStatusText.Text = "MEDIA SESSION / WAITING";
+				TrackTitleText.Text = T("Play something in a media player");
 				_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 				StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 				if (_settings.ShowStatusWhenIdle)
 				{
-					SetStatus(T("Play something in Spotify"), T("Following Spotify for Windows automatically"), animate: false);
+					SetStatus(T("Play something in a media player"), T("Following the selected Windows Media Session"), animate: false);
 				}
 				else
 				{
@@ -556,7 +557,7 @@ public class MainWindow : Window, IComponentConnector
 					_lyrics = null;
 					_lyricsLookup = null;
 					ResetLyricsPresentationState();
-					TrackStatusText.Text = "SPOTIFY / CHECKING CACHE";
+					TrackStatusText.Text = GetPlaybackSourceLabel(playbackSnapshot) + " / CHECKING CACHE";
 					TrackTitleText.Text = playbackSnapshot.Track.DisplayName;
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 					StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
@@ -1256,11 +1257,11 @@ public class MainWindow : Window, IComponentConnector
 		RenderLyrics();
 		if (_snapshot == null)
 		{
-			TrackStatusText.Text = "SPOTIFY / WAITING";
-			TrackTitleText.Text = T("Play something in Spotify");
+			TrackStatusText.Text = "MEDIA SESSION / WAITING";
+			TrackTitleText.Text = T("Play something in a media player");
 			if (_settings.ShowStatusWhenIdle)
 			{
-				SetStatus(T("Play something in Spotify"), T("Following Spotify for Windows automatically"), animate: false);
+				SetStatus(T("Play something in a media player"), T("Following the selected Windows Media Session"), animate: false);
 			}
 			else
 			{
@@ -1327,7 +1328,7 @@ public class MainWindow : Window, IComponentConnector
 		SettingsMenuItem.Header = T("Settings...");
 		LockMenuItem.Header = T(_isLocked ? "Unlock" : "Lock");
 		HideMenuItem.Header = T("Hide overlay") + "  (Ctrl+Alt+K)";
-		PlaybackMenuItem.Header = T("Spotify controls");
+		PlaybackMenuItem.Header = T("Media controls");
 		PreviousMenuItem.Header = T("Previous track");
 		PlayPauseMenuItem.Header = T("Play / Pause");
 		NextMenuItem.Header = T("Next track");
@@ -1401,7 +1402,7 @@ public class MainWindow : Window, IComponentConnector
 			PlayPauseButton.IsEnabled = false;
 			NextButton.IsEnabled = false;
 			LockButton.IsEnabled = true;
-			VolumeButton.IsEnabled = true;
+			VolumeButton.IsEnabled = false;
 			if (_reverseColorsButton != null)
 			{
 				_reverseColorsButton.IsEnabled = true;
@@ -1422,13 +1423,13 @@ public class MainWindow : Window, IComponentConnector
 			PlayPauseButton.IsEnabled = snapshot.CanTogglePlayPause;
 			NextButton.IsEnabled = snapshot.CanSkipNext;
 			LockButton.IsEnabled = true;
-			VolumeButton.IsEnabled = true;
+			VolumeButton.IsEnabled = IsSpotifySource(snapshot);
 			if (_reverseColorsButton != null)
 			{
 				_reverseColorsButton.IsEnabled = true;
 			}
 			SettingsButton.IsEnabled = true;
-			PlaybackSeekSlider.IsEnabled = snapshot.Track.Duration > TimeSpan.Zero;
+			PlaybackSeekSlider.IsEnabled = snapshot.CanSeek && snapshot.Track.Duration > TimeSpan.Zero;
 			PlaybackMenuItem.IsEnabled = true;
 			TrackTitleText.Text = snapshot.Track.DisplayName;
 			UpdateLockButtonVisual();
@@ -1679,7 +1680,15 @@ public class MainWindow : Window, IComponentConnector
 			_reverseColorsButton.Style = style;
 		}
 		_reverseColorsButton.Click += ReverseColorsButton_Click;
-		_reverseColorsButton.MouseEnter += delegate { CloseVolumePopup(); };
+		_reverseColorsButton.MouseEnter += delegate
+		{
+			CloseVolumePopup();
+			if (_settings.ReverseColors) _reverseColorsButton.Opacity = 0.82;
+		};
+		_reverseColorsButton.MouseLeave += delegate
+		{
+			if (_settings.ReverseColors) _reverseColorsButton.Opacity = 1.0;
+		};
 		int index = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
 		RightControlGroup.Children.Insert(index, _reverseColorsButton);
 	}
@@ -1700,6 +1709,16 @@ public class MainWindow : Window, IComponentConnector
 		}
 		_reverseColorsButton.ToolTip = _settings.ReverseColors ? "Reverse Colors: On" : "Reverse Colors: Off";
 		_reverseColorsIcon.Opacity = _settings.ReverseColors ? 1.0 : 0.72;
+		_reverseColorsButton.Opacity = 1.0;
+		if (_settings.ReverseColors)
+		{
+			System.Windows.Media.Color accent = ParseColor(_settings.UiColor, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44));
+			System.Windows.Media.Brush icon = GetContrastingBrush(accent);
+			_reverseColorsButton.Background = new SolidColorBrush(accent);
+			_reverseColorsButton.Foreground = icon;
+			foreach (Shape shape in FindVisualChildren<Shape>(_reverseColorsButton)) shape.Fill = icon;
+			foreach (TextBlock text in FindVisualChildren<TextBlock>(_reverseColorsButton)) text.Foreground = icon;
+		}
 	}
 
 	private void UpdateOverlayChromeColors()
@@ -1846,10 +1865,30 @@ public class MainWindow : Window, IComponentConnector
 
 	private void SetTrackStatus(string status, System.Windows.Media.Color color)
 	{
-		TrackStatusText.Text = "SPOTIFY / " + status;
+		TrackStatusText.Text = GetPlaybackSourceLabel(_snapshot) + " / " + status;
 		TrackTitleText.Text = _snapshot?.Track.DisplayName ?? "FlowLyrics";
 		_trackStatusColor = color;
 		StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
+	}
+
+	private static string GetPlaybackSourceLabel(PlaybackSnapshot? snapshot)
+	{
+		string source = snapshot?.SourceDisplayName;
+		return string.IsNullOrWhiteSpace(source) ? "MEDIA SESSION" : source.Trim().ToUpperInvariant();
+	}
+
+	private static bool IsSpotifySource(PlaybackSnapshot snapshot)
+	{
+		return snapshot.SourceDisplayName.Equals("Spotify", StringComparison.OrdinalIgnoreCase)
+			|| snapshot.SourceAppUserModelId.Contains("spotify", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static System.Windows.Media.Brush GetContrastingBrush(System.Windows.Media.Color color)
+	{
+		double luminance = (0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B) / 255.0;
+		return luminance > 0.58
+			? new SolidColorBrush(System.Windows.Media.Color.FromRgb(22, 24, 23))
+			: System.Windows.Media.Brushes.White;
 	}
 
 	private static int FindActiveLine(IReadOnlyList<LyricLine> lines, TimeSpan position)
@@ -2150,7 +2189,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		_settingsBeforeWindow = _settings.Clone();
-		SettingsWindow settingsWindow = new SettingsWindow(_settings.Clone(), _lyricsService.LyricsDirectory, _lyricsService, () => _snapshot?.Track, () => _lyricsLookup, async delegate
+		SettingsWindow settingsWindow = new SettingsWindow(_settings.Clone(), _lyricsService.LyricsDirectory, _lyricsService, _mediaSessionService, () => _snapshot, () => _snapshot?.Track, () => _lyricsLookup, async delegate
 		{
 			if (_snapshot != null)
 			{
@@ -2177,6 +2216,7 @@ public class MainWindow : Window, IComponentConnector
 			bool num3 = _settings.ShortcutsEnabled != preview.ShortcutsEnabled;
 			bool autoScrollResumed = !_settings.PlainLyricsAutoScroll && preview.PlainLyricsAutoScroll;
 			_settings = preview;
+			_mediaSessionService.ConfigureSelection(_settings.PreferredMediaSourceId, _settings.IgnoredMediaSourceIds);
 			if (autoScrollResumed)
 			{
 				_plainLyricsUserScrollPaused = false;
@@ -2219,6 +2259,7 @@ public class MainWindow : Window, IComponentConnector
 			}
 			bool shortcutsChanged = _settings.ShortcutsEnabled != resultSettings.ShortcutsEnabled;
 			_settings = resultSettings;
+			_mediaSessionService.ConfigureSelection(_settings.PreferredMediaSourceId, _settings.IgnoredMediaSourceIds);
 			if (shortcutsChanged)
 			{
 				ConfigureHotkeys();
@@ -2230,6 +2271,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			bool shortcutsChanged = _settings.ShortcutsEnabled != original.ShortcutsEnabled;
 			_settings = original;
+			_mediaSessionService.ConfigureSelection(_settings.PreferredMediaSourceId, _settings.IgnoredMediaSourceIds);
 			if (shortcutsChanged)
 			{
 				ConfigureHotkeys();
@@ -2338,6 +2380,7 @@ public class MainWindow : Window, IComponentConnector
 			await SaveSettingsSafeAsync();
 			_hotkeys?.Dispose();
 			_tray?.Dispose();
+			_mediaSessionService.Dispose();
 			_lyricsService.Dispose();
 			_windowSource?.RemoveHook(WindowMessageHook);
 			Close();
@@ -2400,14 +2443,14 @@ public class MainWindow : Window, IComponentConnector
 		{
 			if (!(await command(_mediaSessionService, CancellationToken.None)))
 			{
-				throw new InvalidOperationException("Spotify rejected the media command.");
+				throw new InvalidOperationException("The selected media session rejected the command.");
 			}
 			await Task.Delay(90);
 			await PollMediaAsync();
 		}
 		catch
 		{
-			_tray?.ShowMessage("FlowLyrics", T("Could not control Spotify. Start playback in Spotify and try again."));
+			_tray?.ShowMessage("FlowLyrics", T("Could not control the selected media player. Start playback and try again."));
 		}
 	}
 
@@ -2456,7 +2499,7 @@ public class MainWindow : Window, IComponentConnector
 		_isSeeking = true;
 		_pendingSeekRatio = null;
 		_seekWasDirectClick = false;
-		if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) != null || !(PlaybackSeekSlider.ActualWidth > 0.0) || (object)_snapshot == null || !(_snapshot.Track.Duration > TimeSpan.Zero))
+		if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) != null || !(PlaybackSeekSlider.ActualWidth > 0.0) || (object)_snapshot == null || !_snapshot.CanSeek || !(_snapshot.Track.Duration > TimeSpan.Zero))
 		{
 			return;
 		}
@@ -2483,7 +2526,7 @@ public class MainWindow : Window, IComponentConnector
 			e.Handled = true;
 			return;
 		}
-		if (!_isSeeking || (object)_snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero)
+		if (!_isSeeking || (object)_snapshot == null || !_snapshot.CanSeek || _snapshot.Track.Duration <= TimeSpan.Zero)
 		{
 			_isSeeking = false;
 			_pendingSeekRatio = null;
@@ -2511,7 +2554,7 @@ public class MainWindow : Window, IComponentConnector
 		double volume;
 		bool muted;
 		bool num = _systemVolumeService.TryGetVolume(out volume, out muted);
-		VolumeSlider.IsEnabled = _snapshot != null;
+		VolumeSlider.IsEnabled = _snapshot != null && IsSpotifySource(_snapshot);
 		if (num)
 		{
 			_lastSpotifyVolume = volume;
@@ -2671,7 +2714,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private static CustomPopupPlacement[] PlaceVolumePopup(System.Windows.Size popupSize, System.Windows.Size targetSize, System.Windows.Point offset)
 	{
-		double x = (targetSize.Width - popupSize.Width) / 2.0 - 8.0;
+		double x = (targetSize.Width - popupSize.Width) / 2.0;
 		double y = 0.0 - popupSize.Height - 2.0;
 		return new CustomPopupPlacement[1]
 		{

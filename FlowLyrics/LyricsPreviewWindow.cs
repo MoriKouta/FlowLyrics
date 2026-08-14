@@ -44,7 +44,7 @@ public class LyricsPreviewWindow : Window, IComponentConnector
 		ArtistText.Text = record.ArtistName ?? T("Unknown artist");
 		AlbumText.Text = record.AlbumName ?? T("Unknown album");
 		string value = (candidate.DurationDifferenceSeconds.HasValue ? $"{candidate.DurationDifferenceSeconds.Value:+0.0;-0.0;0.0} s" : "--");
-		DurationText.Text = $"LRCLIB #{record.Id}  ·  {FormatDuration(record.Duration)}  ·  {T("Spotify duration difference")}: {value}";
+		DurationText.Text = $"LRCLIB #{record.Id}  ·  {FormatDuration(record.Duration)}  ·  {T("Playback duration difference")}: {value}";
 		if (record.Instrumental)
 		{
 			LyricsText.Text = T("Instrumental");

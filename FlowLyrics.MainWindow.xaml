@@ -166,7 +166,7 @@
       <MenuItem Name="LockMenuItem" Header="Lock" Click="Lock_Click" />
       <MenuItem Name="HideMenuItem" Header="Hide overlay  (Ctrl+Alt+K)" Click="Hide_Click" />
       <Separator />
-      <MenuItem Name="PlaybackMenuItem" Header="Spotify controls">
+      <MenuItem Name="PlaybackMenuItem" Header="Media controls">
         <MenuItem Name="PreviousMenuItem" Header="Previous track" Click="Previous_Click" />
         <MenuItem Name="PlayPauseMenuItem" Header="Play / Pause" Click="PlayPause_Click" />
         <MenuItem Name="NextMenuItem" Header="Next track" Click="Next_Click" />
@@ -199,9 +199,9 @@
           <StackPanel Name="TrackInfoPanel" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal">
               <Ellipse Name="StatusDot" Width="7" Height="7" Margin="0,0,7,0" Fill="#FF69E6A6" VerticalAlignment="Center" />
-              <TextBlock Name="TrackStatusText" FontFamily="{DynamicResource DotFont}" Foreground="#BFFFFFFF" FontSize="9" FontWeight="SemiBold" Text="SPOTIFY / WAITING" />
+              <TextBlock Name="TrackStatusText" FontFamily="{DynamicResource DotFont}" Foreground="#BFFFFFFF" FontSize="9" FontWeight="SemiBold" Text="MEDIA SESSION / WAITING" />
             </StackPanel>
-            <TextBlock Name="TrackTitleText" Margin="0,4,16,0" Foreground="#F2FFFFFF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Play something in Spotify" />
+            <TextBlock Name="TrackTitleText" Margin="0,4,16,0" Foreground="#F2FFFFFF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Play something in a media player" />
           </StackPanel>
         </Grid>
         <Grid Name="LyricsPanel" Row="1" ClipToBounds="True">

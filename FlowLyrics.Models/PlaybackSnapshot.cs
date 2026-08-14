@@ -2,7 +2,20 @@ using System;
 
 namespace FlowLyrics.Models;
 
-public sealed record PlaybackSnapshot(TrackInfo Track, TimeSpan Position, bool IsPlaying, DateTimeOffset CapturedAtUtc, bool CanTogglePlayPause = true, bool CanSkipPrevious = true, bool CanSkipNext = true)
+public sealed record PlaybackSnapshot(
+	TrackInfo Track,
+	TimeSpan Position,
+	bool IsPlaying,
+	DateTimeOffset CapturedAtUtc,
+	bool CanTogglePlayPause = true,
+	bool CanSkipPrevious = true,
+	bool CanSkipNext = true,
+	bool CanSeek = true,
+	bool CanPlay = true,
+	bool CanPause = true,
+	string SessionId = "",
+	string SourceAppUserModelId = "",
+	string SourceDisplayName = "Media Session")
 {
 	public TimeSpan EstimatedPosition(DateTimeOffset nowUtc)
 	{

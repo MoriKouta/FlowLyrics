@@ -505,7 +505,7 @@
             <Border Style="{StaticResource Card}">
               <StackPanel>
                 <TextBlock Style="{StaticResource SectionTitle}" Text="Current track" Tag="NoTranslate" />
-                <TextBlock Name="LyricsEmptyText" Margin="0,2,0,4" Foreground="{StaticResource Muted}" Text="Play a track on Spotify." TextWrapping="Wrap" />
+                <TextBlock Name="LyricsEmptyText" Margin="0,2,0,4" Foreground="{StaticResource Muted}" Text="Play a track in a media player." TextWrapping="Wrap" />
                 <StackPanel Name="CurrentTrackPanel" Visibility="Collapsed">
                   <TextBlock Name="CurrentTrackTitleText" FontSize="24" FontWeight="Bold" TextWrapping="Wrap" />
                   <TextBlock Name="CurrentTrackArtistText" Margin="0,5,0,0" FontSize="16" TextWrapping="Wrap" />
@@ -530,7 +530,7 @@
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Style="{StaticResource LyricsFieldLabel}" Text="Spotify Track ID" />
+                    <TextBlock Grid.Row="0" Style="{StaticResource LyricsFieldLabel}" Text="Playback source" />
                     <TextBlock Name="SpotifyTrackIdText" Grid.Row="0" Grid.Column="1" Margin="5,7" TextWrapping="Wrap" />
                     <TextBlock Grid.Row="1" Style="{StaticResource LyricsFieldLabel}" Text="Lyrics Source" />
                     <TextBlock Name="LyricsSourceText" Grid.Row="1" Grid.Column="1" Margin="5,7" Foreground="{DynamicResource Orange}" TextWrapping="Wrap" />

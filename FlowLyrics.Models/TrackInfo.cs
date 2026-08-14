@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace FlowLyrics.Models;
 
-public sealed record TrackInfo(string Title, string Artist, string Album, TimeSpan Duration, string? SpotifyTrackId = null)
+public sealed record TrackInfo(string Title, string Artist, string Album, TimeSpan Duration, string? LegacyProviderTrackId = null)
 {
 	public string CacheKey
 	{
@@ -25,15 +26,6 @@ public sealed record TrackInfo(string Title, string Artist, string Album, TimeSp
 	{
 		get
 		{
-			if (!string.IsNullOrWhiteSpace(SpotifyTrackId))
-			{
-				string text = SpotifyTrackId.Trim();
-				if (!text.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase))
-				{
-					return "spotify:track:" + text.ToLowerInvariant();
-				}
-				return text.ToLowerInvariant();
-			}
 			InlineArray4<object> buffer = default(InlineArray4<object>);
 			buffer[0] = NormalizeIdentityPart(Title);
 			buffer[1] = NormalizeIdentityPart(Artist);
@@ -41,6 +33,20 @@ public sealed record TrackInfo(string Title, string Artist, string Album, TimeSp
 			buffer[3] = Math.Max(0, (int)Math.Round(Duration.TotalSeconds));
 			string s = string.Join("|", (ReadOnlySpan<object?>)buffer);
 			return "metadata:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
+		}
+	}
+
+	public IEnumerable<string> LegacyIdentityKeys
+	{
+		get
+		{
+			if (!string.IsNullOrWhiteSpace(LegacyProviderTrackId))
+			{
+				string value = LegacyProviderTrackId.Trim();
+				yield return value.StartsWith("spotify:track:", StringComparison.OrdinalIgnoreCase)
+					? value.ToLowerInvariant()
+					: "spotify:track:" + value.ToLowerInvariant();
+			}
 		}
 	}
 

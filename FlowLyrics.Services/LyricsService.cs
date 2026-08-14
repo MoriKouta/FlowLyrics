@@ -12,6 +12,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using FlowLyrics.Core;
 using FlowLyrics.Models;
 
 namespace FlowLyrics.Services;
@@ -98,6 +99,7 @@ public sealed class LyricsService : IDisposable
 			Timeout = Timeout.InfiniteTimeSpan
 		};
 		_httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("FlowLyrics", BuildInfo.Version));
+		_httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(+https://github.com/MoriKouta/FlowLyrics)"));
 		_httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 	}
 
@@ -251,7 +253,7 @@ public sealed class LyricsService : IDisposable
 		{
 			exact = await TryGetExactAsync(track, cancellationToken);
 		}
-		catch (LyricsServiceException ex) when ((uint)(ex.Kind - 1) <= 2u)
+		catch (LyricsServiceException ex) when (ex.Kind is LyricsErrorKind.Network or LyricsErrorKind.Timeout or LyricsErrorKind.RateLimited or LyricsErrorKind.Json)
 		{
 			await _logger.WriteAsync($"exact lookup failed kind={ex.Kind} fallback=api/search cacheKey={track.CacheKey}");
 		}
@@ -447,46 +449,44 @@ public sealed class LyricsService : IDisposable
 		int successfulRequests = 0;
 		int completedRequests = 0;
 		bool haltFurtherRequests = false;
+		IReadOnlyList<SearchMetadataCandidate> metadataCandidates = MetadataNormalizer.BuildCandidates(request.Title, request.Artist, request.Album);
+		SearchMetadataCandidate rawMetadata = metadataCandidates[0];
+		SearchMetadataCandidate? normalizedMetadata = metadataCandidates.Count > 1 ? metadataCandidates[1] : null;
+		await _logger.WriteAsync($"metadata RAW title={Safe(rawMetadata.Title)} artist={Safe(rawMetadata.Artist)} album={Safe(rawMetadata.Album)}");
+		await _logger.WriteAsync($"metadata NORMALIZED title={Safe(normalizedMetadata?.Title ?? rawMetadata.Title)} artist={Safe(normalizedMetadata?.Artist ?? rawMetadata.Artist)} album={Safe(normalizedMetadata?.Album ?? rawMetadata.Album)}");
 		CancellationToken token;
 		using (CancellationTokenSource totalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
 		{
 			totalCancellation.CancelAfter(TimeSpan.FromSeconds(90L));
 			token = totalCancellation.Token;
-			foreach (string knownArtistSearchAlias in LyricsMatcher.GetKnownArtistSearchAliases(request.Artist))
+			bool sequenceSatisfied = ShouldStop() || await RunMetadataSequenceAsync(rawMetadata, "raw");
+			if (!sequenceSatisfied && !ShouldStop() && normalizedMetadata != null && !normalizedMetadata.IsEmpty)
 			{
-				await RunSearchAsync("fields:known-artist-alias", Fields(request.Title, knownArtistSearchAlias, null));
-				if (ShouldStop())
+				sequenceSatisfied = await RunMetadataSequenceAsync(normalizedMetadata, "normalized");
+			}
+			if (!sequenceSatisfied && !ShouldStop())
+			{
+				foreach (string knownArtistSearchAlias in LyricsMatcher.GetKnownArtistSearchAliases(rawMetadata.Artist))
 				{
-					break;
+					int resultCount = await RunSearchAsync("fields:known-artist-alias", Fields(rawMetadata.Title, knownArtistSearchAlias, null));
+					if (SequenceSatisfied(resultCount) || ShouldStop())
+					{
+						sequenceSatisfied = true;
+						break;
+					}
 				}
 			}
-			if (!ShouldStop())
+			if (!sequenceSatisfied && !ShouldStop() && !string.IsNullOrWhiteSpace(request.Keyword))
 			{
-				await RunSearchAsync("fields:title+artist", Fields(request.Title, request.Artist, null));
-			}
-			if (!stopWhenSafeSyncedFound && !ShouldStop())
-			{
-				await RunSearchAsync("fields:title+artist+album", Fields(request.Title, request.Artist, request.Album));
-			}
-			if (!ShouldStop())
-			{
-				await RunSearchAsync("fields:title", Fields(request.Title, null, null));
-			}
-			if (!ShouldStop() && (!stopWhenSafeSyncedFound || records.Count == 0))
-			{
-				await RunSearchAsync("q:title+artist", Query((request.Title + " " + request.Artist).Trim()));
-			}
-			if (!ShouldStop())
-			{
-				await RunSearchAsync("q:keyword", Query(request.Keyword));
+				sequenceSatisfied = SequenceSatisfied(await RunSearchAsync("q:keyword", Query(request.Keyword)));
 			}
 			IReadOnlyList<LyricsCandidate> source = LyricsMatcher.RankCandidates(track, records.Values);
-			if (!ShouldStop() && !source.Any((LyricsCandidate candidate) => candidate.AutoEligible && !string.IsNullOrWhiteSpace(candidate.Record.SyncedLyrics)))
+			if (!sequenceSatisfied && !ShouldStop() && !source.Any((LyricsCandidate candidate) => candidate.AutoEligible && !string.IsNullOrWhiteSpace(candidate.Record.SyncedLyrics)))
 			{
 				foreach (LrclibRecord item2 in DiscoverAlternativeArtistQueries(track, records.Values).Take(2))
 				{
-					await RunSearchAsync("fields:lrclib-artist-alias", Fields(item2.TrackName, item2.ArtistName, null));
-					if (ShouldStop())
+					int resultCount = await RunSearchAsync("fields:lrclib-artist-alias", Fields(item2.TrackName, item2.ArtistName, null));
+					if (SequenceSatisfied(resultCount) || ShouldStop())
 					{
 						break;
 					}
@@ -529,55 +529,66 @@ public sealed class LyricsService : IDisposable
 				});
 			}
 		}
-		async Task RunSearchAsync(string method, IReadOnlyDictionary<string, string>? values)
+		async Task<bool> RunMetadataSequenceAsync(SearchMetadataCandidate metadata, string prefix)
 		{
-			if (values != null && values.Count != 0)
+			int resultCount = await RunSearchAsync("fields:" + prefix + ":title+artist+album", Fields(metadata.Title, metadata.Artist, metadata.Album));
+			if (SequenceSatisfied(resultCount) || ShouldStop()) return true;
+			if (!string.IsNullOrWhiteSpace(metadata.Artist))
 			{
-				string text = "api/search?" + BuildQuery(values);
-				if (requestedUrls.Add(text))
+				resultCount = await RunSearchAsync("fields:" + prefix + ":title+artist", Fields(metadata.Title, metadata.Artist, null));
+				if (SequenceSatisfied(resultCount) || ShouldStop()) return true;
+			}
+			resultCount = await RunSearchAsync("fields:" + prefix + ":title", Fields(metadata.Title, null, null));
+			return SequenceSatisfied(resultCount) || ShouldStop();
+		}
+		bool SequenceSatisfied(int resultCount)
+		{
+			return stopWhenSafeSyncedFound ? HasSafeSyncedCandidate() : resultCount > 0;
+		}
+		async Task<int> RunSearchAsync(string method, IReadOnlyDictionary<string, string>? values)
+		{
+			if (values == null || values.Count == 0)
+			{
+				return 0;
+			}
+			string relativeUrl = "api/search?" + BuildQuery(values);
+			if (!requestedUrls.Add(relativeUrl))
+			{
+				return 0;
+			}
+			ReportProgress(method);
+			try
+			{
+				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 2, token)) ?? Array.Empty<LrclibRecord>();
+				successfulRequests++;
+				foreach (LrclibRecord lrclibRecord in array)
 				{
-					ReportProgress(method);
-					try
-					{
-						LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(text, 2, token)) ?? Array.Empty<LrclibRecord>();
-						successfulRequests++;
-						LrclibRecord[] array2 = array;
-						foreach (LrclibRecord lrclibRecord in array2)
-						{
-							records[lrclibRecord.Id] = lrclibRecord;
-						}
-						await _logger.WriteAsync($"search method={method} results={array.Length} spotifyTrackId={track.SpotifyTrackId ?? "unavailable"} cacheKey={track.CacheKey}");
-					}
-					catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-					{
-						throw;
-					}
-					catch (Exception ex2) when (ex2 is LyricsServiceException || ex2 is OperationCanceledException)
-					{
-						if (ex2 is OperationCanceledException)
-						{
-							new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB request timed out."), ex2);
-						}
-						errors.Add(ex2);
-						LyricsServiceException ex3 = ex2 as LyricsServiceException;
-						bool flag = ex3 != null;
-						if (flag)
-						{
-							LyricsErrorKind kind = ex3.Kind;
-							bool flag2 = (uint)(kind - 1) <= 2u;
-							flag = flag2;
-						}
-						if (flag)
-						{
-							haltFurtherRequests = true;
-						}
-					}
-					finally
-					{
-						completedRequests++;
-						ReportProgress(method);
-					}
+					records[lrclibRecord.Id] = lrclibRecord;
 				}
+				await _logger.WriteAsync($"search method={method} url={new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri} results={array.Length} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
+				return array.Length;
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				throw;
+			}
+			catch (Exception ex2) when (ex2 is LyricsServiceException || ex2 is OperationCanceledException)
+			{
+				Exception recorded = ex2 is OperationCanceledException
+					? new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex2)
+					: ex2;
+				errors.Add(recorded);
+				if (recorded is LyricsServiceException serviceError
+					&& serviceError.Kind is LyricsErrorKind.Network or LyricsErrorKind.Timeout or LyricsErrorKind.RateLimited or LyricsErrorKind.Json)
+				{
+					haltFurtherRequests = true;
+				}
+				return 0;
+			}
+			finally
+			{
+				completedRequests++;
+				ReportProgress(method);
 			}
 		}
 		bool ShouldStop()
@@ -611,17 +622,27 @@ public sealed class LyricsService : IDisposable
 		{
 			return value;
 		}
-		Exception lastError = null;
-		for (int attempt = 0; attempt < Math.Clamp(maxAttempts, 1, 3); attempt++)
+		Exception? lastError = null;
+		int attempts = Math.Clamp(maxAttempts, 1, 3);
+		string requestUrl = new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri;
+		for (int attempt = 0; attempt < attempts; attempt++)
 		{
 			await WaitForServerBackoffAsync(cancellationToken);
 			using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 			requestCancellation.CancelAfter((attempt == 0) ? TimeSpan.FromSeconds(15L) : TimeSpan.FromSeconds(30L));
 			Stopwatch requestTimer = Stopwatch.StartNew();
+			int? statusCode = null;
+			string contentType = "unavailable";
+			string responsePrefix = string.Empty;
 			try
 			{
 				using HttpResponseMessage response = await _httpClient.GetAsync(relativeUrl, HttpCompletionOption.ResponseHeadersRead, requestCancellation.Token);
-				await _logger.WriteAsync($"http path={RequestPath(relativeUrl)} status={(int)response.StatusCode} attempt={attempt + 1} elapsedMs={requestTimer.ElapsedMilliseconds}");
+				statusCode = (int)response.StatusCode;
+				contentType = response.Content.Headers.ContentType?.ToString() ?? "unavailable";
+				string responseBody = await response.Content.ReadAsStringAsync(requestCancellation.Token);
+				responsePrefix = BodyPrefix(responseBody);
+				string retryAfter = response.Headers.RetryAfter?.ToString() ?? "none";
+				await _logger.WriteAsync($"http method=GET url={requestUrl} status={statusCode} contentType={Safe(contentType)} retryAfter={Safe(retryAfter)} attempt={attempt + 1} elapsedMs={requestTimer.ElapsedMilliseconds} bodyPrefix={responsePrefix}");
 				if (response.StatusCode == HttpStatusCode.NotFound)
 				{
 					if (throwOnNotFound)
@@ -634,8 +655,10 @@ public sealed class LyricsService : IDisposable
 				{
 					TimeSpan retryDelay = GetRetryDelay(response, attempt);
 					SetServerBackoff(retryDelay);
-					lastError = ((response.StatusCode == HttpStatusCode.TooManyRequests) ? new LyricsServiceException(LyricsErrorKind.RateLimited, LocalizationService.TranslateCurrent("Could not connect to LRCLIB.")) : new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("Could not connect to LRCLIB.")));
-					if (attempt + 1 < maxAttempts)
+					lastError = response.StatusCode == HttpStatusCode.TooManyRequests
+						? new LyricsServiceException(LyricsErrorKind.RateLimited, LocalizationService.TranslateCurrent("LRCLIB communication failed."))
+						: new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."));
+					if (attempt + 1 < attempts)
 					{
 						await WaitForServerBackoffAsync(cancellationToken);
 						continue;
@@ -643,34 +666,38 @@ public sealed class LyricsService : IDisposable
 					break;
 				}
 				response.EnsureSuccessStatusCode();
-				string json = await response.Content.ReadAsStringAsync(requestCancellation.Token);
-				T? result = JsonSerializer.Deserialize<T>(json, _jsonOptions);
-				_requestCache[relativeUrl] = new CachedJsonResponse(json, DateTimeOffset.UtcNow.Add(RequestCacheLifetime));
+				T? result = JsonSerializer.Deserialize<T>(responseBody, _jsonOptions);
+				_requestCache[relativeUrl] = new CachedJsonResponse(responseBody, DateTimeOffset.UtcNow.Add(RequestCacheLifetime));
 				TrimRequestCache();
 				return result;
 			}
-			catch (OperationCanceledException innerException) when (!cancellationToken.IsCancellationRequested)
+			catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
 			{
-				lastError = new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB request timed out."), innerException);
-				goto IL_04ec;
+				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
+				lastError = new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
 			}
-			catch (JsonException innerException2)
+			catch (JsonException ex)
 			{
-				throw new LyricsServiceException(LyricsErrorKind.Json, LocalizationService.TranslateCurrent("LRCLIB returned invalid JSON."), innerException2);
+				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
+				throw new LyricsServiceException(LyricsErrorKind.Json, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
 			}
-			catch (HttpRequestException innerException3)
+			catch (HttpRequestException ex)
 			{
-				lastError = new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("Could not connect to LRCLIB."), innerException3);
-				goto IL_04ec;
+				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
+				lastError = new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
 			}
-			IL_04ec:
-			if (attempt + 1 < maxAttempts)
+			if (attempt + 1 < attempts)
 			{
 				await Task.Delay(TimeSpan.FromMilliseconds(300 + attempt * 350), cancellationToken);
 			}
-			continue;
 		}
-		throw lastError ?? new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("Could not connect to LRCLIB."));
+		throw lastError ?? new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."));
+	}
+
+	private async Task LogHttpExceptionAsync(string requestUrl, int? statusCode, string contentType, string responsePrefix, Exception exception, int attempt, long elapsedMs)
+	{
+		await _logger.WriteAsync(
+			$"http-exception method=GET url={requestUrl} status={(statusCode?.ToString(CultureInfo.InvariantCulture) ?? "unavailable")} contentType={Safe(contentType)} attempt={attempt} elapsedMs={elapsedMs} bodyPrefix={responsePrefix} exceptionType={exception.GetType().FullName} exceptionMessage={Safe(exception.Message)} stackTrace={Safe(exception.StackTrace)}");
 	}
 
 	private async Task<LyricsLookupResult> CacheAndCreateResultAsync(TrackInfo track, LrclibRecord record, string selectionMode, CancellationToken cancellationToken)
@@ -802,7 +829,7 @@ public sealed class LyricsService : IDisposable
 
 	private async Task LogTrackAsync(TrackInfo track, string method)
 	{
-		await _logger.WriteAsync($"track method={method} spotifyTrackId={track.SpotifyTrackId ?? "unavailable"} title={Safe(track.Title)} artist={Safe(track.Artist)} album={Safe(track.Album)} duration={track.Duration.TotalSeconds:0.###} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
+		await _logger.WriteAsync($"track method={method} title={Safe(track.Title)} artist={Safe(track.Artist)} album={Safe(track.Album)} duration={track.Duration.TotalSeconds:0.###} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
 	}
 
 	private async Task LogCandidateAsync(TrackInfo track, string method, LyricsCandidate candidate)
@@ -959,6 +986,13 @@ public sealed class LyricsService : IDisposable
 	private static string Safe(string? value)
 	{
 		return (value ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Replace('|', '/');
+	}
+
+	private static string BodyPrefix(string? value)
+	{
+		string body = value ?? string.Empty;
+		if (body.Length > 500) body = body.Substring(0, 500);
+		return Safe(body);
 	}
 
 	private static IEnumerable<LrclibRecord> DiscoverAlternativeArtistQueries(TrackInfo track, IEnumerable<LrclibRecord> records)

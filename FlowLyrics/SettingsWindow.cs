@@ -19,6 +19,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using FlowLyrics.Core;
 using FlowLyrics.Models;
 using FlowLyrics.Services;
 using Microsoft.Win32;
@@ -32,6 +33,10 @@ public class SettingsWindow : Window, IComponentConnector
 	private readonly string _lrcDirectory;
 
 	private readonly LyricsService _lyricsService;
+
+	private readonly MediaSessionService _mediaSessionService;
+
+	private readonly Func<PlaybackSnapshot?> _currentSnapshotProvider;
 
 	private readonly Func<TrackInfo?> _currentTrackProvider;
 
@@ -98,6 +103,22 @@ public class SettingsWindow : Window, IComponentConnector
 	private Style? _faderScrollBarStyle;
 
 	private Border? _settingsHeaderBorder;
+
+	private bool _mediaSessionControlsInitialized;
+
+	private bool _updatingMediaSessionControls;
+
+	private System.Windows.Controls.ComboBox? _playbackSourceBox;
+
+	private StackPanel? _ignoredMediaSourcesPanel;
+
+	private TextBlock? _mediaSessionStatusText;
+
+	private readonly List<System.Windows.Controls.CheckBox> _ignoredMediaSourceBoxes = new();
+
+	private IReadOnlyList<MediaSessionInfo> _detectedMediaSessions = Array.Empty<MediaSessionInfo>();
+
+	private MediaSessionDiagnosticsWindow? _mediaSessionDiagnosticsWindow;
 
 	internal System.Windows.Controls.TabControl SettingsTabs;
 
@@ -239,7 +260,7 @@ public class SettingsWindow : Window, IComponentConnector
 
 	public event Action<AppSettings>? PreviewChanged;
 
-	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<Task> reloadCurrentTrack)
+	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, MediaSessionService mediaSessionService, Func<PlaybackSnapshot?> currentSnapshotProvider, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<Task> reloadCurrentTrack)
 	{
 		InitializeComponent();
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
@@ -248,6 +269,8 @@ public class SettingsWindow : Window, IComponentConnector
 		CaptureLocalizableContent(this);
 		_lrcDirectory = lrcDirectory;
 		_lyricsService = lyricsService;
+		_mediaSessionService = mediaSessionService;
+		_currentSnapshotProvider = currentSnapshotProvider;
 		_currentTrackProvider = currentTrackProvider;
 		_lookupProvider = lookupProvider;
 		_reloadCurrentTrack = reloadCurrentTrack;
@@ -264,13 +287,14 @@ public class SettingsWindow : Window, IComponentConnector
 		ApplyLanguage(ResultSettings.Language);
 		_suppressPreview = false;
 		AttachPreviewHandlers();
-		base.Loaded += delegate
+		base.Loaded += async delegate
 		{
 			DisableDialogOnlyButtons();
 			InitializeBranding();
 			InitializeTextControls();
 			InitializeReverseColorsControl();
 			InitializePaletteManager();
+			InitializeMediaSessionControls();
 			InitializeBehaviorReset();
 			InitializeCompactComboBoxes();
 			ApplySoftSettingsTheme();
@@ -279,6 +303,14 @@ public class SettingsWindow : Window, IComponentConnector
 			CaptureLocalizableContent(this);
 			ApplyLanguage(_currentLanguage);
 			RefreshLyricsTab();
+			await RefreshMediaSessionsAsync();
+		};
+		_mediaSessionService.SessionsChanged += MediaSessionService_SessionsChanged;
+		base.Closed += delegate
+		{
+			_mediaSessionService.SessionsChanged -= MediaSessionService_SessionsChanged;
+			_mediaSessionDiagnosticsWindow?.Close();
+			_mediaSessionDiagnosticsWindow = null;
 		};
 	}
 
@@ -302,6 +334,7 @@ public class SettingsWindow : Window, IComponentConnector
 				InitializeTextControls();
 				InitializeReverseColorsControl();
 				InitializePaletteManager();
+				InitializeMediaSessionControls();
 				InitializeBehaviorReset();
 				InitializeCompactComboBoxes();
 				CaptureLocalizableContent(this);
@@ -978,6 +1011,268 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 	}
 
+	private void InitializeMediaSessionControls()
+	{
+		if (_mediaSessionControlsInitialized || GetTabStack("Behavior") is not StackPanel behaviorStack)
+		{
+			return;
+		}
+
+		Border sourceCard = new Border();
+		sourceCard.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		sourceCard.Padding = new Thickness(16.0, 13.0, 16.0, 13.0);
+		StackPanel sourceContent = new StackPanel();
+		sourceContent.Children.Add(new TextBlock
+		{
+			Text = "PLAYBACK SOURCE",
+			FontFamily = _englishDotFont,
+			FontSize = 11.0,
+			FontWeight = FontWeights.Bold
+		});
+		sourceContent.Children.Add(new TextBlock
+		{
+			Text = "Choose a preferred player, or keep AUTO for stable session selection.",
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 4.0, 0.0, 10.0)
+		});
+		_playbackSourceBox = new System.Windows.Controls.ComboBox
+		{
+			MinWidth = 250.0,
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
+		};
+		_playbackSourceBox.SelectionChanged += PlaybackSourceBox_SelectionChanged;
+		sourceContent.Children.Add(_playbackSourceBox);
+		_mediaSessionStatusText = new TextBlock
+		{
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 0.0, 0.0, 9.0)
+		};
+		sourceContent.Children.Add(_mediaSessionStatusText);
+		WrapPanel sourceActions = new WrapPanel();
+		System.Windows.Controls.Button refreshButton = new System.Windows.Controls.Button
+		{
+			Content = "REFRESH",
+			FontFamily = _englishDotFont,
+			FontSize = 8.5,
+			Padding = new Thickness(11.0, 6.0, 11.0, 6.0),
+			Margin = new Thickness(0.0, 0.0, 7.0, 0.0)
+		};
+		refreshButton.Click += async delegate { await RefreshMediaSessionsAsync(); };
+		System.Windows.Controls.Button diagnosticsButton = new System.Windows.Controls.Button
+		{
+			Content = "MEDIA SESSION DIAGNOSTICS",
+			FontFamily = _englishDotFont,
+			FontSize = 8.5,
+			Padding = new Thickness(11.0, 6.0, 11.0, 6.0)
+		};
+		diagnosticsButton.Click += OpenMediaSessionDiagnostics_Click;
+		sourceActions.Children.Add(refreshButton);
+		sourceActions.Children.Add(diagnosticsButton);
+		sourceContent.Children.Add(sourceActions);
+		sourceCard.Child = sourceContent;
+
+		Border ignoredCard = new Border();
+		ignoredCard.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		ignoredCard.Padding = new Thickness(16.0, 13.0, 16.0, 13.0);
+		StackPanel ignoredContent = new StackPanel();
+		ignoredContent.Children.Add(new TextBlock
+		{
+			Text = "IGNORED MEDIA SOURCES",
+			FontFamily = _englishDotFont,
+			FontSize = 11.0,
+			FontWeight = FontWeights.Bold
+		});
+		ignoredContent.Children.Add(new TextBlock
+		{
+			Text = "Ignored sources remain visible in diagnostics but are excluded from AUTO and fallback selection. Browser entries apply to every Media Session from that browser.",
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 4.0, 0.0, 9.0)
+		});
+		_ignoredMediaSourcesPanel = new StackPanel();
+		ignoredContent.Children.Add(_ignoredMediaSourcesPanel);
+		ignoredCard.Child = ignoredContent;
+
+		behaviorStack.Children.Insert(0, sourceCard);
+		behaviorStack.Children.Insert(1, ignoredCard);
+		_mediaSessionControlsInitialized = true;
+		PopulateMediaSessionControls();
+	}
+
+	private async Task RefreshMediaSessionsAsync()
+	{
+		try
+		{
+			_detectedMediaSessions = await _mediaSessionService.GetSessionsAsync();
+			PopulateMediaSessionControls();
+		}
+		catch (Exception ex)
+		{
+			if (_mediaSessionStatusText != null)
+			{
+				_mediaSessionStatusText.Text = T("Could not read Windows Media Sessions.") + " " + ex.Message;
+			}
+		}
+	}
+
+	private void PopulateMediaSessionControls(string? preferredOverride = null, IEnumerable<string>? ignoredOverride = null, bool useOverride = false)
+	{
+		if (!_mediaSessionControlsInitialized || _playbackSourceBox == null || _ignoredMediaSourcesPanel == null)
+		{
+			return;
+		}
+
+		string preferred = useOverride ? preferredOverride?.Trim() ?? string.Empty : GetSelectedMediaSourceId();
+		if (!useOverride && string.IsNullOrWhiteSpace(preferred)) preferred = ResultSettings.PreferredMediaSourceId;
+		HashSet<string> ignored = useOverride
+			? new HashSet<string>(ignoredOverride ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase)
+			: GetIgnoredMediaSourceIds().ToHashSet(StringComparer.OrdinalIgnoreCase);
+		if (!useOverride)
+		{
+			foreach (string stored in ResultSettings.IgnoredMediaSourceIds) ignored.Add(stored);
+		}
+		MediaSessionInfo[] sources = _detectedMediaSessions
+			.Where(session => !string.IsNullOrWhiteSpace(session.SourceAppUserModelId))
+			.GroupBy(session => session.SourceAppUserModelId, StringComparer.OrdinalIgnoreCase)
+			.Select(group => group.OrderByDescending(session => session.IsSelectedByFlowLyrics).ThenByDescending(session => session.IsPlaying).First())
+			.OrderBy(session => session.DisplaySourceName, StringComparer.CurrentCultureIgnoreCase)
+			.ToArray();
+
+		_updatingMediaSessionControls = true;
+		try
+		{
+			_playbackSourceBox.Items.Clear();
+			_playbackSourceBox.Items.Add(CreateSourceComboItem("AUTO", string.Empty, "Automatically follow a stable active session."));
+			foreach (MediaSessionInfo source in sources)
+			{
+				_playbackSourceBox.Items.Add(CreateSourceComboItem(source.DisplaySourceName, source.SourceAppUserModelId, source.SourceAppUserModelId));
+			}
+			if (!string.IsNullOrWhiteSpace(preferred) && !sources.Any(source => string.Equals(source.SourceAppUserModelId, preferred, StringComparison.OrdinalIgnoreCase)))
+			{
+				_playbackSourceBox.Items.Add(CreateSourceComboItem(MediaSourceClassifier.GetDisplayName(preferred) + " (" + T("not detected") + ")", preferred, preferred));
+			}
+			_playbackSourceBox.SelectedItem = _playbackSourceBox.Items.OfType<System.Windows.Controls.ComboBoxItem>()
+				.FirstOrDefault(item => string.Equals(item.Tag?.ToString() ?? string.Empty, preferred, StringComparison.OrdinalIgnoreCase))
+				?? _playbackSourceBox.Items[0];
+
+			_ignoredMediaSourcesPanel.Children.Clear();
+			_ignoredMediaSourceBoxes.Clear();
+			string[] ignoredChoices = sources.Select(source => source.SourceAppUserModelId)
+				.Concat(ignored)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.OrderBy(id => MediaSourceClassifier.GetDisplayName(id), StringComparer.CurrentCultureIgnoreCase)
+				.ToArray();
+			if (ignoredChoices.Length == 0)
+			{
+				_ignoredMediaSourcesPanel.Children.Add(new TextBlock { Text = T("No media sources detected."), TextWrapping = TextWrapping.Wrap });
+			}
+			foreach (string sourceId in ignoredChoices)
+			{
+				string displayName = MediaSourceClassifier.GetDisplayName(sourceId);
+				System.Windows.Controls.CheckBox box = new System.Windows.Controls.CheckBox
+				{
+					Content = MediaSourceClassifier.IsBrowser(sourceId) ? displayName + " · " + T("all browser sessions") : displayName,
+					Tag = sourceId,
+					ToolTip = sourceId,
+					IsChecked = ignored.Contains(sourceId),
+					Margin = new Thickness(0.0, 2.0, 0.0, 2.0)
+				};
+				box.Checked += IgnoredMediaSource_Changed;
+				box.Unchecked += IgnoredMediaSource_Changed;
+				_ignoredMediaSourceBoxes.Add(box);
+				_ignoredMediaSourcesPanel.Children.Add(box);
+			}
+		}
+		finally
+		{
+			_updatingMediaSessionControls = false;
+		}
+
+		if (_mediaSessionStatusText != null)
+		{
+			MediaSessionInfo? selected = _detectedMediaSessions.FirstOrDefault(session => session.IsSelectedByFlowLyrics);
+			string selectedLabel = selected?.DisplaySourceName ?? T("None");
+			bool preferredPresent = string.IsNullOrWhiteSpace(preferred) || sources.Any(source => string.Equals(source.SourceAppUserModelId, preferred, StringComparison.OrdinalIgnoreCase));
+			string mode = string.IsNullOrWhiteSpace(preferred)
+				? "AUTO"
+				: preferredPresent ? T("Preferred player") : T("Preferred unavailable · AUTO fallback");
+			_mediaSessionStatusText.Text = mode + " · " + T("Selected") + ": " + selectedLabel + " · " + _detectedMediaSessions.Count + " " + T("session(s)");
+		}
+	}
+
+	private static System.Windows.Controls.ComboBoxItem CreateSourceComboItem(string content, string sourceId, string toolTip)
+	{
+		return new System.Windows.Controls.ComboBoxItem
+		{
+			Content = content,
+			Tag = sourceId,
+			ToolTip = toolTip
+		};
+	}
+
+	private void PlaybackSourceBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	{
+		if (_updatingMediaSessionControls || _suppressPreview) return;
+		string preferred = GetSelectedMediaSourceId();
+		foreach (System.Windows.Controls.CheckBox box in _ignoredMediaSourceBoxes)
+		{
+			if (box.IsChecked == true && string.Equals(box.Tag?.ToString(), preferred, StringComparison.OrdinalIgnoreCase))
+			{
+				box.IsChecked = false;
+			}
+		}
+		NotifyPreviewChanged();
+	}
+
+	private void IgnoredMediaSource_Changed(object sender, RoutedEventArgs e)
+	{
+		if (_updatingMediaSessionControls || _suppressPreview) return;
+		if (sender is System.Windows.Controls.CheckBox { IsChecked: true } box
+			&& string.Equals(box.Tag?.ToString(), GetSelectedMediaSourceId(), StringComparison.OrdinalIgnoreCase)
+			&& _playbackSourceBox != null)
+		{
+			_playbackSourceBox.SelectedIndex = 0;
+		}
+		NotifyPreviewChanged();
+	}
+
+	private string GetSelectedMediaSourceId()
+	{
+		return (_playbackSourceBox?.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString()?.Trim() ?? string.Empty;
+	}
+
+	private IEnumerable<string> GetIgnoredMediaSourceIds()
+	{
+		return _ignoredMediaSourceBoxes
+			.Where(box => box.IsChecked == true && box.Tag is string sourceId && !string.IsNullOrWhiteSpace(sourceId))
+			.Select(box => ((string)box.Tag).Trim());
+	}
+
+	private void MediaSessionService_SessionsChanged(object? sender, EventArgs e)
+	{
+		if (!base.Dispatcher.CheckAccess())
+		{
+			base.Dispatcher.BeginInvoke((Action)(async () => await RefreshMediaSessionsAsync()));
+			return;
+		}
+		_ = RefreshMediaSessionsAsync();
+	}
+
+	private void OpenMediaSessionDiagnostics_Click(object sender, RoutedEventArgs e)
+	{
+		if (_mediaSessionDiagnosticsWindow != null)
+		{
+			_mediaSessionDiagnosticsWindow.Activate();
+			return;
+		}
+		_mediaSessionDiagnosticsWindow = new MediaSessionDiagnosticsWindow(_mediaSessionService, _currentSnapshotProvider, _currentLanguage)
+		{
+			Owner = this
+		};
+		_mediaSessionDiagnosticsWindow.Closed += delegate { _mediaSessionDiagnosticsWindow = null; };
+		_mediaSessionDiagnosticsWindow.Show();
+	}
+
 	private void InitializeBehaviorReset()
 	{
 		if (_behaviorResetInitialized || GetTabStack("Behavior") is not StackPanel behaviorStack || base.Content is not Grid root)
@@ -1577,6 +1872,9 @@ public class SettingsWindow : Window, IComponentConnector
 		ShortcutsEnabledBox.IsChecked = settings.ShortcutsEnabled;
 		PauseEyeAnimationBox.IsChecked = settings.PauseEyeAnimation;
 		GlobalOffsetSlider.Value = settings.GlobalLyricsOffsetMs;
+		ResultSettings.PreferredMediaSourceId = settings.PreferredMediaSourceId;
+		ResultSettings.IgnoredMediaSourceIds = new List<string>(settings.IgnoredMediaSourceIds);
+		PopulateMediaSessionControls(settings.PreferredMediaSourceId, settings.IgnoredMediaSourceIds, useOverride: true);
 		RefreshReverseColorsButton();
 		SelectItemByTag(LanguageBox, settings.Language);
 		RefreshChoiceSelectors();
@@ -1659,6 +1957,7 @@ public class SettingsWindow : Window, IComponentConnector
 		RefreshTextControlLabels();
 		StylePresetLabels();
 		RefreshLyricsTab();
+		PopulateMediaSessionControls();
 	}
 
 	private void RefreshLyricsTab()
@@ -1685,7 +1984,16 @@ public class SettingsWindow : Window, IComponentConnector
 			CurrentTrackArtistText.Text = trackInfo.Artist;
 			CurrentTrackAlbumText.Text = trackInfo.Album;
 			CurrentTrackDurationText.Text = FormatDuration(trackInfo.Duration.TotalSeconds);
-			SpotifyTrackIdText.Text = (string.IsNullOrWhiteSpace(trackInfo.SpotifyTrackId) ? "Unavailable (stable metadata key is used)" : trackInfo.SpotifyTrackId);
+			PlaybackSnapshot? snapshot = _currentSnapshotProvider();
+			SpotifyTrackIdText.Text = snapshot == null
+				? T("Unavailable")
+				: snapshot.SourceDisplayName + (string.IsNullOrWhiteSpace(snapshot.SourceAppUserModelId) ? string.Empty : "\n" + snapshot.SourceAppUserModelId);
+			if (SpotifyTrackIdText.Parent is Grid metadataGrid)
+			{
+				TextBlock? sourceLabel = metadataGrid.Children.OfType<TextBlock>().FirstOrDefault(text =>
+					Grid.GetRow(text) == Grid.GetRow(SpotifyTrackIdText) && Grid.GetColumn(text) == 0);
+				if (sourceLabel != null) sourceLabel.Text = T("Playback source");
+			}
 			LyricsSourceText.Text = SourceLabel(lyricsLookupResult);
 			LrclibIdText.Text = ((lrclibRecord == null) ? "—" : lrclibRecord.Id.ToString());
 			LrclibTitleText.Text = ValueOrDash(lrclibRecord?.TrackName);
@@ -1983,6 +2291,10 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.StartWithWindows = StartWithWindowsBox.IsChecked == true;
 		appSettings.ShortcutsEnabled = ShortcutsEnabledBox.IsChecked == true;
 		appSettings.PauseEyeAnimation = PauseEyeAnimationBox.IsChecked == true;
+		appSettings.PreferredMediaSourceId = _mediaSessionControlsInitialized ? GetSelectedMediaSourceId() : ResultSettings.PreferredMediaSourceId;
+		appSettings.IgnoredMediaSourceIds = _mediaSessionControlsInitialized
+			? GetIgnoredMediaSourceIds().Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+			: new List<string>(ResultSettings.IgnoredMediaSourceIds);
 		appSettings.GlobalLyricsOffsetMs = (int)Math.Round(GlobalOffsetSlider.Value);
 		appSettings.Language = GetSelectedTag(LanguageBox, "en-US");
 		appSettings.Normalize();

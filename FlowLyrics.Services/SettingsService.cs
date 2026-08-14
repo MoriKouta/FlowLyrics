@@ -100,7 +100,7 @@ public sealed class SettingsService
 		{
 			settings.UiColor = "#FFFF6B2C";
 		}
-		settings.SettingsSchemaVersion = 14;
+		settings.SettingsSchemaVersion = 15;
 	}
 
 	public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default(CancellationToken))

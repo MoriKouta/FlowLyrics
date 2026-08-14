@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -36,15 +38,13 @@ public sealed class LyricsCacheStore
 
 	public async Task<LyricsCacheEntry?> ReadAsync(TrackInfo track, CancellationToken cancellationToken)
 	{
-		string path = GetPath(track);
-		if (!File.Exists(path))
-		{
-			path = GetPath(track.CacheKey);
-		}
-		if (!File.Exists(path))
+		string[] identityKeys = GetIdentityKeys(track).ToArray();
+		string? matchedIdentity = identityKeys.FirstOrDefault(key => File.Exists(GetPath(key)));
+		if (matchedIdentity == null)
 		{
 			return null;
 		}
+		string path = GetPath(matchedIdentity);
 		try
 		{
 			LyricsCacheEntry entry;
@@ -52,7 +52,7 @@ public sealed class LyricsCacheStore
 			{
 				entry = await JsonSerializer.DeserializeAsync<LyricsCacheEntry>((Stream)stream, _jsonOptions, cancellationToken);
 			}
-			if (entry == null || (!string.Equals(entry.TrackKey, track.StableIdentityKey, StringComparison.Ordinal) && !string.Equals(entry.TrackKey, track.CacheKey, StringComparison.Ordinal)))
+			if (entry == null || !identityKeys.Contains(entry.TrackKey, StringComparer.Ordinal))
 			{
 				return null;
 			}
@@ -60,6 +60,10 @@ public sealed class LyricsCacheStore
 			{
 				await DeleteAsync(track, cancellationToken);
 				return null;
+			}
+			if (!string.Equals(matchedIdentity, track.StableIdentityKey, StringComparison.Ordinal))
+			{
+				await WriteAsync(track, entry, cancellationToken);
 			}
 			return entry;
 		}
@@ -100,28 +104,12 @@ public sealed class LyricsCacheStore
 		await _writeLock.WaitAsync(cancellationToken);
 		try
 		{
-			string path = GetPath(track);
-			if (File.Exists(path))
+			foreach (string identityKey in GetIdentityKeys(track))
 			{
-				File.Delete(path);
-			}
-			string path2 = path + ".tmp";
-			if (File.Exists(path2))
-			{
-				File.Delete(path2);
-			}
-			string path3 = GetPath(track.CacheKey);
-			if (!string.Equals(path, path3, StringComparison.OrdinalIgnoreCase))
-			{
-				if (File.Exists(path3))
-				{
-					File.Delete(path3);
-				}
-				string path4 = path3 + ".tmp";
-				if (File.Exists(path4))
-				{
-					File.Delete(path4);
-				}
+				string path = GetPath(identityKey);
+				if (File.Exists(path)) File.Delete(path);
+				string temporaryPath = path + ".tmp";
+				if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
 			}
 		}
 		finally
@@ -134,5 +122,12 @@ public sealed class LyricsCacheStore
 	{
 		byte[] inArray = SHA256.HashData(Encoding.UTF8.GetBytes(trackKey));
 		return Path.Combine(_directory, Convert.ToHexString(inArray).ToLowerInvariant() + ".json");
+	}
+
+	private static IEnumerable<string> GetIdentityKeys(TrackInfo track)
+	{
+		yield return track.StableIdentityKey;
+		yield return track.CacheKey;
+		foreach (string legacyKey in track.LegacyIdentityKeys) yield return legacyKey;
 	}
 }

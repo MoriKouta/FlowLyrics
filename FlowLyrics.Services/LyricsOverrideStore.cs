@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,8 +36,17 @@ public sealed class LyricsOverrideStore
 		try
 		{
 			await EnsureLoadedAsync(cancellationToken);
-			ManualLyricsSelection value;
-			return _selections.TryGetValue(track.StableIdentityKey, out value) ? value : null;
+			foreach (string identityKey in GetIdentityKeys(track))
+			{
+				if (!_selections.TryGetValue(identityKey, out ManualLyricsSelection? value)) continue;
+				if (!string.Equals(identityKey, track.StableIdentityKey, StringComparison.Ordinal))
+				{
+					_selections[track.StableIdentityKey] = value;
+					await SaveAsync(cancellationToken);
+				}
+				return value;
+			}
+			return null;
 		}
 		finally
 		{
@@ -70,7 +80,7 @@ public sealed class LyricsOverrideStore
 		try
 		{
 			await EnsureLoadedAsync(cancellationToken);
-			bool removed = _selections.Remove(track.StableIdentityKey);
+			bool removed = GetIdentityKeys(track).Aggregate(false, (changed, key) => _selections.Remove(key) || changed);
 			if (removed)
 			{
 				await SaveAsync(cancellationToken);
@@ -114,5 +124,12 @@ public sealed class LyricsOverrideStore
 			await JsonSerializer.SerializeAsync((Stream)stream, _selections, _jsonOptions, cancellationToken);
 		}
 		File.Move(temporaryPath, _path, overwrite: true);
+	}
+
+	private static IEnumerable<string> GetIdentityKeys(TrackInfo track)
+	{
+		yield return track.StableIdentityKey;
+		yield return track.CacheKey;
+		foreach (string legacyKey in track.LegacyIdentityKeys) yield return legacyKey;
 	}
 }
