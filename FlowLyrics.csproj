@@ -31,6 +31,10 @@
     <EmbeddedResource Include="assets/player/volume.png" LogicalName="assets/player/volume.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="FlowLyrics.Tests/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(UseRecoveredReferences)' == 'true'">
     <Reference Include="WindowsBase" HintPath="../recovered/bundle-all/WindowsBase.dll" />
     <Reference Include="PresentationCore" HintPath="../recovered/bundle-all/PresentationCore.dll" />

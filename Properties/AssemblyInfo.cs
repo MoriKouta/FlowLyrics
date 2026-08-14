@@ -5,9 +5,9 @@ using System.Runtime.Versioning;
 
 [assembly: AssemblyCompany("FlowLyrics")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyDescription("Customizable always-on-top synchronized Spotify lyrics overlay for Windows.")]
-[assembly: AssemblyFileVersion("1.3.1.1")]
-[assembly: AssemblyInformationalVersion("1.3.1-dev.1")]
+[assembly: AssemblyDescription("Customizable always-on-top synchronized lyrics overlay for Windows Media Sessions.")]
+[assembly: AssemblyFileVersion("1.3.1.2")]
+[assembly: AssemblyInformationalVersion("1.3.1-dev.2")]
 [assembly: AssemblyProduct("FlowLyrics")]
 [assembly: AssemblyTitle("FlowLyrics")]
 [assembly: TargetPlatform("Windows10.0.19041.0")]
