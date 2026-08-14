@@ -3,11 +3,12 @@
 ## Version policy
 
 - The current stable release is `1.3.0`.
-- Do not choose the next development target until the maintainer explicitly selects `1.3.1-dev.1` or `1.4.0-dev.1`.
+- The current development target is fixed at `1.3.1`.
+- Every confirmation build increments `1.3.1-dev.N`.
 - Regenerable cache data is isolated by `BuildInfo.CacheNamespace`.
 - Settings, manual LRCLIB selections, and the Local LRC folder stay outside the development cache namespace.
 - Development changes are recorded under `Unreleased` in `CHANGELOG.md`.
-- Do not create a Git tag or GitHub Release unless the maintainer explicitly asks for it.
+- Do not create a stable version, Git tag, or GitHub Release until the maintainer explicitly approves publication.
 
 ## Project layout
 

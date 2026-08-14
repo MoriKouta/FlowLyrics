@@ -4,7 +4,7 @@
 
 FlowLyricsは、Windows版Spotifyで再生中の曲に追従し、同期歌詞を常に手前へ表示するカスタマイズ可能な歌詞オーバーレイです。ロック中は歌詞部分のクリックを背後のアプリへ通せます。
 
-現在の正式版は`1.3.0`です。
+> このパッケージは確認用の`1.3.1-dev.1`です。正式版は`1.3.0`です。
 
 Spotify Developerアカウント、Client ID、Spotifyのパスワードは不要です。再生情報はWindowsのGlobal System Media Transport Controls（SMTC）から取得し、歌詞はLRCLIBで検索します。
 
@@ -40,7 +40,7 @@ Spotify Developerアカウント、Client ID、Spotifyのパスワードは不�
 
 ## インストールと起動
 
-1. GitHub Releaseから`FlowLyrics-v1.3.0-win-x64-portable.zip`をダウンロードします。
+1. 提供された`FlowLyrics-v1.3.1-dev.1-win-x64-portable.zip`をダウンロードします。
 2. ZIPを、書き込み可能なフォルダへ展開します。
 3. `FlowLyrics.exe`を実行します。
 4. Windows版Spotifyで曲を再生します。

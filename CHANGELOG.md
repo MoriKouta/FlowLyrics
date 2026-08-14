@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Started the `1.3.1` development cycle with confirmation build `1.3.1-dev.1`.
+
 ## 1.3.0 - 2026-07-20
 
 ### Added
