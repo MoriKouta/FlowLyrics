@@ -67,7 +67,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		}
 		catch (Exception ex)
 		{
-			AppLogger.Log("Media Session enumeration failed: " + ex.GetType().Name + ": " + ex.Message);
+			System.Diagnostics.Debug.WriteLine("Media Session enumeration failed: " + ex.GetType().Name + ": " + ex.Message);
 			ResetManager();
 			return Array.Empty<MediaSessionInfo>();
 		}
@@ -196,7 +196,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		}
 		catch (Exception ex)
 		{
-			AppLogger.Log("Media Session manager initialization failed: " + ex.GetType().Name + ": " + ex.Message);
+			System.Diagnostics.Debug.WriteLine("Media Session manager initialization failed: " + ex.GetType().Name + ": " + ex.Message);
 			return null;
 		}
 		finally
@@ -277,7 +277,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		}
 		catch (Exception ex)
 		{
-			AppLogger.Log("Media Session metadata read failed for " + (session.SourceAppUserModelId ?? "unknown") + ": " + ex.GetType().Name + ": " + ex.Message);
+			System.Diagnostics.Debug.WriteLine("Media Session metadata read failed for " + (session.SourceAppUserModelId ?? "unknown") + ": " + ex.GetType().Name + ": " + ex.Message);
 			return null;
 		}
 	}
@@ -411,7 +411,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 
 	private static void LogCommandFailure(string command, Exception ex)
 	{
-		AppLogger.Log("Media Session " + command + " failed: " + ex.GetType().Name + ": " + ex.Message);
+		System.Diagnostics.Debug.WriteLine("Media Session " + command + " failed: " + ex.GetType().Name + ": " + ex.Message);
 	}
 
 	private sealed class SessionReferenceComparer : IEqualityComparer<GlobalSystemMediaTransportControlsSession>
