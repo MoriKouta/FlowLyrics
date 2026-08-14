@@ -27,6 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           dotnet test .\FlowLyrics.Tests\FlowLyrics.Tests.csproj -c Release --logger "console;verbosity=normal"
 
           $version = '1.3.1-dev.2'
