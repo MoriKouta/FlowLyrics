@@ -5,6 +5,16 @@
 ### Changed
 
 - Started the `1.3.1` development cycle with confirmation build `1.3.1-dev.1`.
+- Added the `1.3.1-dev.2` confirmation build with generic Windows Media Session support.
+- Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
+- Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
+- Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
+- Made lyrics cache and manual LRCLIB overrides player-independent while retaining and migrating legacy keys.
+- Centered the volume popup precisely and made the active Reverse Colors button visually explicit.
+
+### Tests
+
+- Added automated coverage for metadata normalization, source-independent identity, LRCLIB query encoding, AUTO/Preferred/ignored source selection, capability propagation, and legacy cache migration.
 
 ## 1.3.0 - 2026-07-20
 
