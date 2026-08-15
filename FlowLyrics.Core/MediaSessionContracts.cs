@@ -20,7 +20,8 @@ public sealed record MediaTrackMetadata(
 	string TitleRaw,
 	string ArtistRaw,
 	string AlbumRaw,
-	TimeSpan Duration)
+	TimeSpan Duration,
+	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null)
 {
 	public bool HasTitle => !string.IsNullOrWhiteSpace(TitleRaw);
 }

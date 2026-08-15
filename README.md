@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Windows media players. It follows the selected Windows Global System Media Transport Controls session, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.1-dev.6` confirmation build. The current stable release is `1.3.0`.
+> This package is the `1.3.1-dev.7` confirmation build. The current stable release is `1.3.0`.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -12,7 +12,7 @@ It does not require a Spotify Developer account, Client ID, or account password.
 
 - Automatically follows track changes, playback, pause, and seeking in compatible Windows media players
 - Stable AUTO source selection, Preferred Player fallback, ignored-source settings, and live Media Session diagnostics
-- Provider-scoped metadata repair for Apple Music album fields and common official YouTube title formats
+- Provider-scoped Apple Music field repair and ranked YouTube title/artist interpretations across official-video, quote, separator, and multilingual alias formats
 - LRCLIB matching that uses a strict match when available and otherwise displays the highest-scoring usable result
 - Japanese-script preference that prevents romanized Japanese lyrics from being auto-applied
 - Editable progressive LRCLIB candidate search, metadata preview, and persistent per-track manual selection
@@ -42,7 +42,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download the provided `FlowLyrics-v1.3.1-dev.6-win-x64-portable.zip`.
+1. Download the provided `FlowLyrics-v1.3.1-dev.7-win-x64-portable.zip`.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in a compatible media player or browser.

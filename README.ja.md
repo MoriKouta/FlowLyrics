@@ -4,7 +4,7 @@
 
 FlowLyricsは、Windows Media Sessionで選択したプレイヤーの曲に追従し、同期歌詞を常に手前へ表示するカスタマイズ可能な歌詞オーバーレイです。ロック中は歌詞部分のクリックを背後のアプリへ通せます。
 
-> このパッケージは確認用の`1.3.1-dev.6`です。正式版は`1.3.0`です。
+> このパッケージは確認用の`1.3.1-dev.7`です。正式版は`1.3.0`です。
 
 Spotify Developerアカウント、Client ID、Spotifyのパスワードは不要です。再生情報はWindowsのGlobal System Media Transport Controls（SMTC）から取得し、歌詞はLRCLIBで検索します。
 
@@ -12,7 +12,7 @@ Spotify Developerアカウント、Client ID、Spotifyのパスワードは不�
 
 - 対応するWindowsメディアプレイヤーの曲変更、再生、一時停止、シークへ自動追従
 - 安定したAUTO選択、Preferred Playerフォールバック、除外ソース設定、Media Sessionライブ診断
-- Apple Musicのアルバム欄と、YouTube公式動画でよく使われるタイトル形式を再生元ごとに補正
+- Apple Musicの欄混在を補正し、YouTubeの公式動画表記・引用符・区切り・多言語別名からタイトルとアーティスト候補を順位付け
 - LRCLIBの厳密一致を優先し、見つからない場合は使用可能な候補から最高スコアを自動表示
 - 日本語タイトルでローマ字歌詞を自動採用せず、日本語本文を優先する文字種判定
 - 途中経過を順次表示する編集可能なLRCLIB候補検索、メタデータ付きプレビュー、曲ごとの手動選択保存
@@ -42,7 +42,7 @@ Spotify Developerアカウント、Client ID、Spotifyのパスワードは不�
 
 ## インストールと起動
 
-1. 提供された`FlowLyrics-v1.3.1-dev.6-win-x64-portable.zip`をダウンロードします。
+1. 提供された`FlowLyrics-v1.3.1-dev.7-win-x64-portable.zip`をダウンロードします。
 2. ZIPを、書き込み可能なフォルダへ展開します。
 3. `FlowLyrics.exe`を実行します。
 4. 対応するメディアプレイヤーまたはブラウザで曲を再生します。

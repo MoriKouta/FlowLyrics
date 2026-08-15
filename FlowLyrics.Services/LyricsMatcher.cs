@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using FlowLyrics.Core;
 using FlowLyrics.Models;
 
 namespace FlowLyrics.Services;
@@ -33,6 +34,34 @@ public static class LyricsMatcher
 	};
 
 	public static LyricsCandidate Evaluate(TrackInfo track, LrclibRecord candidate)
+	{
+		LyricsCandidate best = EvaluateSingle(track, candidate);
+		if (track.SearchAlternates == null) return best;
+
+		foreach (SearchMetadataCandidate alternate in track.SearchAlternates)
+		{
+			if (alternate.IsEmpty || string.IsNullOrWhiteSpace(alternate.Artist)) continue;
+			TrackInfo alternateTrack = new(
+				alternate.Title,
+				alternate.Artist,
+				alternate.Album,
+				track.Duration,
+				track.LegacyProviderTrackId);
+			LyricsCandidate evaluated = EvaluateSingle(alternateTrack, candidate);
+			if (IsBetterIdentityMatch(evaluated, best)) best = evaluated;
+		}
+		return best;
+	}
+
+	private static bool IsBetterIdentityMatch(LyricsCandidate candidate, LyricsCandidate current)
+	{
+		if (candidate.AutoEligible != current.AutoEligible) return candidate.AutoEligible;
+		if (candidate.Score != current.Score) return candidate.Score > current.Score;
+		if (candidate.ArtistMatchIsCrossScript != current.ArtistMatchIsCrossScript) return !candidate.ArtistMatchIsCrossScript;
+		return false;
+	}
+
+	private static LyricsCandidate EvaluateSingle(TrackInfo track, LrclibRecord candidate)
 	{
 		List<string> list = new List<string>();
 		List<string> list2 = new List<string>();

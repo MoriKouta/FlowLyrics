@@ -27,7 +27,7 @@ public sealed class LyricsService : IDisposable
 
 	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(10L);
 
-	private const int CurrentMatcherVersion = 5;
+	private const int CurrentMatcherVersion = 6;
 
 	private readonly HttpClient _httpClient;
 
@@ -206,7 +206,7 @@ public sealed class LyricsService : IDisposable
 		{
 			CacheReadResult? cacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken);
 			LyricsCacheEntry? manualCache = cacheRead?.Entry;
-			if (manualCache != null && manualCache.MatcherVersion < 5)
+			if (manualCache != null && manualCache.MatcherVersion < CurrentMatcherVersion)
 			{
 				await _logger.WriteAsync($"cache rejected reason=matcher-upgrade oldVersion={manualCache.MatcherVersion} cacheKey={track.CacheKey}");
 				if (cacheRead!.IsCurrentBuild)
@@ -285,7 +285,7 @@ public sealed class LyricsService : IDisposable
 		{
 			TrackKey = track.CacheKey,
 			CacheKind = "Negative",
-			MatcherVersion = 5,
+			MatcherVersion = CurrentMatcherVersion,
 			SavedAtUtc = DateTimeOffset.UtcNow,
 			ExpiresAtUtc = DateTimeOffset.UtcNow.Add(NegativeCacheLifetime)
 		}, cancellationToken);
@@ -395,7 +395,7 @@ public sealed class LyricsService : IDisposable
 			Source = "LOCAL LRC",
 			SelectionMode = "Local",
 			CacheKind = "Positive",
-			MatcherVersion = 5,
+			MatcherVersion = CurrentMatcherVersion,
 			SavedAtUtc = DateTimeOffset.UtcNow
 		};
 		await _cacheStore.WriteAsync(track, entry, cancellationToken);
@@ -441,6 +441,14 @@ public sealed class LyricsService : IDisposable
 		IReadOnlyList<SearchMetadataCandidate> metadataCandidates = MetadataNormalizer.BuildCandidates(request.Title, request.Artist, request.Album);
 		SearchMetadataCandidate rawMetadata = metadataCandidates[0];
 		SearchMetadataCandidate? normalizedMetadata = metadataCandidates.Count > 1 ? metadataCandidates[1] : null;
+		bool requestUsesTrackIdentity = string.IsNullOrWhiteSpace(request.Keyword)
+			&& string.Equals(request.Title?.Trim(), track.Title.Trim(), StringComparison.Ordinal)
+			&& string.Equals(request.Artist?.Trim(), track.Artist.Trim(), StringComparison.Ordinal)
+			&& string.Equals(request.Album?.Trim(), track.Album.Trim(), StringComparison.Ordinal);
+		IReadOnlyList<SearchMetadataCandidate> providerAlternates = stopWhenSafeSyncedFound && requestUsesTrackIdentity
+			? track.SearchAlternates?.Where(candidate => !candidate.IsEmpty && !string.IsNullOrWhiteSpace(candidate.Artist)).Take(6).ToArray()
+				?? Array.Empty<SearchMetadataCandidate>()
+			: Array.Empty<SearchMetadataCandidate>();
 		await _logger.WriteAsync($"metadata RAW title={Safe(rawMetadata.Title)} artist={Safe(rawMetadata.Artist)} album={Safe(rawMetadata.Album)}");
 		await _logger.WriteAsync($"metadata NORMALIZED title={Safe(normalizedMetadata?.Title ?? rawMetadata.Title)} artist={Safe(normalizedMetadata?.Artist ?? rawMetadata.Artist)} album={Safe(normalizedMetadata?.Album ?? rawMetadata.Album)}");
 		CancellationToken token;
@@ -448,8 +456,10 @@ public sealed class LyricsService : IDisposable
 		{
 			totalCancellation.CancelAfter(TimeSpan.FromSeconds(120L));
 			token = totalCancellation.Token;
-			bool sequenceSatisfied = ShouldStop() || await RunMetadataSequenceAsync(rawMetadata, "raw");
-			if (!sequenceSatisfied && !ShouldStop() && normalizedMetadata != null && !normalizedMetadata.IsEmpty)
+			bool sequenceSatisfied = ShouldStop() || (providerAlternates.Count > 0
+				? await RunProviderHintSequenceAsync()
+				: await RunMetadataSequenceAsync(rawMetadata, "raw"));
+			if (providerAlternates.Count == 0 && !sequenceSatisfied && !ShouldStop() && normalizedMetadata != null && !normalizedMetadata.IsEmpty)
 			{
 				sequenceSatisfied = await RunMetadataSequenceAsync(normalizedMetadata, "normalized");
 			}
@@ -527,6 +537,56 @@ public sealed class LyricsService : IDisposable
 			}
 			resultCount = await RunSearchAsync("fields:" + prefix + ":title", Fields(metadata.Title, null, null));
 			return SequenceSatisfied(resultCount) || ShouldStop();
+		}
+		async Task<bool> RunProviderHintSequenceAsync()
+		{
+			List<(SearchMetadataCandidate Metadata, string Label)> identities = new()
+			{
+				(rawMetadata, "primary")
+			};
+			for (int i = 0; i < providerAlternates.Count; i++)
+			{
+				identities.Add((providerAlternates[i], "provider-" + (i + 1).ToString(CultureInfo.InvariantCulture)));
+			}
+
+			// Use the most selective request first, then compare the small set of
+			// provider interpretations with title+artist. Broad title-only searches
+			// are deferred until every strong identity has been tried.
+			await RunSearchAsync("fields:primary:title+artist+album", Fields(rawMetadata.Title, rawMetadata.Artist, rawMetadata.Album));
+			if (ShouldStop()) return true;
+			foreach ((SearchMetadataCandidate metadata, string label) in identities)
+			{
+				await RunSearchAsync("fields:" + label + ":title+artist", Fields(metadata.Title, metadata.Artist, null));
+				if (ShouldStop()) return true;
+			}
+
+			List<(SearchMetadataCandidate Metadata, string Label)> normalizedIdentities = new();
+			foreach ((SearchMetadataCandidate metadata, string label) in identities)
+			{
+				SearchMetadataCandidate normalized = MetadataNormalizer.NormalizeForSearch(metadata.Title, metadata.Artist, metadata.Album);
+				if (!SameSearchMetadata(metadata, normalized)) normalizedIdentities.Add((normalized, label + "-normalized"));
+			}
+			foreach ((SearchMetadataCandidate metadata, string label) in normalizedIdentities)
+			{
+				await RunSearchAsync("fields:" + label + ":title+artist", Fields(metadata.Title, metadata.Artist, null));
+				if (ShouldStop()) return true;
+			}
+
+			foreach (SearchMetadataCandidate metadata in identities.Select(item => item.Metadata)
+				.Concat(normalizedIdentities.Select(item => item.Metadata))
+				.GroupBy(item => item.Title.Trim(), StringComparer.OrdinalIgnoreCase)
+				.Select(group => group.First()))
+			{
+				await RunSearchAsync("fields:provider-fallback:title", Fields(metadata.Title, null, null));
+				if (ShouldStop()) return true;
+			}
+			return ShouldStop();
+		}
+		static bool SameSearchMetadata(SearchMetadataCandidate left, SearchMetadataCandidate right)
+		{
+			return string.Equals(left.Title, right.Title, StringComparison.Ordinal)
+				&& string.Equals(left.Artist, right.Artist, StringComparison.Ordinal)
+				&& string.Equals(left.Album, right.Album, StringComparison.Ordinal);
 		}
 		bool SequenceSatisfied(int resultCount)
 		{
@@ -723,7 +783,7 @@ public sealed class LyricsService : IDisposable
 			LrclibAlbumName = record.AlbumName,
 			LrclibDuration = record.Duration,
 			SelectionMode = selectionMode,
-			MatcherVersion = 5
+			MatcherVersion = CurrentMatcherVersion
 		};
 		await _cacheStore.WriteAsync(track, entry, cancellationToken);
 		_positiveMemoryCache[track.StableIdentityKey] = entry;

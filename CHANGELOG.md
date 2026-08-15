@@ -10,6 +10,7 @@
 - Added `1.3.1-dev.4` with the PLAYER source selector at the top of Lyrics, immediate source switching, and collapsed exclusion controls.
 - Added `1.3.1-dev.5` with resilient LRCLIB requests, verified multi-player audio/seek fallbacks, and refined compact controls.
 - Added `1.3.1-dev.6` with provider-scoped Apple Music and browser metadata repair plus a neutral EXCLUDE toggle.
+- Added `1.3.1-dev.7` with ranked multilingual YouTube metadata interpretations, corrected populated Apple Music fields, dotted EXCLUDE disclosure, and anchored plain-lyrics auto-scroll resume.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.

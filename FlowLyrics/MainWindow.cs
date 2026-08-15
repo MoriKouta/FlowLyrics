@@ -154,6 +154,12 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _plainLyricsUserScrollPaused;
 
+	private bool _plainLyricsAutoScrollAnchorActive;
+
+	private double _plainLyricsAutoScrollAnchorOffset;
+
+	private TimeSpan _plainLyricsAutoScrollAnchorPosition;
+
 	private bool _showAllLyrics;
 
 	private string? _fullLyricsLayoutKey;
@@ -771,6 +777,7 @@ public class MainWindow : Window, IComponentConnector
 		_showAllLyrics = _settings.ShowAllLyrics;
 		_plainLyricsScrollMode = false;
 		_plainLyricsUserScrollPaused = false;
+		_plainLyricsAutoScrollAnchorActive = false;
 		_plainLyricsLayoutKey = null;
 		_fullLyricsLayoutKey = null;
 		_lastFullLyricsActiveIndex = int.MinValue;
@@ -826,9 +833,21 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		double maxOffset = Math.Max(0.0, LyricsScrollViewer.ExtentHeight - LyricsScrollViewer.ViewportHeight);
-		double ratio = Math.Clamp(_snapshot.EstimatedPosition(DateTimeOffset.UtcNow).TotalMilliseconds /
-			_snapshot.Track.Duration.TotalMilliseconds, 0.0, 1.0);
-		LyricsScrollViewer.ScrollToVerticalOffset(maxOffset * ratio);
+		TimeSpan position = _snapshot.EstimatedPosition(DateTimeOffset.UtcNow);
+		double targetOffset;
+		if (_plainLyricsAutoScrollAnchorActive)
+		{
+			double elapsedRatio = (position - _plainLyricsAutoScrollAnchorPosition).TotalMilliseconds /
+				_snapshot.Track.Duration.TotalMilliseconds;
+			targetOffset = _plainLyricsAutoScrollAnchorOffset + maxOffset * elapsedRatio;
+		}
+		else
+		{
+			double ratio = Math.Clamp(position.TotalMilliseconds /
+				_snapshot.Track.Duration.TotalMilliseconds, 0.0, 1.0);
+			targetOffset = maxOffset * ratio;
+		}
+		LyricsScrollViewer.ScrollToVerticalOffset(Math.Clamp(targetOffset, 0.0, maxOffset));
 	}
 
 	private static List<LyricLine> ParsePlainLyrics(string plainLyrics)
@@ -858,7 +877,21 @@ public class MainWindow : Window, IComponentConnector
 		if (_plainLyricsScrollMode && _settings.PlainLyricsAutoScroll && !_showAllLyrics)
 		{
 			_plainLyricsUserScrollPaused = true;
+			_plainLyricsAutoScrollAnchorActive = false;
 		}
+	}
+
+	private void ResumePlainLyricsAutoScrollFromCurrentPosition()
+	{
+		if (!_plainLyricsScrollMode || !_plainLyricsUserScrollPaused || !_settings.PlainLyricsAutoScroll
+			|| _showAllLyrics || _snapshot == null || _snapshot.Track.Duration <= TimeSpan.Zero)
+		{
+			return;
+		}
+		_plainLyricsAutoScrollAnchorOffset = LyricsScrollViewer.VerticalOffset;
+		_plainLyricsAutoScrollAnchorPosition = _snapshot.EstimatedPosition(DateTimeOffset.UtcNow);
+		_plainLyricsAutoScrollAnchorActive = true;
+		_plainLyricsUserScrollPaused = false;
 	}
 
 	private void EnsureFullLyricsLayout()
@@ -1952,6 +1985,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void ToggleLock()
 	{
+		ResumePlainLyricsAutoScrollFromCurrentPosition();
 		SetLocked(!_isLocked, persist: true);
 	}
 
@@ -2222,10 +2256,7 @@ public class MainWindow : Window, IComponentConnector
 			bool autoScrollResumed = !_settings.PlainLyricsAutoScroll && preview.PlainLyricsAutoScroll;
 			_settings = preview;
 			_mediaSessionService.ConfigureSelection(_settings.PreferredMediaSourceId, _settings.IgnoredMediaSourceIds);
-			if (autoScrollResumed)
-			{
-				_plainLyricsUserScrollPaused = false;
-			}
+			if (autoScrollResumed) ResumePlainLyricsAutoScrollFromCurrentPosition();
 			if (num3)
 			{
 				ConfigureHotkeys();

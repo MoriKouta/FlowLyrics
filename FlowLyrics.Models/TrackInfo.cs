@@ -4,10 +4,17 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using FlowLyrics.Core;
 
 namespace FlowLyrics.Models;
 
-public sealed record TrackInfo(string Title, string Artist, string Album, TimeSpan Duration, string? LegacyProviderTrackId = null)
+public sealed record TrackInfo(
+	string Title,
+	string Artist,
+	string Album,
+	TimeSpan Duration,
+	string? LegacyProviderTrackId = null,
+	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null)
 {
 	public string CacheKey
 	{

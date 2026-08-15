@@ -114,6 +114,10 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private ToggleButton? _ignoredMediaSourcesToggle;
 
+	private Canvas? _ignoredMediaSourcesGlyph;
+
+	private TextBlock? _ignoredMediaSourcesLabel;
+
 	private TextBlock? _mediaSessionStatusText;
 
 	private readonly List<System.Windows.Controls.CheckBox> _ignoredMediaSourceBoxes = new();
@@ -1118,11 +1122,36 @@ public class SettingsWindow : Window, IComponentConnector
 		_playbackSourceBox.SelectionChanged += PlaybackSourceBox_SelectionChanged;
 		playerContent.Children.Add(_playbackSourceBox);
 
+		_ignoredMediaSourcesGlyph = new Canvas
+		{
+			Width = 6.0,
+			Height = 9.0,
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		_ignoredMediaSourcesLabel = new TextBlock
+		{
+			Text = "EXCLUDE 0",
+			Margin = new Thickness(7.0, 0.0, 0.0, 0.0),
+			Foreground = System.Windows.Media.Brushes.White,
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			FontWeight = FontWeights.Bold,
+			VerticalAlignment = VerticalAlignment.Center,
+			Tag = "NoTranslate"
+		};
+		StackPanel ignoredToggleContent = new StackPanel
+		{
+			Orientation = System.Windows.Controls.Orientation.Horizontal
+		};
+		ignoredToggleContent.Children.Add(_ignoredMediaSourcesGlyph);
+		ignoredToggleContent.Children.Add(_ignoredMediaSourcesLabel);
+
 		_ignoredMediaSourcesToggle = new ToggleButton
 		{
-			Content = "▶  EXCLUDE 0",
+			Content = ignoredToggleContent,
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
 			HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+			Margin = new Thickness(12.0, 0.0, 0.0, 0.0),
 			Padding = new Thickness(0.0, 5.0, 0.0, 5.0),
 			Background = System.Windows.Media.Brushes.Transparent,
 			BorderThickness = new Thickness(0.0),
@@ -1301,8 +1330,30 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (_ignoredMediaSourcesToggle == null) return;
 		int count = _ignoredMediaSourceBoxes.Count(box => box.IsChecked == true);
-		string arrow = _ignoredMediaSourcesToggle.IsChecked == true ? "▼" : "▶";
-		_ignoredMediaSourcesToggle.Content = arrow + "  EXCLUDE " + count;
+		if (_ignoredMediaSourcesLabel != null) _ignoredMediaSourcesLabel.Text = "EXCLUDE " + count;
+		UpdateIgnoredMediaSourcesGlyph(_ignoredMediaSourcesToggle.IsChecked == true);
+	}
+
+	private void UpdateIgnoredMediaSourcesGlyph(bool expanded)
+	{
+		if (_ignoredMediaSourcesGlyph == null) return;
+		_ignoredMediaSourcesGlyph.Children.Clear();
+		(double X, double Y)[] dots = expanded
+			? [(0.0, 1.0), (2.0, 1.0), (4.0, 1.0), (1.0, 3.0), (3.0, 3.0), (2.0, 5.0)]
+			: [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (0.0, 4.0), (2.0, 4.0), (4.0, 4.0), (0.0, 6.0), (2.0, 6.0), (0.0, 8.0)];
+		foreach ((double x, double y) in dots)
+		{
+			System.Windows.Shapes.Rectangle dot = new System.Windows.Shapes.Rectangle
+			{
+				Width = 1.35,
+				Height = 1.35,
+				SnapsToDevicePixels = true
+			};
+			dot.SetResourceReference(Shape.FillProperty, "Orange");
+			Canvas.SetLeft(dot, x);
+			Canvas.SetTop(dot, y);
+			_ignoredMediaSourcesGlyph.Children.Add(dot);
+		}
 	}
 
 	private static System.Windows.Controls.ComboBoxItem CreateSourceComboItem(string content, string sourceId, string toolTip)

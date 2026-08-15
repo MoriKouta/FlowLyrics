@@ -46,6 +46,20 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
+	public void ProviderMetadataRepair_RemovesAppleAlbumFromArtistEvenWhenAlbumFieldsArePopulated()
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+			"AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+			"ライラック",
+			"Mrs. GREEN APPLE — ライラック - Single",
+			"ライラック - Single",
+			"Mrs. GREEN APPLE — ライラック - Single");
+
+		Assert.Equal("Mrs. GREEN APPLE", metadata.Artist);
+		Assert.Equal("ライラック - Single", metadata.Album);
+	}
+
+	[Fact]
 	public void ProviderMetadataRepair_ExtractsJapaneseQuotedYouTubeTitle()
 	{
 		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
@@ -83,6 +97,45 @@ public sealed class CoreBehaviorTests
 		Assert.Equal("Episode 12 - Interview with an Artist", metadata.Title);
 		Assert.Equal("Example Podcast", metadata.Artist);
 		Assert.Equal("Season 2", metadata.Album);
+	}
+
+	[Theory]
+	[InlineData("[MV] Creepy Nuts - バレる！", "Creepy Nuts", "バレる！", "Creepy Nuts")]
+	[InlineData("音乃瀬奏 - You＆合図 (Official MV)", "KANADE Ch. 音乃瀬奏 - ReGLOSS", "You＆合図", "音乃瀬奏")]
+	[InlineData("Chinozo 'グッバイ宣言' feat.FloweR", "Chinozo", "グッバイ宣言", "Chinozo")]
+	[InlineData("ATEEZ(에이티즈) - 'BAD' Official MV", "KQ ENTERTAINMENT", "BAD", "ATEEZ")]
+	[InlineData("ILLIT (아일릿) ‘It’s Me’ Official MV", "HYBE LABELS", "It’s Me", "ILLIT")]
+	[InlineData("Hearts2Hearts 하츠투하츠 'FOCUS' MV", "SMTOWN", "FOCUS", "Hearts2Hearts")]
+	public void ProviderMetadataRepair_RecognizesCommonYouTubeMusicConventions(
+		string rawTitle,
+		string channel,
+		string expectedTitle,
+		string expectedArtist)
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair("MSEdge", rawTitle, channel, string.Empty);
+
+		Assert.Equal(expectedTitle, metadata.Title);
+		Assert.Equal(expectedArtist, metadata.Artist);
+	}
+
+	[Fact]
+	public void ProviderMetadataRepair_RetainsFastAlternatesForLanguageAliasesAndAmbiguousCredits()
+	{
+		RepairedProviderMetadata aliases = ProviderMetadataRepair.Repair(
+			"MSEdge",
+			"Hearts2Hearts 하츠투하츠 'FOCUS' MV",
+			"SMTOWN",
+			string.Empty);
+		RepairedProviderMetadata slash = ProviderMetadataRepair.Repair(
+			"MSEdge",
+			"テトリス / 重音テトSV",
+			"柊マグネタイト",
+			string.Empty);
+
+		Assert.Contains(aliases.SearchAlternates!, candidate => candidate.Title == "FOCUS" && candidate.Artist == "하츠투하츠");
+		Assert.Equal("テトリス", slash.Title);
+		Assert.Equal("柊マグネタイト", slash.Artist);
+		Assert.Contains(slash.SearchAlternates!, candidate => candidate.Title == "テトリス" && candidate.Artist == "重音テトSV");
 	}
 
 	[Fact]
@@ -218,6 +271,30 @@ public sealed class CoreBehaviorTests
 
 		Assert.NotNull(selected);
 		Assert.Equal(2, selected!.Record.Id);
+	}
+
+	[Fact]
+	public void LyricsMatcher_UsesProviderLanguageAliasAsAnExactIdentity()
+	{
+		TrackInfo track = new(
+			"FOCUS",
+			"Hearts2Hearts",
+			string.Empty,
+			TimeSpan.FromSeconds(189),
+			SearchAlternates: new[] { new SearchMetadataCandidate("FOCUS", "하츠투하츠", string.Empty) });
+		LrclibRecord record = new()
+		{
+			Id = 42,
+			TrackName = "FOCUS",
+			ArtistName = "하츠투하츠",
+			Duration = 189,
+			SyncedLyrics = "[00:00.00]lyrics"
+		};
+
+		LyricsCandidate evaluated = LyricsMatcher.Evaluate(track, record);
+
+		Assert.True(evaluated.AutoEligible);
+		Assert.False(evaluated.ArtistMatchIsCrossScript);
 	}
 
 	[Fact]
