@@ -380,6 +380,8 @@ public sealed class CoreBehaviorTests
 	[Theory]
 	[InlineData(30.0, 1.2, 28.8)]
 	[InlineData(30.0, -0.8, 30.8)]
+	[InlineData(100.0, 42.0, 58.0)]
+	[InlineData(100.0, -38.0, 138.0)]
 	[InlineData(0.2, 1.0, 0.0)]
 	public void PersonalSync_OffsetUsesDisplayedDelayConvention(double playback, double offset, double expected)
 	{
@@ -406,6 +408,20 @@ public sealed class CoreBehaviorTests
 		Assert.Equal(21, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(22), profile).TotalSeconds, 6);
 		Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(12), profile).TotalSeconds, 6);
 		Assert.Equal(24, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(25), profile).TotalSeconds, 6);
+	}
+
+	[Fact]
+	public void PersonalSync_FutureSyncPointDoesNotChangeEarlierPlayback()
+	{
+		PersonalSyncProfile profile = new()
+		{
+			Mode = PersonalSyncMode.Advanced,
+			OffsetSeconds = 1.0,
+			Anchors = new() { new PersonalSyncAnchor { PlaybackSeconds = 30, LyricsSeconds = 20 } }
+		};
+
+		Assert.Equal(9, PersonalSyncMapper.MapPlaybackToLyrics(10, profile), 6);
+		Assert.Equal(20, PersonalSyncMapper.MapPlaybackToLyrics(30, profile), 6);
 	}
 
 	[Fact]
@@ -506,6 +522,76 @@ public sealed class CoreBehaviorTests
 		{
 			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
 		}
+	}
+
+	[Fact]
+	public async Task PersonalSyncStore_ResetDeletesOnlyTheProfile()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-personal-sync-" + Guid.NewGuid().ToString("N"));
+		string lyricsDirectory = Path.Combine(directory, "lyrics-cache");
+		string sentinel = Path.Combine(lyricsDirectory, "untouched.lrc");
+		Directory.CreateDirectory(lyricsDirectory);
+		await File.WriteAllTextAsync(sentinel, "[00:01.00]untouched");
+		try
+		{
+			PersonalSyncStore store = new(directory);
+			PersonalSyncContext context = PersonalSyncTestContext("vlc", 400);
+			PersonalSyncProfile profile = await store.UpsertAsync(PersonalSyncTestProfile(context, PersonalSyncScope.Source, 1.2));
+			profile.Mode = PersonalSyncMode.None;
+
+			await store.UpsertAsync(profile);
+
+			Assert.Empty(await store.ListAsync());
+			Assert.True(File.Exists(sentinel));
+			Assert.Equal("[00:01.00]untouched", await File.ReadAllTextAsync(sentinel));
+		}
+		finally
+		{
+			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
+	public void PersonalSyncIdentity_SeparatesRawSourceMetadataForTheSameTrack()
+	{
+		LyricsLookupResult lookup = new()
+		{
+			LrclibRecord = new LrclibRecord { Id = 500 }
+		};
+		TrackInfo firstTrack = new("Song", "Artist", "Album", TimeSpan.FromSeconds(180),
+			OriginalMediaTitle: "Artist - Song (Official Video)", OriginalMediaArtist: "Channel A");
+		TrackInfo secondTrack = new("Song", "Artist", "Album", TimeSpan.FromSeconds(180),
+			OriginalMediaTitle: "Song — live session", OriginalMediaArtist: "Channel B");
+		PlaybackSnapshot first = new(firstTrack, TimeSpan.Zero, false, DateTimeOffset.UtcNow,
+			SourceAppUserModelId: "MSEdge", SourceDisplayName: "Microsoft Edge");
+		PlaybackSnapshot second = new(secondTrack, TimeSpan.Zero, false, DateTimeOffset.UtcNow,
+			SourceAppUserModelId: "MSEdge", SourceDisplayName: "Microsoft Edge");
+
+		PersonalSyncContext firstContext = PersonalSyncIdentity.Create(first, lookup);
+		PersonalSyncContext secondContext = PersonalSyncIdentity.Create(second, lookup);
+
+		Assert.Equal(firstContext.Track.StableTrackKey, secondContext.Track.StableTrackKey);
+		Assert.NotEqual(firstContext.Source.StableSourceKey, secondContext.Source.StableSourceKey);
+	}
+
+	[Fact]
+	public void PersonalSyncIdentity_ChangesWhenNonLrclibLyricsContentChanges()
+	{
+		TrackInfo track = new("Song", "Artist", "Album", TimeSpan.FromSeconds(180));
+		PlaybackSnapshot snapshot = new(track, TimeSpan.Zero, false, DateTimeOffset.UtcNow,
+			SourceAppUserModelId: "vlc", SourceDisplayName: "VLC");
+		LyricsLookupResult first = new()
+		{
+			Lyrics = new LyricsResult(new[] { new LyricLine(TimeSpan.FromSeconds(1), "first") }, null, "embedded")
+		};
+		LyricsLookupResult replacement = new()
+		{
+			Lyrics = new LyricsResult(new[] { new LyricLine(TimeSpan.FromSeconds(1), "replacement") }, null, "embedded")
+		};
+
+		Assert.NotEqual(
+			PersonalSyncIdentity.Create(snapshot, first).Lyrics.Key,
+			PersonalSyncIdentity.Create(snapshot, replacement).Lyrics.Key);
 	}
 
 	[Fact]
