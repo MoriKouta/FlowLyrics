@@ -100,8 +100,8 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Theory]
-	[InlineData("[MV] Creepy Nuts - バレる！", "Creepy Nuts", "バレる！", "Creepy Nuts")]
-	[InlineData("音乃瀬奏 - You＆合図 (Official MV)", "KANADE Ch. 音乃瀬奏 - ReGLOSS", "You＆合図", "音乃瀬奏")]
+	[InlineData("[MV] Creepy Nuts - バレる！", "Creepy Nuts", "バレる!", "Creepy Nuts")]
+	[InlineData("音乃瀬奏 - You＆合図 (Official MV)", "KANADE Ch. 音乃瀬奏 - ReGLOSS", "You&合図", "音乃瀬奏")]
 	[InlineData("Chinozo 'グッバイ宣言' feat.FloweR", "Chinozo", "グッバイ宣言", "Chinozo")]
 	[InlineData("ATEEZ(에이티즈) - 'BAD' Official MV", "KQ ENTERTAINMENT", "BAD", "ATEEZ")]
 	[InlineData("ILLIT (아일릿) ‘It’s Me’ Official MV", "HYBE LABELS", "It’s Me", "ILLIT")]
