@@ -14,7 +14,9 @@ public sealed record TrackInfo(
 	string Album,
 	TimeSpan Duration,
 	string? LegacyProviderTrackId = null,
-	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null)
+	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null,
+	string? OriginalMediaTitle = null,
+	string? OriginalMediaArtist = null)
 {
 	public string CacheKey
 	{

@@ -122,7 +122,9 @@ public sealed class MediaSessionService : IDisposable
 			selected.Metadata.ArtistRaw,
 			selected.Metadata.AlbumRaw,
 			selected.Metadata.Duration,
-			SearchAlternates: selected.Metadata.SearchAlternates);
+			SearchAlternates: selected.Metadata.SearchAlternates,
+			OriginalMediaTitle: selected.Metadata.OriginalTitleRaw,
+			OriginalMediaArtist: selected.Metadata.OriginalArtistRaw);
 		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
 		if (!IsMetadataStable(track, selected.SessionId, nowUtc)) return null;
 

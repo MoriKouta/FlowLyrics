@@ -18,6 +18,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using FlowLyrics.Controls;
+using FlowLyrics.Core;
 using FlowLyrics.Interop;
 using FlowLyrics.Models;
 using FlowLyrics.Services;
@@ -33,6 +34,8 @@ public class MainWindow : Window, IComponentConnector
 	private readonly SystemVolumeService _systemVolumeService = new SystemVolumeService();
 
 	private readonly LyricsService _lyricsService;
+
+	private readonly PersonalSyncStore _personalSyncStore;
 
 	private readonly System.Windows.Media.FontFamily _englishDotFont;
 
@@ -176,6 +179,40 @@ public class MainWindow : Window, IComponentConnector
 
 	private System.Windows.Media.Color _trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 
+	private System.Windows.Controls.Button? _personalSyncButton;
+
+	private Popup? _personalSyncPopup;
+
+	private TextBlock? _personalSyncOffsetText;
+
+	private TextBlock? _personalSyncHintText;
+
+	private System.Windows.Controls.Button? _personalSyncAlignButton;
+
+	private System.Windows.Controls.Button? _personalSyncUndoButton;
+
+	private System.Windows.Controls.Button? _personalSyncRedoButton;
+
+	private System.Windows.Controls.CheckBox? _personalSyncAllSourcesBox;
+
+	private PersonalSyncProfile? _personalSyncActiveProfile;
+
+	private PersonalSyncProfile? _personalSyncEditingProfile;
+
+	private PersonalSyncResolution _personalSyncResolution = new(null, false);
+
+	private readonly Stack<PersonalSyncProfile> _personalSyncUndo = new();
+
+	private readonly Stack<PersonalSyncProfile> _personalSyncRedo = new();
+
+	private int _personalSyncSelectedLineIndex = -1;
+
+	private string _personalSyncContextKey = string.Empty;
+
+	private bool _personalSyncUpdatingUi;
+
+	private PersonalSyncWindow? _personalSyncAdvancedWindow;
+
 	internal System.Windows.Controls.ContextMenu OverlayMenu;
 
 	internal System.Windows.Controls.MenuItem SettingsMenuItem;
@@ -307,6 +344,9 @@ public class MainWindow : Window, IComponentConnector
 		_showAllLyrics = _settings.ShowAllLyrics;
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
+		_personalSyncStore = new PersonalSyncStore(_settingsService.AppDataDirectory);
+		_personalSyncStore.ProfilesChanged += delegate { base.Dispatcher.BeginInvoke((Action)(() => RefreshPersonalSyncResolution(force: true))); };
+		InitializePersonalSyncUi();
 		_mediaTimer = new DispatcherTimer(DispatcherPriority.Background)
 		{
 			Interval = TimeSpan.FromMilliseconds(550L)
@@ -527,7 +567,11 @@ public class MainWindow : Window, IComponentConnector
 			PlaybackSnapshot? playbackSnapshot = await _mediaSessionService.GetSnapshotAsync();
 			if ((object)playbackSnapshot == null)
 			{
+				ClosePersonalSyncEditor(save: true);
 				_snapshot = null;
+				_personalSyncActiveProfile = null;
+				_personalSyncContextKey = string.Empty;
+				UpdatePersonalSyncButton();
 				_pauseHidden = false;
 				UpdatePlaybackChrome();
 				RefreshWindowVisibility();
@@ -558,12 +602,17 @@ public class MainWindow : Window, IComponentConnector
 			else
 			{
 				_snapshot = playbackSnapshot;
+				RefreshPersonalSyncResolution();
 				_pauseHidden = _settings.HideWhenPaused && !playbackSnapshot.IsPlaying;
 				UpdatePlaybackChrome();
 				RefreshWindowVisibility();
 				if (!string.Equals(_activeTrackKey, playbackSnapshot.Track.CacheKey, StringComparison.Ordinal))
 				{
+					ClosePersonalSyncEditor(save: true);
 					_activeTrackKey = playbackSnapshot.Track.CacheKey;
+					_personalSyncActiveProfile = null;
+					_personalSyncContextKey = string.Empty;
+					UpdatePersonalSyncButton();
 					_lyricsRetryTrackKey = playbackSnapshot.Track.CacheKey;
 					_lyricsRetryAttempt = 0;
 					_lyricsRetryScheduled = false;
@@ -612,24 +661,28 @@ public class MainWindow : Window, IComponentConnector
 				if (lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				{
 					_lyrics = null;
+					RefreshPersonalSyncResolution(force: true);
 					SetTrackStatus("LRCLIB CANDIDATES FOUND", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					SetStatus(T("Lyrics candidates were found in LRCLIB."), T("Open Settings > Lyrics to choose the correct lyrics."), animate: true);
 				}
 				else if (lyrics == null)
 				{
 					_lyrics = null;
+					RefreshPersonalSyncResolution(force: true);
 					SetTrackStatus("NO LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 139, 143));
 					SetStatus(T("No synced lyrics were found."), T("Open Settings > Lyrics to search LRCLIB using another title or English name, or add a local LRC file."), animate: true);
 				}
 				else if (lyrics.IsInstrumental)
 				{
 					_lyrics = lyrics;
+					RefreshPersonalSyncResolution(force: true);
 					SetTrackStatus("INSTRUMENTAL", System.Windows.Media.Color.FromRgb(117, 230, byte.MaxValue));
 					SetStatus("♪  " + T("Instrumental"), track.DisplayName, animate: true);
 				}
 				else if (lyrics.HasSyncedLyrics)
 				{
 					_lyrics = lyrics;
+					RefreshPersonalSyncResolution(force: true);
 					string text = ((!lyricsLookupResult.LoadedFromCache) ? (lyricsLookupResult.Status switch
 					{
 						LyricsLookupStatus.LocalLrc => "LOCAL LRC", 
@@ -645,6 +698,7 @@ public class MainWindow : Window, IComponentConnector
 				else if (_settings.EnablePlainLyricsFallback && lyrics.HasPlainLyrics)
 				{
 					_lyrics = lyrics;
+					RefreshPersonalSyncResolution(force: true);
 					_plainLyricsScrollMode = true;
 					SetTrackStatus("PLAIN LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					RenderLyrics();
@@ -652,6 +706,7 @@ public class MainWindow : Window, IComponentConnector
 				else
 				{
 					_lyrics = lyrics;
+					RefreshPersonalSyncResolution(force: true);
 					SetTrackStatus("NO SYNCED LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					SetStatus(track.DisplayName, T("Only plain lyrics are available · Enable fallback in Settings"), animate: true);
 				}
@@ -738,6 +793,512 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 
+	private void InitializePersonalSyncUi()
+	{
+		_personalSyncButton = new System.Windows.Controls.Button
+		{
+			Content = "SYNC",
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			FontWeight = FontWeights.SemiBold,
+			Foreground = System.Windows.Media.Brushes.White,
+			Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(34, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
+			BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(100, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
+			BorderThickness = new Thickness(1.0),
+			Padding = new Thickness(9.0, 4.0, 9.0, 4.0),
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+			VerticalAlignment = VerticalAlignment.Top,
+			Cursor = System.Windows.Input.Cursors.Hand,
+			IsEnabled = false
+		};
+		_personalSyncButton.Click += PersonalSyncButton_Click;
+		HeaderPanel.Children.Add(_personalSyncButton);
+		TrackInfoPanel.Margin = new Thickness(0.0, 0.0, 76.0, 0.0);
+
+		StackPanel content = new() { Margin = new Thickness(13.0), Width = 286.0 };
+		DockPanel titleRow = new() { LastChildFill = true };
+		System.Windows.Controls.Button closeButton = CreatePersonalSyncButton("×", compact: true);
+		closeButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+		closeButton.Click += delegate { ClosePersonalSyncEditor(save: true); };
+		DockPanel.SetDock(closeButton, Dock.Right);
+		titleRow.Children.Add(closeButton);
+		titleRow.Children.Add(new TextBlock
+		{
+			Text = PersonalSyncText("LYRICS TIMING", "歌詞タイミング"),
+			FontFamily = _englishDotFont,
+			FontSize = 11.0,
+			FontWeight = FontWeights.Bold,
+			Foreground = System.Windows.Media.Brushes.White,
+			VerticalAlignment = VerticalAlignment.Center
+		});
+		content.Children.Add(titleRow);
+		_personalSyncHintText = new TextBlock
+		{
+			Margin = new Thickness(0.0, 8.0, 0.0, 5.0),
+			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(207, 205, 207)),
+			FontSize = 11.0,
+			TextWrapping = TextWrapping.Wrap
+		};
+		content.Children.Add(_personalSyncHintText);
+		_personalSyncOffsetText = new TextBlock
+		{
+			Margin = new Thickness(0.0, 4.0, 0.0, 9.0),
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+			Foreground = FindResource("UiAccentBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Orange,
+			FontFamily = _englishDotFont,
+			FontSize = 14.0,
+			FontWeight = FontWeights.Bold
+		};
+		content.Children.Add(_personalSyncOffsetText);
+
+		Grid offsetButtons = new();
+		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition());
+		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(7.0) });
+		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition());
+		System.Windows.Controls.Button earlier = CreatePersonalSyncButton(PersonalSyncText("◀ EARLIER", "◀ 歌詞を早く"));
+		earlier.Click += delegate { AdjustPersonalSyncOffset(-0.1); };
+		offsetButtons.Children.Add(earlier);
+		System.Windows.Controls.Button later = CreatePersonalSyncButton(PersonalSyncText("LATER ▶", "歌詞を遅く ▶"));
+		later.Click += delegate { AdjustPersonalSyncOffset(0.1); };
+		Grid.SetColumn(later, 2);
+		offsetButtons.Children.Add(later);
+		content.Children.Add(offsetButtons);
+
+		_personalSyncAlignButton = CreatePersonalSyncButton(PersonalSyncText("ALIGN SELECTED LINE TO NOW", "選択した行を今ここに合わせる"));
+		_personalSyncAlignButton.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
+		_personalSyncAlignButton.Click += PersonalSyncAlign_Click;
+		content.Children.Add(_personalSyncAlignButton);
+
+		WrapPanel history = new() { Margin = new Thickness(-3.0, 7.0, 0.0, 0.0) };
+		_personalSyncUndoButton = CreatePersonalSyncButton("↶ " + PersonalSyncText("UNDO", "戻す"), compact: true);
+		_personalSyncUndoButton.Click += delegate { UndoPersonalSync(); };
+		history.Children.Add(_personalSyncUndoButton);
+		_personalSyncRedoButton = CreatePersonalSyncButton("↷ " + PersonalSyncText("REDO", "やり直す"), compact: true);
+		_personalSyncRedoButton.Click += delegate { RedoPersonalSync(); };
+		history.Children.Add(_personalSyncRedoButton);
+		System.Windows.Controls.Button reset = CreatePersonalSyncButton(PersonalSyncText("RESET", "リセット"), compact: true);
+		reset.Click += delegate { ResetPersonalSync(); };
+		history.Children.Add(reset);
+		content.Children.Add(history);
+
+		_personalSyncAllSourcesBox = new System.Windows.Controls.CheckBox
+		{
+			Content = PersonalSyncText("USE FOR THIS TRACK ON ALL PLAYERS", "この曲をすべての再生元で使う"),
+			Margin = new Thickness(0.0, 9.0, 0.0, 0.0),
+			Foreground = System.Windows.Media.Brushes.White,
+			FontSize = 10.5
+		};
+		_personalSyncAllSourcesBox.Checked += PersonalSyncScopeChanged;
+		_personalSyncAllSourcesBox.Unchecked += PersonalSyncScopeChanged;
+		content.Children.Add(_personalSyncAllSourcesBox);
+
+		System.Windows.Controls.Button advanced = CreatePersonalSyncButton(PersonalSyncText("ADVANCED TIMELINE…", "詳細タイムライン…"));
+		advanced.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
+		advanced.Click += OpenAdvancedPersonalSync_Click;
+		content.Children.Add(advanced);
+
+		Border surface = new()
+		{
+			Child = content,
+			CornerRadius = new CornerRadius(12.0),
+			Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(246, 30, 28, 31)),
+			BorderBrush = FindResource("UiAccentBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Orange,
+			BorderThickness = new Thickness(1.0)
+		};
+		_personalSyncPopup = new Popup
+		{
+			Child = surface,
+			PlacementTarget = _personalSyncButton,
+			Placement = PlacementMode.Bottom,
+			HorizontalOffset = -235.0,
+			VerticalOffset = 5.0,
+			AllowsTransparency = true,
+			StaysOpen = true
+		};
+		_personalSyncPopup.Closed += PersonalSyncPopup_Closed;
+		UpdatePersonalSyncButton();
+	}
+
+	private System.Windows.Controls.Button CreatePersonalSyncButton(string content, bool compact = false)
+	{
+		return new System.Windows.Controls.Button
+		{
+			Content = content,
+			FontFamily = _englishDotFont,
+			FontSize = compact ? 8.0 : 8.5,
+			Foreground = System.Windows.Media.Brushes.White,
+			Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(48, 45, 49)),
+			BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(91, 85, 93)),
+			BorderThickness = new Thickness(1.0),
+			Padding = new Thickness(compact ? 8.0 : 10.0, compact ? 4.0 : 7.0, compact ? 8.0 : 10.0, compact ? 4.0 : 7.0),
+			Margin = compact ? new Thickness(3.0) : new Thickness(0.0),
+			Cursor = System.Windows.Input.Cursors.Hand
+		};
+	}
+
+	private string PersonalSyncText(string english, string japanese)
+	{
+		return string.Equals(LocalizationService.NormalizeLanguage(_settings.Language), "ja-JP", StringComparison.OrdinalIgnoreCase) ? japanese : english;
+	}
+
+	private void PersonalSyncButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (_personalSyncPopup == null || _snapshot == null || _lyrics?.HasSyncedLyrics != true || _lyricsLookup == null)
+		{
+			return;
+		}
+		if (_personalSyncPopup.IsOpen)
+		{
+			ClosePersonalSyncEditor(save: true);
+			return;
+		}
+
+		_personalSyncEditingProfile = _personalSyncActiveProfile == null
+			? CreateCurrentPersonalSyncProfile()
+			: _personalSyncActiveProfile.Clone();
+		_personalSyncUndo.Clear();
+		_personalSyncRedo.Clear();
+		_personalSyncSelectedLineIndex = -1;
+		_personalSyncActiveProfile = _personalSyncEditingProfile;
+		RefreshPersonalSyncPopup();
+		_personalSyncPopup.IsOpen = true;
+		InvalidatePersonalSyncRendering();
+	}
+
+	private PersonalSyncProfile CreateCurrentPersonalSyncProfile()
+	{
+		if (_snapshot == null || _lyricsLookup == null) return new PersonalSyncProfile();
+		PersonalSyncContext context = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
+		return new PersonalSyncProfile
+		{
+			Track = context.Track,
+			Source = context.Source,
+			Lyrics = context.Lyrics,
+			Scope = PersonalSyncScope.Source,
+			Mode = PersonalSyncMode.Offset
+		};
+	}
+
+	private async void RefreshPersonalSyncResolution(bool force = false)
+	{
+		if (_personalSyncEditingProfile != null || _snapshot == null || _lyricsLookup == null || _lyrics?.HasSyncedLyrics != true)
+		{
+			if (_lyrics?.HasSyncedLyrics != true)
+			{
+				_personalSyncActiveProfile = null;
+				_personalSyncResolution = new PersonalSyncResolution(null, false);
+				_personalSyncContextKey = string.Empty;
+				UpdatePersonalSyncButton();
+			}
+			return;
+		}
+		PersonalSyncContext personalSyncContext = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
+		string context = personalSyncContext.Track.StableTrackKey + "|" + personalSyncContext.Source.StableSourceKey + "|" + personalSyncContext.Lyrics.Key;
+		if (!force && string.Equals(context, _personalSyncContextKey, StringComparison.Ordinal)) return;
+		_personalSyncContextKey = context;
+		PersonalSyncResolution resolution;
+		try
+		{
+			resolution = await _personalSyncStore.ResolveAsync(personalSyncContext);
+			if (resolution.Profile == null
+				&& _settings.TrackOffsetsMs.TryGetValue(_snapshot.Track.CacheKey, out int legacyTrackOffset)
+				&& legacyTrackOffset != 0)
+			{
+				PersonalSyncProfile migrated = CreateCurrentPersonalSyncProfile();
+				// Legacy offsets were added to playback; Personal Sync subtracts its offset.
+				migrated.OffsetSeconds = Math.Clamp(-legacyTrackOffset / 1000.0, -3600.0, 3600.0);
+				migrated = await _personalSyncStore.UpsertAsync(migrated);
+				_settings.TrackOffsetsMs.Remove(_snapshot.Track.CacheKey);
+				await SaveSettingsSafeAsync();
+				resolution = new PersonalSyncResolution(migrated, false);
+			}
+		}
+		catch
+		{
+			resolution = new PersonalSyncResolution(null, false);
+		}
+		if (!string.Equals(context, _personalSyncContextKey, StringComparison.Ordinal) || _personalSyncEditingProfile != null) return;
+		_personalSyncResolution = resolution;
+		_personalSyncActiveProfile = _personalSyncResolution.Profile;
+		UpdatePersonalSyncButton();
+		InvalidatePersonalSyncRendering();
+	}
+
+	private TimeSpan GetBasePlaybackPosition()
+	{
+		if (_snapshot == null) return TimeSpan.Zero;
+		return _snapshot.EstimatedPosition(DateTimeOffset.UtcNow) + TimeSpan.FromMilliseconds(_settings.GlobalLyricsOffsetMs);
+	}
+
+	private TimeSpan GetEffectiveLyricsPosition() => PersonalSyncMapper.MapPlaybackToLyrics(GetBasePlaybackPosition(), _personalSyncActiveProfile);
+
+	private void AdjustPersonalSyncOffset(double delta)
+	{
+		if (_personalSyncEditingProfile == null) return;
+		PushPersonalSyncUndo();
+		_personalSyncEditingProfile.Mode = PersonalSyncMode.Offset;
+		_personalSyncEditingProfile.OffsetSeconds = Math.Clamp(Math.Round((_personalSyncEditingProfile.OffsetSeconds + delta) * 10.0) / 10.0, -120.0, 120.0);
+		_personalSyncEditingProfile.Anchors.Clear();
+		_personalSyncEditingProfile.Segments.Clear();
+		ApplyPersonalSyncEdit();
+	}
+
+	private void PersonalSyncAlign_Click(object sender, RoutedEventArgs e)
+	{
+		if (_personalSyncEditingProfile == null || _lyrics?.HasSyncedLyrics != true || _personalSyncSelectedLineIndex < 0 || _personalSyncSelectedLineIndex >= _lyrics.Lines.Count) return;
+		PushPersonalSyncUndo();
+		_personalSyncEditingProfile.Mode = PersonalSyncMode.Offset;
+		_personalSyncEditingProfile.OffsetSeconds = Math.Clamp(GetBasePlaybackPosition().TotalSeconds - _lyrics.Lines[_personalSyncSelectedLineIndex].Time.TotalSeconds, -120.0, 120.0);
+		_personalSyncEditingProfile.Anchors.Clear();
+		_personalSyncEditingProfile.Segments.Clear();
+		ApplyPersonalSyncEdit();
+	}
+
+	private void PersonalSyncScopeChanged(object sender, RoutedEventArgs e)
+	{
+		if (_personalSyncUpdatingUi || _personalSyncEditingProfile == null || _personalSyncAllSourcesBox == null) return;
+		PushPersonalSyncUndo();
+		_personalSyncEditingProfile.Scope = _personalSyncAllSourcesBox.IsChecked == true ? PersonalSyncScope.Track : PersonalSyncScope.Source;
+		ApplyPersonalSyncEdit();
+	}
+
+	private void PushPersonalSyncUndo()
+	{
+		if (_personalSyncEditingProfile == null) return;
+		_personalSyncUndo.Push(_personalSyncEditingProfile.Clone());
+		while (_personalSyncUndo.Count > 60)
+		{
+			PersonalSyncProfile[] keep = _personalSyncUndo.Take(60).Reverse().ToArray();
+			_personalSyncUndo.Clear();
+			foreach (PersonalSyncProfile item in keep) _personalSyncUndo.Push(item);
+		}
+		_personalSyncRedo.Clear();
+	}
+
+	private void UndoPersonalSync()
+	{
+		if (_personalSyncEditingProfile == null || _personalSyncUndo.Count == 0) return;
+		_personalSyncRedo.Push(_personalSyncEditingProfile.Clone());
+		_personalSyncEditingProfile = _personalSyncUndo.Pop();
+		ApplyPersonalSyncEdit();
+	}
+
+	private void RedoPersonalSync()
+	{
+		if (_personalSyncEditingProfile == null || _personalSyncRedo.Count == 0) return;
+		_personalSyncUndo.Push(_personalSyncEditingProfile.Clone());
+		_personalSyncEditingProfile = _personalSyncRedo.Pop();
+		ApplyPersonalSyncEdit();
+	}
+
+	private void ResetPersonalSync()
+	{
+		if (_personalSyncEditingProfile == null) return;
+		PushPersonalSyncUndo();
+		_personalSyncEditingProfile.Mode = PersonalSyncMode.None;
+		_personalSyncEditingProfile.OffsetSeconds = 0.0;
+		_personalSyncEditingProfile.Anchors.Clear();
+		_personalSyncEditingProfile.Segments.Clear();
+		ApplyPersonalSyncEdit();
+	}
+
+	private void ApplyPersonalSyncEdit()
+	{
+		_personalSyncActiveProfile = _personalSyncEditingProfile;
+		RefreshPersonalSyncPopup();
+		UpdatePersonalSyncButton();
+		InvalidatePersonalSyncRendering();
+	}
+
+	private void RefreshPersonalSyncPopup()
+	{
+		if (_personalSyncEditingProfile == null) return;
+		_personalSyncUpdatingUi = true;
+		try
+		{
+			if (_personalSyncOffsetText != null)
+			{
+				_personalSyncOffsetText.Text = _personalSyncEditingProfile.Mode == PersonalSyncMode.Advanced
+					? PersonalSyncText("ADVANCED", "詳細調整")
+					: _personalSyncEditingProfile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s";
+			}
+			if (_personalSyncHintText != null)
+			{
+				_personalSyncHintText.Text = _personalSyncSelectedLineIndex >= 0 && _lyrics != null
+					? "♪ " + _lyrics.Lines[_personalSyncSelectedLineIndex].Text
+					: (_personalSyncResolution.HasProfileForDifferentLyrics
+						? PersonalSyncText("Saved timing belongs to different lyrics and was not applied.", "別の歌詞用の調整は適用していません。")
+						: PersonalSyncText("Select a synced lyric line, or nudge by 0.1 s.", "同期歌詞の行を選ぶか、0.1秒ずつ調整します。"));
+			}
+			if (_personalSyncAlignButton != null) _personalSyncAlignButton.IsEnabled = _personalSyncSelectedLineIndex >= 0 && _lyrics?.HasSyncedLyrics == true;
+			if (_personalSyncUndoButton != null) _personalSyncUndoButton.IsEnabled = _personalSyncUndo.Count > 0;
+			if (_personalSyncRedoButton != null) _personalSyncRedoButton.IsEnabled = _personalSyncRedo.Count > 0;
+			if (_personalSyncAllSourcesBox != null) _personalSyncAllSourcesBox.IsChecked = _personalSyncEditingProfile.Scope == PersonalSyncScope.Track;
+		}
+		finally
+		{
+			_personalSyncUpdatingUi = false;
+		}
+	}
+
+	private void UpdatePersonalSyncButton()
+	{
+		if (_personalSyncButton == null) return;
+		_personalSyncButton.IsEnabled = _snapshot != null && _lyrics?.HasSyncedLyrics == true;
+		PersonalSyncProfile? profile = _personalSyncActiveProfile;
+		if (profile == null || profile.Mode == PersonalSyncMode.None)
+		{
+			_personalSyncButton.Content = _personalSyncResolution.HasProfileForDifferentLyrics ? "SYNC ?" : "SYNC";
+			_personalSyncButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(34, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+		}
+		else
+		{
+			_personalSyncButton.Content = profile.Mode == PersonalSyncMode.Advanced
+				? "SYNC •"
+				: "SYNC " + profile.OffsetSeconds.ToString("+0.0;-0.0;0.0");
+			_personalSyncButton.Background = CreateDisplayBrush(_settings.UiColor, 0.5, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+		}
+		_personalSyncButton.ToolTip = _personalSyncResolution.HasProfileForDifferentLyrics
+			? PersonalSyncText("A profile for different lyrics was not applied.", "別の歌詞用の調整は適用されていません。")
+			: PersonalSyncText("Personal lyric timing", "個人用の歌詞タイミング");
+	}
+
+	private async void PersonalSyncPopup_Closed(object? sender, EventArgs e)
+	{
+		PersonalSyncProfile? profile = _personalSyncEditingProfile;
+		_personalSyncEditingProfile = null;
+		_personalSyncSelectedLineIndex = -1;
+		_personalSyncUndo.Clear();
+		_personalSyncRedo.Clear();
+		RefreshPersonalSyncSelectionVisuals();
+		if (profile != null)
+		{
+			try { await _personalSyncStore.UpsertAsync(profile); } catch { }
+		}
+		RefreshPersonalSyncResolution(force: true);
+	}
+
+	private void ClosePersonalSyncEditor(bool save)
+	{
+		if (_personalSyncAdvancedWindow != null)
+		{
+			_personalSyncAdvancedWindow.Close();
+			_personalSyncAdvancedWindow = null;
+		}
+		if (_personalSyncPopup?.IsOpen == true)
+		{
+			if (!save) _personalSyncEditingProfile = null;
+			_personalSyncPopup.IsOpen = false;
+		}
+	}
+
+	private void PersonalSyncLyricLine_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+	{
+		if (_personalSyncEditingProfile == null || _personalSyncPopup?.IsOpen != true || _lyrics?.HasSyncedLyrics != true || sender is not OutlinedText line || line.Tag is not int index) return;
+		_personalSyncSelectedLineIndex = index;
+		RefreshPersonalSyncPopup();
+		RefreshPersonalSyncSelectionVisuals();
+		e.Handled = true;
+	}
+
+	private void ApplyPersonalSyncSelectionVisual(OutlinedText line)
+	{
+		if (_personalSyncEditingProfile != null && line.Tag is int index && index == _personalSyncSelectedLineIndex)
+		{
+			line.Stroke = CreateDisplayBrush(_settings.UiColor, 1.0, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+			line.StrokeThickness = Math.Max(1.0, _settings.OutlineThickness + 0.75);
+			line.Opacity = 1.0;
+		}
+	}
+
+	private void RefreshPersonalSyncSelectionVisuals()
+	{
+		System.Windows.Media.Brush normal = CreateDisplayBrush(_settings.OutlineColor, 1.0, Colors.Black);
+		foreach (OutlinedText line in _lineControls)
+		{
+			line.Stroke = normal;
+			line.StrokeThickness = _settings.OutlineThickness;
+			ApplyPersonalSyncSelectionVisual(line);
+		}
+	}
+
+	private void InvalidatePersonalSyncRendering()
+	{
+		_lastLineIndex = int.MinValue;
+		_lastFullLyricsActiveIndex = int.MinValue;
+		RenderLyrics();
+	}
+
+	private void OpenAdvancedPersonalSync_Click(object sender, RoutedEventArgs e)
+	{
+		if (_personalSyncEditingProfile == null || _snapshot == null || _lyrics?.HasSyncedLyrics != true) return;
+		if (_personalSyncAdvancedWindow != null)
+		{
+			_personalSyncAdvancedWindow.Activate();
+			return;
+		}
+		if (_lyricsLookup == null) return;
+		PersonalSyncContext context = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
+		_personalSyncAdvancedWindow = new PersonalSyncWindow(
+			_personalSyncStore,
+			context,
+			_personalSyncEditingProfile,
+			_lyrics.Lines,
+			() =>
+			{
+				int index = _personalSyncSelectedLineIndex >= 0 ? _personalSyncSelectedLineIndex : _activeLineIndex;
+				return index >= 0 && index < _lyrics.Lines.Count ? index : (int?)null;
+			},
+			GetBasePlaybackPosition,
+			_settings.Language)
+		{
+			Owner = this
+		};
+		_personalSyncAdvancedWindow.PreviewChanged += delegate(object? _, PersonalSyncProfile? profile)
+		{
+			if (profile == null)
+			{
+				_personalSyncEditingProfile = null;
+				_personalSyncActiveProfile = null;
+				InvalidatePersonalSyncRendering();
+				return;
+			}
+			if (_personalSyncEditingProfile != null) _personalSyncUndo.Push(_personalSyncEditingProfile.Clone());
+			_personalSyncEditingProfile = profile.Clone();
+			_personalSyncRedo.Clear();
+			ApplyPersonalSyncEdit();
+		};
+		_personalSyncAdvancedWindow.Closed += delegate
+		{
+			_personalSyncAdvancedWindow = null;
+			RefreshPersonalSyncPopup();
+		};
+		_personalSyncAdvancedWindow.Show();
+	}
+
+	private PersonalSyncDiagnosticSnapshot? GetPersonalSyncDiagnostics()
+	{
+		if (_snapshot == null || _lyrics == null || _lyricsLookup == null) return null;
+		PersonalSyncProfile? profile = _personalSyncActiveProfile;
+		TimeSpan playback = GetBasePlaybackPosition();
+		TimeSpan mapped = PersonalSyncMapper.MapPlaybackToLyrics(playback, profile);
+		PersonalSyncContext context = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
+		return new PersonalSyncDiagnosticSnapshot(
+			profile?.Id.ToString("N") ?? "—",
+			profile?.Mode.ToString() ?? "None",
+			profile?.Scope == PersonalSyncScope.Track ? "Track + Lyrics" : "Source + Track + Lyrics",
+			context.Track.StableTrackKey,
+			context.Source.StableSourceKey,
+			context.Lyrics.Key,
+			profile?.OffsetSeconds ?? 0.0,
+			profile?.Anchors.Count ?? 0,
+			profile?.Segments.Count(segment => segment.Type == PersonalSyncSegmentType.Hold) ?? 0,
+			_personalSyncResolution.HasProfileForDifferentLyrics,
+			playback.TotalSeconds,
+			mapped.TotalSeconds,
+			PersonalSyncMapper.DescribeActiveSegment(playback.TotalSeconds, profile));
+	}
+
 	private void RenderLyrics()
 	{
 		UpdatePlaybackProgress();
@@ -756,12 +1317,7 @@ public class MainWindow : Window, IComponentConnector
 		UpdateScrollAnimation();
 		if ((object)_snapshot != null && (object)_lyrics != null && _lyrics.HasSyncedLyrics)
 		{
-			int num = _settings.GlobalLyricsOffsetMs;
-			if (_settings.TrackOffsetsMs.TryGetValue(_snapshot.Track.CacheKey, out var value))
-			{
-				num += value;
-			}
-			TimeSpan position = _snapshot.EstimatedPosition(DateTimeOffset.UtcNow) + TimeSpan.FromMilliseconds(num);
+			TimeSpan position = GetEffectiveLyricsPosition();
 			IReadOnlyList<LyricLine> lines = _lyrics.Lines;
 			int num2 = FindActiveLine(lines, position);
 			if (num2 != _lastLineIndex)
@@ -938,12 +1494,7 @@ public class MainWindow : Window, IComponentConnector
 		int active = -1;
 		if (_lyrics.HasSyncedLyrics && _snapshot != null)
 		{
-			int offset = _settings.GlobalLyricsOffsetMs;
-			if (_settings.TrackOffsetsMs.TryGetValue(_snapshot.Track.CacheKey, out int trackOffset))
-			{
-				offset += trackOffset;
-			}
-			active = FindActiveLine(_lyrics.Lines, _snapshot.EstimatedPosition(DateTimeOffset.UtcNow) + TimeSpan.FromMilliseconds(offset));
+			active = FindActiveLine(_lyrics.Lines, GetEffectiveLyricsPosition());
 		}
 		if (active == _lastFullLyricsActiveIndex)
 		{
@@ -975,6 +1526,7 @@ public class MainWindow : Window, IComponentConnector
 		line.Fill = ResolveTextBrush(lineIndex, isActive || activeIndex < 0);
 		line.Opacity = isActive || activeIndex < 0 ? 1.0 : Math.Max(0.58, _settings.NextLineOpacity);
 		line.FontWeight = isActive ? FontWeights.Bold : FontWeights.SemiBold;
+		ApplyPersonalSyncSelectionVisual(line);
 	}
 
 	private void EnableFullLyricsViewport()
@@ -1103,8 +1655,10 @@ public class MainWindow : Window, IComponentConnector
 			{
 				Text = ((lines != null && _visibleFirstLineIndex + i < lines.Count) ? lines[_visibleFirstLineIndex + i].Text : string.Empty),
 				VerticalAlignment = VerticalAlignment.Top,
-				HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch
+				HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+				Tag = _visibleFirstLineIndex + i
 			};
+			outlinedText.PreviewMouseLeftButtonDown += PersonalSyncLyricLine_PreviewMouseLeftButtonDown;
 			LyricsStackPanel.Children.Add(outlinedText);
 			_lineControls.Add(outlinedText);
 		}
@@ -1135,6 +1689,7 @@ public class MainWindow : Window, IComponentConnector
 			outlinedText.Wrap = _settings.WrapLongLines;
 			outlinedText.MaximumLines = _settings.MaximumWrapLines;
 			outlinedText.Margin = new Thickness(0.0, _settings.LineSpacing / 2.0, 0.0, _settings.LineSpacing / 2.0);
+			ApplyPersonalSyncSelectionVisual(outlinedText);
 		}
 	}
 
@@ -1144,6 +1699,7 @@ public class MainWindow : Window, IComponentConnector
 		control.Fill = ResolveTextBrush(lineIndex, isActive);
 		control.FontWeight = (isActive ? FontWeights.Bold : FontWeights.SemiBold);
 		control.FontSize = (isActive ? _settings.FontSize : (_settings.FontSize * _settings.InactiveFontScale));
+		ApplyPersonalSyncSelectionVisual(control);
 		if (string.Equals(control.Text, text, StringComparison.Ordinal))
 		{
 			control.BeginAnimation(UIElement.OpacityProperty, null);
@@ -1295,6 +1851,7 @@ public class MainWindow : Window, IComponentConnector
 		UpdateChromeVisibility();
 		UpdatePlaybackChrome();
 		UpdateLockVisuals();
+		UpdatePersonalSyncButton();
 		_lastLineIndex = int.MinValue;
 		RenderLyrics();
 		if (_snapshot == null)
@@ -2228,7 +2785,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		_settingsBeforeWindow = _settings.Clone();
-		SettingsWindow settingsWindow = new SettingsWindow(_settings.Clone(), _lyricsService.LyricsDirectory, _lyricsService, _mediaSessionService, () => _snapshot, () => _snapshot?.Track, () => _lyricsLookup, async delegate
+		SettingsWindow settingsWindow = new SettingsWindow(_settings.Clone(), _lyricsService.LyricsDirectory, _lyricsService, _mediaSessionService, _personalSyncStore, () => _snapshot, () => _snapshot?.Track, () => _lyricsLookup, GetPersonalSyncDiagnostics, async delegate
 		{
 			if (_snapshot != null)
 			{
@@ -2367,25 +2924,28 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 
-	private void AdjustCurrentTrackOffset(int deltaMilliseconds)
+	private async void AdjustCurrentTrackOffset(int deltaMilliseconds)
 	{
-		if ((object)_snapshot != null)
+		if (_snapshot == null || _lyrics?.HasSyncedLyrics != true || _lyricsLookup == null) return;
+		if (_personalSyncEditingProfile != null)
 		{
-			string cacheKey = _snapshot.Track.CacheKey;
-			_settings.TrackOffsetsMs.TryGetValue(cacheKey, out var value);
-			int num = Math.Clamp(value + deltaMilliseconds, -10000, 10000);
-			if (num == 0)
-			{
-				_settings.TrackOffsetsMs.Remove(cacheKey);
-			}
-			else
-			{
-				_settings.TrackOffsetsMs[cacheKey] = num;
-			}
-			_lastLineIndex = int.MinValue;
-			RenderLyrics();
-			ScheduleSettingsSave();
+			AdjustPersonalSyncOffset(-deltaMilliseconds / 1000.0);
+			return;
 		}
+		PersonalSyncProfile profile = _personalSyncActiveProfile?.Clone() ?? CreateCurrentPersonalSyncProfile();
+		profile.Mode = PersonalSyncMode.Offset;
+		profile.OffsetSeconds = Math.Clamp(Math.Round((profile.OffsetSeconds - deltaMilliseconds / 1000.0) * 10.0) / 10.0, -120.0, 120.0);
+		profile.Anchors.Clear();
+		profile.Segments.Clear();
+		try
+		{
+			profile = await _personalSyncStore.UpsertAsync(profile);
+			_personalSyncActiveProfile = profile;
+			_personalSyncResolution = new PersonalSyncResolution(profile, false);
+			UpdatePersonalSyncButton();
+			InvalidatePersonalSyncRendering();
+		}
+		catch { }
 	}
 
 	private int GetCurrentTrackOffset()
@@ -2394,11 +2954,9 @@ public class MainWindow : Window, IComponentConnector
 		{
 			return 0;
 		}
-		if (!_settings.TrackOffsetsMs.TryGetValue(_snapshot.Track.CacheKey, out var value))
-		{
-			return 0;
-		}
-		return value;
+		return _personalSyncActiveProfile == null
+			? 0
+			: -(int)Math.Round(_personalSyncActiveProfile.OffsetSeconds * 1000.0);
 	}
 
 	private async void ExitApplication()
@@ -2821,15 +3379,26 @@ public class MainWindow : Window, IComponentConnector
 		AdjustCurrentTrackOffset(-500);
 	}
 
-	private void ResetTrackOffset_Click(object sender, RoutedEventArgs e)
+	private async void ResetTrackOffset_Click(object sender, RoutedEventArgs e)
 	{
-		if ((object)_snapshot != null)
+		if (_snapshot == null) return;
+		if (_personalSyncEditingProfile != null)
 		{
-			_settings.TrackOffsetsMs.Remove(_snapshot.Track.CacheKey);
-			_lastLineIndex = int.MinValue;
-			RenderLyrics();
-			ScheduleSettingsSave();
+			ResetPersonalSync();
+			return;
 		}
+		try
+		{
+			if (_personalSyncActiveProfile != null) await _personalSyncStore.DeleteAsync(_personalSyncActiveProfile.Id);
+			_settings.TrackOffsetsMs.Remove(_snapshot.Track.CacheKey);
+			_personalSyncActiveProfile = null;
+			_personalSyncResolution = new PersonalSyncResolution(null, false);
+			UpdatePersonalSyncButton();
+			InvalidatePersonalSyncRendering();
+			ScheduleSettingsSave();
+			RefreshPersonalSyncResolution(force: true);
+		}
+		catch { }
 	}
 
 	private async void ReloadLyrics_Click(object sender, RoutedEventArgs e)

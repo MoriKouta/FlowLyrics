@@ -368,6 +368,147 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
+	public void PersonalSync_NoProfileLeavesPlaybackTimeUnchanged()
+	{
+		TimeSpan playback = TimeSpan.FromSeconds(42.75);
+
+		TimeSpan mapped = PersonalSyncMapper.MapPlaybackToLyrics(playback, null);
+
+		Assert.Equal(playback, mapped);
+	}
+
+	[Theory]
+	[InlineData(30.0, 1.2, 28.8)]
+	[InlineData(30.0, -0.8, 30.8)]
+	[InlineData(0.2, 1.0, 0.0)]
+	public void PersonalSync_OffsetUsesDisplayedDelayConvention(double playback, double offset, double expected)
+	{
+		PersonalSyncProfile profile = new() { Mode = PersonalSyncMode.Offset, OffsetSeconds = offset };
+
+		double mapped = PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(playback), profile).TotalSeconds;
+
+		Assert.Equal(expected, mapped, precision: 6);
+	}
+
+	[Fact]
+	public void PersonalSync_AdvancedMappingIsSeekIndependent()
+	{
+		PersonalSyncProfile profile = new()
+		{
+			Mode = PersonalSyncMode.Advanced,
+			Anchors = new()
+			{
+				new PersonalSyncAnchor { PlaybackSeconds = 10, LyricsSeconds = 8 },
+				new PersonalSyncAnchor { PlaybackSeconds = 20, LyricsSeconds = 19 }
+			}
+		};
+
+		Assert.Equal(21, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(22), profile).TotalSeconds, 6);
+		Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(12), profile).TotalSeconds, 6);
+		Assert.Equal(24, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(25), profile).TotalSeconds, 6);
+	}
+
+	[Fact]
+	public void PersonalSync_HoldFreezesThenAccumulatesThePause()
+	{
+		PersonalSyncProfile profile = new()
+		{
+			Mode = PersonalSyncMode.Advanced,
+			Segments = new()
+			{
+				new PersonalSyncSegment
+				{
+					Type = PersonalSyncSegmentType.Hold,
+					PlaybackStartSeconds = 10,
+					PlaybackEndSeconds = 15,
+					LyricsTimeSeconds = 10
+				}
+			}
+		};
+
+		Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(12), profile).TotalSeconds, 6);
+		Assert.Equal(12, PersonalSyncMapper.MapPlaybackToLyrics(TimeSpan.FromSeconds(17), profile).TotalSeconds, 6);
+	}
+
+	[Fact]
+	public async Task PersonalSyncStore_PrefersSourceProfileThenTrackFallback()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-personal-sync-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			PersonalSyncStore store = new(directory);
+			PersonalSyncContext spotify = PersonalSyncTestContext("spotify", 100);
+			PersonalSyncContext apple = PersonalSyncTestContext("apple", 100);
+			PersonalSyncProfile global = PersonalSyncTestProfile(spotify, PersonalSyncScope.Track, 0.7);
+			PersonalSyncProfile exact = PersonalSyncTestProfile(spotify, PersonalSyncScope.Source, 1.4);
+			await store.UpsertAsync(global);
+			await store.UpsertAsync(exact);
+
+			PersonalSyncResolution spotifyResolution = await store.ResolveAsync(spotify);
+			PersonalSyncResolution appleResolution = await store.ResolveAsync(apple);
+
+			Assert.Equal(1.4, spotifyResolution.Profile!.OffsetSeconds, 6);
+			Assert.Equal(0.7, appleResolution.Profile!.OffsetSeconds, 6);
+		}
+		finally
+		{
+			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task PersonalSyncStore_DoesNotApplyProfileForDifferentLyrics()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-personal-sync-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			PersonalSyncStore store = new(directory);
+			PersonalSyncContext firstLyrics = PersonalSyncTestContext("spotify", 100);
+			PersonalSyncContext replacementLyrics = PersonalSyncTestContext("spotify", 200);
+			await store.UpsertAsync(PersonalSyncTestProfile(firstLyrics, PersonalSyncScope.Source, 1.0));
+
+			PersonalSyncResolution resolution = await store.ResolveAsync(replacementLyrics);
+
+			Assert.Null(resolution.Profile);
+			Assert.True(resolution.HasProfileForDifferentLyrics);
+		}
+		finally
+		{
+			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
+	public async Task PersonalSyncStore_RoundTripsWithoutTouchingLyricsTimestamps()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-personal-sync-" + Guid.NewGuid().ToString("N"));
+		List<LyricLine> original = new()
+		{
+			new LyricLine(TimeSpan.FromSeconds(3), "one"),
+			new LyricLine(TimeSpan.FromSeconds(8), "two")
+		};
+		try
+		{
+			PersonalSyncContext context = PersonalSyncTestContext("youtube", 300);
+			PersonalSyncProfile profile = PersonalSyncTestProfile(context, PersonalSyncScope.Source, 2.5);
+			profile.Mode = PersonalSyncMode.Advanced;
+			profile.Anchors.Add(new PersonalSyncAnchor { PlaybackSeconds = 10, LyricsSeconds = 8 });
+			await new PersonalSyncStore(directory).UpsertAsync(profile);
+
+			PersonalSyncResolution loaded = await new PersonalSyncStore(directory).ResolveAsync(context);
+
+			Assert.NotNull(loaded.Profile);
+			Assert.Single(loaded.Profile!.Anchors);
+			Assert.Equal(3, original[0].Time.TotalSeconds);
+			Assert.Equal(8, original[1].Time.TotalSeconds);
+		}
+		finally
+		{
+			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
 	public async Task CacheStore_MigratesLegacyMetadataPathWithoutDeletingIt()
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-tests-" + Guid.NewGuid().ToString("N"));
@@ -414,6 +555,44 @@ public sealed class CoreBehaviorTests
 			IsCurrentSession = current,
 			LastActivityUtc = DateTimeOffset.UtcNow,
 			CapturedAtUtc = DateTimeOffset.UtcNow
+		};
+	}
+
+	private static PersonalSyncContext PersonalSyncTestContext(string source, int lrclibId)
+	{
+		return new PersonalSyncContext(
+			new PersonalSyncTrackIdentity
+			{
+				StableTrackKey = "track:one",
+				Title = "Track",
+				Artist = "Artist",
+				DurationSeconds = 180
+			},
+			new PersonalSyncSourceIdentity
+			{
+				StableSourceKey = "source:" + source,
+				Source = source,
+				SourceAppUserModelId = source
+			},
+			new PersonalSyncLyricsIdentity
+			{
+				Key = "lrclib:" + lrclibId,
+				Kind = "LRCLIB",
+				LrclibId = lrclibId,
+				DisplayName = "LRCLIB #" + lrclibId
+			});
+	}
+
+	private static PersonalSyncProfile PersonalSyncTestProfile(PersonalSyncContext context, PersonalSyncScope scope, double offset)
+	{
+		return new PersonalSyncProfile
+		{
+			Track = context.Track,
+			Source = context.Source,
+			Lyrics = context.Lyrics,
+			Scope = scope,
+			Mode = PersonalSyncMode.Offset,
+			OffsetSeconds = offset
 		};
 	}
 

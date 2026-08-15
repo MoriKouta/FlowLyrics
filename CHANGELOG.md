@@ -11,6 +11,7 @@
 - Added `1.3.1-dev.5` with resilient LRCLIB requests, verified multi-player audio/seek fallbacks, and refined compact controls.
 - Added `1.3.1-dev.6` with provider-scoped Apple Music and browser metadata repair plus a neutral EXCLUDE toggle.
 - Added `1.3.1-dev.7` with ranked multilingual YouTube metadata interpretations, corrected populated Apple Music fields, dotted EXCLUDE disclosure, and anchored plain-lyrics auto-scroll resume.
+- Added `1.3.1-dev.8` with non-destructive Personal Sync profiles, source-aware fallback, line alignment, undo/redo, advanced anchors and lyric-hold ranges, profile management, and diagnostics.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
@@ -20,6 +21,7 @@
 - Auto-applied the highest-scoring usable LRCLIB candidate when strict automatic safety checks do not produce a match.
 - Generalized per-session volume and mute control from Spotify to the selected player, including Apple Music, TIDAL, VLC, and major browsers.
 - Made Lyrics Only a persistent visual mode that preserves and disables the underlying component choices instead of clearing them.
+- Kept Personal Sync data in a separate atomic JSON store so LRCLIB responses, local LRC files, and lyrics-cache timestamps are never rewritten.
 
 ### Fixed
 
@@ -35,6 +37,7 @@
 ### Tests
 
 - Added automated coverage for provider metadata repair, metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
+- Added Personal Sync coverage for no-op mapping, positive/negative offsets, arbitrary seeking, anchors, lyric holds, source precedence, lyrics-ID mismatch protection, persistence, and timestamp immutability.
 
 ## 1.3.0 - 2026-07-20
 

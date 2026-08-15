@@ -34,6 +34,8 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private readonly LyricsService _lyricsService;
 
+	private readonly PersonalSyncStore _personalSyncStore;
+
 	private readonly MediaSessionService _mediaSessionService;
 
 	private readonly Func<PlaybackSnapshot?> _currentSnapshotProvider;
@@ -41,6 +43,8 @@ public class SettingsWindow : Window, IComponentConnector
 	private readonly Func<TrackInfo?> _currentTrackProvider;
 
 	private readonly Func<LyricsLookupResult?> _lookupProvider;
+
+	private readonly Func<PersonalSyncDiagnosticSnapshot?> _personalSyncDiagnosticsProvider;
 
 	private readonly Func<Task> _reloadCurrentTrack;
 
@@ -129,6 +133,10 @@ public class SettingsWindow : Window, IComponentConnector
 	private System.Windows.Controls.Button? _lyricsOnlyButton;
 
 	private bool _lyricsOnlyMode;
+
+	private bool _personalSyncProfilesInitialized;
+
+	private StackPanel? _personalSyncProfilesPanel;
 
 	internal System.Windows.Controls.TabControl SettingsTabs;
 
@@ -270,7 +278,7 @@ public class SettingsWindow : Window, IComponentConnector
 
 	public event Action<AppSettings>? PreviewChanged;
 
-	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, MediaSessionService mediaSessionService, Func<PlaybackSnapshot?> currentSnapshotProvider, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<Task> reloadCurrentTrack)
+	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, MediaSessionService mediaSessionService, PersonalSyncStore personalSyncStore, Func<PlaybackSnapshot?> currentSnapshotProvider, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<PersonalSyncDiagnosticSnapshot?> personalSyncDiagnosticsProvider, Func<Task> reloadCurrentTrack)
 	{
 		InitializeComponent();
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
@@ -281,9 +289,11 @@ public class SettingsWindow : Window, IComponentConnector
 		_lrcDirectory = lrcDirectory;
 		_lyricsService = lyricsService;
 		_mediaSessionService = mediaSessionService;
+		_personalSyncStore = personalSyncStore;
 		_currentSnapshotProvider = currentSnapshotProvider;
 		_currentTrackProvider = currentTrackProvider;
 		_lookupProvider = lookupProvider;
+		_personalSyncDiagnosticsProvider = personalSyncDiagnosticsProvider;
 		_reloadCurrentTrack = reloadCurrentTrack;
 		LrcFolderPathBox.Text = _lrcDirectory;
 		_originalSettings = settings.Clone();
@@ -306,6 +316,7 @@ public class SettingsWindow : Window, IComponentConnector
 			InitializeReverseColorsControl();
 			InitializePaletteManager();
 			InitializeMediaSessionControls();
+			InitializePersonalSyncProfiles();
 			InitializeBehaviorReset();
 			InitializeCompactComboBoxes();
 			ApplySoftSettingsTheme();
@@ -1224,6 +1235,146 @@ public class SettingsWindow : Window, IComponentConnector
 		PopulateMediaSessionControls();
 	}
 
+	private void InitializePersonalSyncProfiles()
+	{
+		if (_personalSyncProfilesInitialized || GetTabStack("Lyrics") is not StackPanel lyricsStack)
+		{
+			return;
+		}
+		Border card = new Border();
+		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		StackPanel content = new();
+		TextBlock title = new()
+		{
+			Text = "PERSONAL SYNC",
+			FontFamily = _englishDotFont,
+			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44)),
+			FontSize = 13.0,
+			FontWeight = FontWeights.Bold,
+			Tag = "NoTranslate"
+		};
+		content.Children.Add(title);
+		content.Children.Add(new TextBlock
+		{
+			Text = "Saved timing adjustments. Source-specific profiles take priority over all-player profiles.",
+			Margin = new Thickness(0.0, 4.0, 0.0, 9.0),
+			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(192, 187, 192)),
+			TextWrapping = TextWrapping.Wrap,
+			Tag = "NoTranslate"
+		});
+		_personalSyncProfilesPanel = new StackPanel();
+		content.Children.Add(_personalSyncProfilesPanel);
+		card.Child = content;
+		lyricsStack.Children.Insert(Math.Min(1, lyricsStack.Children.Count), card);
+		_personalSyncProfilesInitialized = true;
+		RefreshPersonalSyncProfiles();
+	}
+
+	private async void RefreshPersonalSyncProfiles()
+	{
+		if (_personalSyncProfilesPanel == null) return;
+		_personalSyncProfilesPanel.Children.Clear();
+		IReadOnlyList<PersonalSyncProfile> profiles;
+		try { profiles = await _personalSyncStore.ListAsync(); }
+		catch { profiles = Array.Empty<PersonalSyncProfile>(); }
+		if (profiles.Count == 0)
+		{
+			_personalSyncProfilesPanel.Children.Add(new TextBlock
+			{
+				Text = "NO SAVED ADJUSTMENTS",
+				FontFamily = _englishDotFont,
+				FontSize = 9.0,
+				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
+				Tag = "NoTranslate"
+			});
+			return;
+		}
+
+		foreach (PersonalSyncProfile profile in profiles)
+		{
+			Border row = new()
+			{
+				Margin = new Thickness(0.0, 0.0, 0.0, 7.0),
+				Padding = new Thickness(10.0, 8.0, 10.0, 8.0),
+				CornerRadius = new CornerRadius(7.0),
+				Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(35, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
+				BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(45, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
+				BorderThickness = new Thickness(1.0)
+			};
+			StackPanel body = new();
+			body.Children.Add(new TextBlock
+			{
+				Text = profile.Track.Title + (string.IsNullOrWhiteSpace(profile.Track.Artist) ? string.Empty : " — " + profile.Track.Artist),
+				FontWeight = FontWeights.SemiBold,
+				TextTrimming = TextTrimming.CharacterEllipsis
+			});
+			body.Children.Add(new TextBlock
+			{
+				Text = (profile.Scope == PersonalSyncScope.Track ? "ALL PLAYERS" : profile.Source.Source.ToUpperInvariant())
+					+ " · " + profile.Mode.ToString().ToUpperInvariant()
+					+ (profile.Mode == PersonalSyncMode.Offset ? " " + profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s" : " · " + profile.Anchors.Count + " SYNC POINT / " + profile.Segments.Count + " HOLD"),
+				FontFamily = _englishDotFont,
+				FontSize = 8.5,
+				Margin = new Thickness(0.0, 3.0, 0.0, 6.0),
+				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(196, 192, 197)),
+				Tag = "NoTranslate"
+			});
+			WrapPanel editActions = new() { Margin = new Thickness(-3.0, 0.0, 0.0, 0.0), Visibility = Visibility.Collapsed };
+			System.Windows.Controls.Button earlier = CreateProfileButton("−0.1");
+			earlier.Click += async delegate { NudgePersonalSyncProfile(profile, -0.1); await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
+			editActions.Children.Add(earlier);
+			System.Windows.Controls.Button later = CreateProfileButton("+0.1");
+			later.Click += async delegate { NudgePersonalSyncProfile(profile, 0.1); await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
+			editActions.Children.Add(later);
+			System.Windows.Controls.Button scope = CreateProfileButton(profile.Scope == PersonalSyncScope.Track ? "ALL → SOURCE" : "SOURCE → ALL");
+			scope.Click += async delegate { profile.Scope = profile.Scope == PersonalSyncScope.Track ? PersonalSyncScope.Source : PersonalSyncScope.Track; await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
+			editActions.Children.Add(scope);
+			WrapPanel actions = new() { Margin = new Thickness(-3.0, 0.0, 0.0, 0.0) };
+			System.Windows.Controls.Button edit = CreateProfileButton("EDIT");
+			edit.Click += delegate { editActions.Visibility = editActions.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; };
+			actions.Children.Add(edit);
+			System.Windows.Controls.Button reset = CreateProfileButton("RESET");
+			reset.Click += async delegate
+			{
+				profile.Mode = PersonalSyncMode.None;
+				profile.OffsetSeconds = 0.0;
+				profile.Anchors.Clear();
+				profile.Segments.Clear();
+				await _personalSyncStore.UpsertAsync(profile);
+				RefreshPersonalSyncProfiles();
+			};
+			actions.Children.Add(reset);
+			System.Windows.Controls.Button delete = CreateProfileButton("DELETE");
+			delete.Click += async delegate { await _personalSyncStore.DeleteAsync(profile.Id); RefreshPersonalSyncProfiles(); };
+			actions.Children.Add(delete);
+			body.Children.Add(actions);
+			body.Children.Add(editActions);
+			row.Child = body;
+			_personalSyncProfilesPanel.Children.Add(row);
+		}
+	}
+
+	private System.Windows.Controls.Button CreateProfileButton(string content)
+	{
+		return new System.Windows.Controls.Button
+		{
+			Content = content,
+			FontFamily = _englishDotFont,
+			FontSize = 7.5,
+			Padding = new Thickness(8.0, 4.0, 8.0, 4.0),
+			Margin = new Thickness(3.0),
+			Tag = "NoTranslate"
+		};
+	}
+
+	private static void NudgePersonalSyncProfile(PersonalSyncProfile profile, double delta)
+	{
+		profile.OffsetSeconds = Math.Clamp(profile.OffsetSeconds + delta, -120.0, 120.0);
+		if (profile.Mode != PersonalSyncMode.Advanced) return;
+		foreach (PersonalSyncAnchor anchor in profile.Anchors) anchor.LyricsSeconds = Math.Max(0.0, anchor.LyricsSeconds - delta);
+		foreach (PersonalSyncSegment segment in profile.Segments) segment.LyricsTimeSeconds = Math.Max(0.0, segment.LyricsTimeSeconds - delta);
+	}
+
 	private async Task RefreshMediaSessionsAsync()
 	{
 		try
@@ -1440,7 +1591,7 @@ public class SettingsWindow : Window, IComponentConnector
 			_mediaSessionDiagnosticsWindow.Activate();
 			return;
 		}
-		_mediaSessionDiagnosticsWindow = new MediaSessionDiagnosticsWindow(_mediaSessionService, _currentSnapshotProvider, _currentLanguage)
+		_mediaSessionDiagnosticsWindow = new MediaSessionDiagnosticsWindow(_mediaSessionService, _currentSnapshotProvider, _personalSyncDiagnosticsProvider, _currentLanguage)
 		{
 			Owner = this
 		};

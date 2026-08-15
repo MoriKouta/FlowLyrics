@@ -19,6 +19,8 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 
 	private readonly Func<PlaybackSnapshot?> _currentSnapshotProvider;
 
+	private readonly Func<PersonalSyncDiagnosticSnapshot?> _personalSyncDiagnosticsProvider;
+
 	private readonly string _language;
 
 	private readonly ListBox _sessionList;
@@ -33,10 +35,11 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 
 	private bool _refreshing;
 
-	public MediaSessionDiagnosticsWindow(MediaSessionService mediaSessionService, Func<PlaybackSnapshot?> currentSnapshotProvider, string language)
+	public MediaSessionDiagnosticsWindow(MediaSessionService mediaSessionService, Func<PlaybackSnapshot?> currentSnapshotProvider, Func<PersonalSyncDiagnosticSnapshot?> personalSyncDiagnosticsProvider, string language)
 	{
 		_mediaSessionService = mediaSessionService;
 		_currentSnapshotProvider = currentSnapshotProvider;
+		_personalSyncDiagnosticsProvider = personalSyncDiagnosticsProvider;
 		_language = LocalizationService.NormalizeLanguage(language);
 		Title = "FlowLyrics · Media Session Diagnostics";
 		Width = 920.0;
@@ -183,7 +186,9 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 	{
 		string id = (_sessionList.SelectedItem as ListBoxItem)?.Tag?.ToString() ?? string.Empty;
 		MediaSessionInfo? session = _sessions.FirstOrDefault(candidate => string.Equals(candidate.SessionId, id, StringComparison.Ordinal));
-		_detailBox.Text = session == null ? T("Select a Media Session to inspect it.") : BuildSessionDiagnostics(session);
+		_detailBox.Text = session == null
+			? T("Select a Media Session to inspect it.") + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider())
+			: BuildSessionDiagnostics(session) + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider());
 	}
 
 	private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
@@ -202,6 +207,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 				text.AppendLine(BuildSessionDiagnostics(session));
 				text.AppendLine(new string('-', 72));
 			}
+			text.AppendLine(BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider()));
 			Clipboard.SetText(text.ToString());
 			_summaryText.Text = T("Diagnostics copied to the clipboard.");
 		}
@@ -247,6 +253,31 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		text.AppendLine("CanPrevious: " + YesNo(session.Capabilities.CanPrevious));
 		text.AppendLine("CanNext: " + YesNo(session.Capabilities.CanNext));
 		text.AppendLine("CanSeek: " + YesNo(session.Capabilities.CanSeek));
+		return text.ToString().TrimEnd();
+	}
+
+	private static string BuildPersonalSyncDiagnostics(PersonalSyncDiagnosticSnapshot? snapshot)
+	{
+		StringBuilder text = new();
+		text.AppendLine("PERSONAL SYNC");
+		if (snapshot == null)
+		{
+			text.AppendLine("State: unavailable");
+			return text.ToString().TrimEnd();
+		}
+		text.AppendLine("Profile ID: " + snapshot.ProfileId);
+		text.AppendLine("Mode: " + snapshot.Mode);
+		text.AppendLine("Scope: " + snapshot.Scope);
+		text.AppendLine("Track Key: " + snapshot.TrackKey);
+		text.AppendLine("Source Key: " + snapshot.SourceKey);
+		text.AppendLine("Lyrics Key: " + snapshot.LyricsKey);
+		text.AppendLine("Lyrics Mismatch: " + YesNo(snapshot.LyricsMismatch));
+		text.AppendLine("Offset Seconds: " + snapshot.OffsetSeconds.ToString("+0.000;-0.000;0.000"));
+		text.AppendLine("Active Sync Points: " + snapshot.AnchorCount);
+		text.AppendLine("Hold Ranges: " + snapshot.HoldCount);
+		text.AppendLine("Active Segment: " + snapshot.ActiveSegment);
+		text.AppendLine("Original Playback Position: " + snapshot.PlaybackSeconds.ToString("0.000") + " s");
+		text.AppendLine("Effective Lyrics Position: " + snapshot.MappedLyricsSeconds.ToString("0.000") + " s");
 		return text.ToString().TrimEnd();
 	}
 
