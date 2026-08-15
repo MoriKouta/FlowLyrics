@@ -23,6 +23,8 @@
   <ItemGroup Condition="'$(UseRecoveredReferences)' != 'true'">
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
   </ItemGroup>
 
   <ItemGroup>

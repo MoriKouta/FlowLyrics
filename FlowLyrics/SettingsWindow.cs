@@ -122,6 +122,10 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private MediaSessionDiagnosticsWindow? _mediaSessionDiagnosticsWindow;
 
+	private System.Windows.Controls.Button? _lyricsOnlyButton;
+
+	private bool _lyricsOnlyMode;
+
 	internal System.Windows.Controls.TabControl SettingsTabs;
 
 	internal System.Windows.Controls.ComboBox FontFamilyBox;
@@ -266,6 +270,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		InitializeComponent();
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
+		InitializeLyricsOnlyControl();
 		SettingsTabs.Items.Remove(LyricsTab);
 		SettingsTabs.Items.Insert(0, LyricsTab);
 		CaptureLocalizableContent(this);
@@ -314,6 +319,80 @@ public class SettingsWindow : Window, IComponentConnector
 			_mediaSessionDiagnosticsWindow?.Close();
 			_mediaSessionDiagnosticsWindow = null;
 		};
+	}
+
+	private void InitializeLyricsOnlyControl()
+	{
+		if (_lyricsOnlyButton != null || ShowPanelBorderBox.Parent is not WrapPanel componentOptions || componentOptions.Parent is not StackPanel components)
+		{
+			return;
+		}
+		DockPanel? titleRow = components.Children.OfType<DockPanel>().FirstOrDefault();
+		System.Windows.Controls.Button? button = titleRow?.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault()
+			?? components.Children.OfType<System.Windows.Controls.Button>().FirstOrDefault(candidate => string.Equals(candidate.Content?.ToString(), "LYRICS ONLY", StringComparison.OrdinalIgnoreCase));
+		Grid? borderWidthRow = BorderThicknessSlider.Parent as Grid;
+		if (titleRow == null || button == null || borderWidthRow == null)
+		{
+			return;
+		}
+
+		if (button.Parent is System.Windows.Controls.Panel owner && !ReferenceEquals(owner, components))
+		{
+			owner.Children.Remove(button);
+		}
+		else if (ReferenceEquals(button.Parent, components))
+		{
+			components.Children.Remove(button);
+		}
+		int borderWidthIndex = components.Children.IndexOf(borderWidthRow);
+		components.Children.Insert(Math.Max(0, borderWidthIndex), button);
+		button.Content = "LYRICS ONLY";
+		button.FontFamily = _englishDotFont;
+		button.FontSize = 9.0;
+		button.FontWeight = FontWeights.Bold;
+		button.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+		button.Padding = new Thickness(12.0, 6.0, 12.0, 6.0);
+		button.Margin = new Thickness(0.0, 9.0, 0.0, 2.0);
+		button.Tag = "NoTranslate";
+		button.ToolTip = "Show only lyrics without changing the saved component choices";
+		_lyricsOnlyButton = button;
+	}
+
+	private void RefreshLyricsOnlyControl()
+	{
+		bool controlsEnabled = !_lyricsOnlyMode;
+		foreach (System.Windows.Controls.CheckBox box in new[] { ShowPanelBorderBox, ShowTrackInfoBox, ShowPlaybackControlsBox, ShowProgressBarBox })
+		{
+			box.IsEnabled = controlsEnabled;
+			box.Opacity = controlsEnabled ? 1.0 : 0.38;
+		}
+		if (BorderThicknessSlider.Parent is FrameworkElement borderWidthRow)
+		{
+			borderWidthRow.IsEnabled = controlsEnabled;
+			borderWidthRow.Opacity = controlsEnabled ? 1.0 : 0.38;
+		}
+		if (BackgroundOpacitySlider.Parent is FrameworkElement backgroundOpacityRow)
+		{
+			backgroundOpacityRow.IsEnabled = controlsEnabled;
+			backgroundOpacityRow.Opacity = controlsEnabled ? 1.0 : 0.38;
+		}
+		if (_lyricsOnlyButton != null)
+		{
+			_lyricsOnlyButton.Content = _lyricsOnlyMode ? "●  LYRICS ONLY" : "LYRICS ONLY";
+			_lyricsOnlyButton.BorderThickness = new Thickness(1.0);
+			if (_lyricsOnlyMode)
+			{
+				_lyricsOnlyButton.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Orange");
+				_lyricsOnlyButton.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "Orange");
+				_lyricsOnlyButton.Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(29, 32, 30));
+			}
+			else
+			{
+				_lyricsOnlyButton.Background = System.Windows.Media.Brushes.Transparent;
+				_lyricsOnlyButton.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "Orange");
+				_lyricsOnlyButton.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "Orange");
+			}
+		}
 	}
 
 	private void DisableDialogOnlyButtons()
@@ -1041,11 +1120,12 @@ public class SettingsWindow : Window, IComponentConnector
 
 		_ignoredMediaSourcesToggle = new ToggleButton
 		{
-			Content = "EXCLUDE  ▾",
+			Content = "▶  EXCLUDE 0",
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-			Padding = new Thickness(10.0, 5.0, 10.0, 5.0),
+			HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+			Padding = new Thickness(0.0, 5.0, 0.0, 5.0),
 			Background = System.Windows.Media.Brushes.Transparent,
-			BorderThickness = new Thickness(1.0),
+			BorderThickness = new Thickness(0.0),
 			FontFamily = _englishDotFont,
 			FontSize = 9.0,
 			FontWeight = FontWeights.Bold,
@@ -1091,13 +1171,11 @@ public class SettingsWindow : Window, IComponentConnector
 		Border detailsSurface = new Border
 		{
 			Child = ignoredContent,
-			CornerRadius = new CornerRadius(7.0),
-			BorderThickness = new Thickness(1.0),
-			Padding = new Thickness(12.0),
-			Margin = new Thickness(0.0, 10.0, 0.0, 0.0),
+			BorderThickness = new Thickness(0.0),
+			Padding = new Thickness(18.0, 2.0, 0.0, 0.0),
+			Margin = new Thickness(0.0, 3.0, 0.0, 0.0),
 			Visibility = Visibility.Collapsed
 		};
-		detailsSurface.SetResourceReference(Border.BorderBrushProperty, "Line");
 		_ignoredMediaSourcesToggle.Checked += delegate
 		{
 			detailsSurface.Visibility = Visibility.Visible;
@@ -1222,8 +1300,8 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (_ignoredMediaSourcesToggle == null) return;
 		int count = _ignoredMediaSourceBoxes.Count(box => box.IsChecked == true);
-		string arrow = _ignoredMediaSourcesToggle.IsChecked == true ? "▴" : "▾";
-		_ignoredMediaSourcesToggle.Content = "EXCLUDE " + count + "  " + arrow;
+		string arrow = _ignoredMediaSourcesToggle.IsChecked == true ? "▼" : "▶";
+		_ignoredMediaSourcesToggle.Content = arrow + "  EXCLUDE " + count;
 	}
 
 	private static System.Windows.Controls.ComboBoxItem CreateSourceComboItem(string content, string sourceId, string toolTip)
@@ -1643,6 +1721,7 @@ public class SettingsWindow : Window, IComponentConnector
 		ApplySliderChrome();
 		ApplyFaderScrollBars(accent, controlBorderBrush, darkTheme ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Black);
 		RefreshReverseColorsButton();
+		RefreshLyricsOnlyControl();
 		_softThemeInitialized = true;
 		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
 	}
@@ -1900,6 +1979,7 @@ public class SettingsWindow : Window, IComponentConnector
 		ShowTrackInfoBox.IsChecked = settings.ShowTrackInfo;
 		ShowPlaybackControlsBox.IsChecked = settings.ShowPlaybackControls;
 		ShowProgressBarBox.IsChecked = settings.ShowProgressBar;
+		_lyricsOnlyMode = settings.LyricsOnlyMode;
 		AlwaysOnTopBox.IsChecked = settings.AlwaysOnTop;
 		HideWhenPausedBox.IsChecked = settings.HideWhenPaused;
 		ShowIdleStatusBox.IsChecked = settings.ShowStatusWhenIdle;
@@ -1923,6 +2003,7 @@ public class SettingsWindow : Window, IComponentConnector
 		RefreshReverseColorsButton();
 		SelectItemByTag(LanguageBox, settings.Language);
 		RefreshChoiceSelectors();
+		RefreshLyricsOnlyControl();
 	}
 
 	private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2331,6 +2412,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.ShowTrackInfo = ShowTrackInfoBox.IsChecked == true;
 		appSettings.ShowPlaybackControls = ShowPlaybackControlsBox.IsChecked == true;
 		appSettings.ShowProgressBar = ShowProgressBarBox.IsChecked == true;
+		appSettings.LyricsOnlyMode = _lyricsOnlyMode;
 		appSettings.AlwaysOnTop = AlwaysOnTopBox.IsChecked == true;
 		appSettings.HideWhenPaused = HideWhenPausedBox.IsChecked == true;
 		appSettings.ShowStatusWhenIdle = ShowIdleStatusBox.IsChecked == true;
@@ -2353,11 +2435,8 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void LyricsOnly_Click(object sender, RoutedEventArgs e)
 	{
-		ShowPanelBorderBox.IsChecked = false;
-		ShowTrackInfoBox.IsChecked = false;
-		ShowPlaybackControlsBox.IsChecked = false;
-		ShowProgressBarBox.IsChecked = false;
-		BackgroundOpacitySlider.Value = 0.0;
+		_lyricsOnlyMode = !_lyricsOnlyMode;
+		RefreshLyricsOnlyControl();
 		NotifyPreviewChanged();
 	}
 

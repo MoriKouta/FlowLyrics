@@ -8,6 +8,7 @@
 - Added the `1.3.1-dev.2` confirmation build with generic Windows Media Session support.
 - Rebuilt the same implementation as `1.3.1-dev.3` for a fresh downloadable confirmation package.
 - Added `1.3.1-dev.4` with the PLAYER source selector at the top of Lyrics, immediate source switching, and collapsed exclusion controls.
+- Added `1.3.1-dev.5` with resilient LRCLIB requests, verified multi-player audio/seek fallbacks, and refined compact controls.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
@@ -16,6 +17,16 @@
 - Stabilized Apple Music timelines, normalized non-zero media timeline origins, restored optimistic seeking, and prevented stale post-seek positions from snapping back.
 - Auto-applied the highest-scoring usable LRCLIB candidate when strict automatic safety checks do not produce a match.
 - Generalized per-session volume and mute control from Spotify to the selected player, including Apple Music, TIDAL, VLC, and major browsers.
+- Made Lyrics Only a persistent visual mode that preserves and disables the underlying component choices instead of clearing them.
+
+### Fixed
+
+- Retried slow, rate-limited, malformed, and transient LRCLIB responses with longer bounded timeouts, per-request coalescing, server backoff, and partial-result preservation.
+- Matched packaged audio sessions by their real process AUMID so Apple Music and other Store players can use per-session volume controls.
+- Sent track-relative GSMTC seek positions first and added a conservative UI Automation range fallback for players that expose a timeline but reject the system seek command.
+- Device-pixel calibrated the entire volume popup frame directly over the volume button and removed the layout margin that could bias its visible surface.
+- Changed EXCLUDE to a frameless accordion header with leading `▶`/`▼` state icons and unframed details.
+- Moved Lyrics Only directly above Border Width and made a second press restore the previously selected component states.
 
 ### Tests
 

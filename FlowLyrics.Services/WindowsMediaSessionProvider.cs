@@ -132,20 +132,61 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		{
 			cancellationToken.ThrowIfCancellationRequested();
 			GlobalSystemMediaTransportControlsSessionTimelineProperties timeline = session.GetTimelineProperties();
-			TimeSpan origin = GetTimelineOrigin(timeline);
-			TimeSpan target = origin + (position < TimeSpan.Zero ? TimeSpan.Zero : position);
-			if (timeline.MaxSeekTime > timeline.MinSeekTime)
+			long[] targets = BuildSeekTargetTicks(position, timeline.StartTime, timeline.MinSeekTime, timeline.MaxSeekTime);
+			bool accepted = false;
+			foreach (long target in targets)
 			{
-				if (target < timeline.MinSeekTime) target = timeline.MinSeekTime;
-				if (target > timeline.MaxSeekTime) target = timeline.MaxSeekTime;
+				cancellationToken.ThrowIfCancellationRequested();
+				if (!await session.TryChangePlaybackPositionAsync(target)) continue;
+				accepted = true;
+				for (int verificationAttempt = 0; verificationAttempt < 3; verificationAttempt++)
+				{
+					await Task.Delay(180, cancellationToken);
+					GlobalSystemMediaTransportControlsSessionTimelineProperties updated = session.GetTimelineProperties();
+					TimeSpan updatedPosition = updated.Position - GetTimelineOrigin(updated);
+					if (Math.Abs((updatedPosition - position).TotalSeconds) <= 2.5) return true;
+				}
+				// A player that accepted the documented track-relative command may publish
+				// its timeline late. Do not overwrite it with an origin-based command.
+				break;
 			}
-			return await session.TryChangePlaybackPositionAsync(Math.Max(0L, target.Ticks));
+
+			TimeSpan origin = GetTimelineOrigin(timeline);
+			TimeSpan currentPosition = timeline.Position - origin;
+			TimeSpan duration = timeline.EndTime - timeline.StartTime;
+			if (duration <= TimeSpan.Zero) duration = timeline.MaxSeekTime - timeline.MinSeekTime;
+			string sourceId = session.SourceAppUserModelId?.Trim() ?? string.Empty;
+			bool automationSucceeded = await Task.Run(
+				() => MediaPlayerUiAutomation.TrySeek(sourceId, currentPosition, duration, position),
+				cancellationToken);
+			return automationSucceeded || accepted;
 		}
 		catch (OperationCanceledException) { throw; }
 		catch (Exception ex)
 		{
 			LogCommandFailure("seek", ex);
 			return false;
+		}
+	}
+
+	internal static long[] BuildSeekTargetTicks(TimeSpan requestedPosition, TimeSpan startTime, TimeSpan minSeekTime, TimeSpan maxSeekTime)
+	{
+		TimeSpan requested = requestedPosition < TimeSpan.Zero ? TimeSpan.Zero : requestedPosition;
+		List<long> targets = new(2)
+		{
+			Math.Max(0L, requested.Ticks)
+		};
+		if (startTime != TimeSpan.Zero) AddOriginTarget(startTime + requested);
+		return targets.Distinct().ToArray();
+
+		void AddOriginTarget(TimeSpan candidate)
+		{
+			if (maxSeekTime > minSeekTime)
+			{
+				if (candidate < minSeekTime) candidate = minSeekTime;
+				if (candidate > maxSeekTime) candidate = maxSeekTime;
+			}
+			targets.Add(Math.Max(0L, candidate.Ticks));
 		}
 	}
 

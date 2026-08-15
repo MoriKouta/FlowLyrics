@@ -288,6 +288,10 @@ public class MainWindow : Window, IComponentConnector
 		ApplyCompactUtilityControlSizing();
 		VolumePopup.PlacementTarget = VolumeButton;
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
+		VolumePopup.Opened += delegate
+		{
+			base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)AlignVolumePopupToButton);
+		};
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializeVolumeIcon();
 		InitializePlaybackTimeline();
@@ -1241,9 +1245,10 @@ public class MainWindow : Window, IComponentConnector
 		UpdatePlayerButtonBorders();
 		OverlayPanel.Padding = new Thickness(_settings.PanelPadding);
 		OverlayPanel.CornerRadius = new CornerRadius(_settings.CornerRadius);
-		OverlayPanel.Background = CreateDisplayBrush(_settings.BackgroundColor, _settings.BackgroundOpacity, Colors.Black, ignoreSourceAlpha: true);
+		double backgroundOpacity = _settings.LyricsOnlyMode ? 0.0 : _settings.BackgroundOpacity;
+		OverlayPanel.Background = CreateDisplayBrush(_settings.BackgroundColor, backgroundOpacity, Colors.Black, ignoreSourceAlpha: true);
 		OverlayPanel.BorderBrush = CreateDisplayBrush(_settings.BorderColor, 1.0, Colors.White);
-		OverlayPanel.BorderThickness = (_settings.ShowPanelBorder ? new Thickness(_settings.BorderThickness) : new Thickness(0.0));
+		OverlayPanel.BorderThickness = (!_settings.LyricsOnlyMode && _settings.ShowPanelBorder ? new Thickness(_settings.BorderThickness) : new Thickness(0.0));
 		base.Opacity = _settings.OverlayOpacity;
 		base.Topmost = _settings.AlwaysOnTop;
 		_plainLyricsLayoutKey = null;
@@ -1365,14 +1370,15 @@ public class MainWindow : Window, IComponentConnector
 		bool flag3 = num >= 58.0 && num2 >= 210.0;
 		bool flag4 = num >= 58.0 && num2 >= 310.0;
 		bool flag5 = num >= 64.0;
-		TrackInfoPanel.Visibility = ((!(_settings.ShowTrackInfo && flag)) ? Visibility.Collapsed : Visibility.Visible);
+		bool lyricsOnly = _settings.LyricsOnlyMode;
+		TrackInfoPanel.Visibility = ((!(!lyricsOnly && _settings.ShowTrackInfo && flag)) ? Visibility.Collapsed : Visibility.Visible);
 		HeaderPanel.Visibility = TrackInfoPanel.Visibility;
-		PlaybackSeekSlider.Visibility = ((!(_settings.ShowProgressBar && flag5)) ? Visibility.Collapsed : Visibility.Visible);
+		PlaybackSeekSlider.Visibility = ((!(!lyricsOnly && _settings.ShowProgressBar && flag5)) ? Visibility.Collapsed : Visibility.Visible);
 		if (_playbackTimeline != null)
 		{
 			_playbackTimeline.Visibility = PlaybackSeekSlider.Visibility;
 		}
-		ControlBar.Visibility = ((!(_settings.ShowPlaybackControls && flag2)) ? Visibility.Collapsed : Visibility.Visible);
+		ControlBar.Visibility = ((!(!lyricsOnly && _settings.ShowPlaybackControls && flag2)) ? Visibility.Collapsed : Visibility.Visible);
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		VolumeButton.Visibility = ((!flag4) ? Visibility.Collapsed : Visibility.Visible);
@@ -1631,6 +1637,7 @@ public class MainWindow : Window, IComponentConnector
 			}
 		}
 		VolumePopupSurface.Padding = new Thickness(7.0, 10.0, 7.0, 10.0);
+		VolumePopupSurface.Margin = new Thickness(0.0);
 		VolumePopupSurface.CornerRadius = new CornerRadius(8.5);
 		VolumePopupSurface.BorderThickness = new Thickness(0.5);
 		VolumeSlider.Width = 28.0;
@@ -2573,7 +2580,15 @@ public class MainWindow : Window, IComponentConnector
 			UpdateVolumeIcon(muted: false);
 		}
 		_updatingVolume = false;
-		VolumePopup.IsOpen = true;
+		if (!VolumePopup.IsOpen)
+		{
+			// Start every opening from the mathematical center. Once WPF creates the
+			// popup HWND, AlignVolumePopupToButton corrects its actual device-pixel
+			// center so DPI rounding and Popup chrome cannot shift the frame.
+			VolumePopup.HorizontalOffset = 0.0;
+			VolumePopup.VerticalOffset = 0.0;
+			VolumePopup.IsOpen = true;
+		}
 		if (!_volumePopupCloseTimer.IsEnabled)
 		{
 			_volumePopupCloseTimer.Start();
@@ -2723,12 +2738,36 @@ public class MainWindow : Window, IComponentConnector
 	{
 		// Center the complete popup surface on the button. The slider template uses
 		// the exact same centerline, so neither its 28 px track nor thumb can overflow.
-		double x = Math.Round((targetSize.Width - popupSize.Width) / 2.0, MidpointRounding.AwayFromZero);
-		double y = 0.0 - popupSize.Height - 2.0;
+		double x = Math.Round((targetSize.Width - popupSize.Width) / 2.0, MidpointRounding.AwayFromZero) + offset.X;
+		double y = 0.0 - popupSize.Height - 2.0 + offset.Y;
 		return new CustomPopupPlacement[1]
 		{
 			new CustomPopupPlacement(new System.Windows.Point(x, y), PopupPrimaryAxis.Vertical)
 		};
+	}
+
+	private void AlignVolumePopupToButton()
+	{
+		if (!VolumePopup.IsOpen || VolumeButton.ActualWidth <= 0.0 || VolumePopupSurface.ActualWidth <= 0.0)
+		{
+			return;
+		}
+		try
+		{
+			System.Windows.Point buttonCenter = VolumeButton.PointToScreen(new System.Windows.Point(VolumeButton.ActualWidth / 2.0, 0.0));
+			System.Windows.Point popupCenter = VolumePopupSurface.PointToScreen(new System.Windows.Point(VolumePopupSurface.ActualWidth / 2.0, 0.0));
+			double correctionPixels = buttonCenter.X - popupCenter.X;
+			if (Math.Abs(correctionPixels) < 0.25)
+			{
+				return;
+			}
+			DpiScale dpi = VisualTreeHelper.GetDpi(VolumeButton);
+			double correctionDip = correctionPixels / Math.Max(0.01, dpi.DpiScaleX);
+			VolumePopup.HorizontalOffset = Math.Round((VolumePopup.HorizontalOffset + correctionDip) * 2.0, MidpointRounding.AwayFromZero) / 2.0;
+		}
+		catch (InvalidOperationException)
+		{
+		}
 	}
 
 	private void LyricsEarlierSmall_Click(object sender, RoutedEventArgs e)

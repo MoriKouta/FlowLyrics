@@ -8,7 +8,7 @@ namespace FlowLyrics.Models;
 
 public sealed class AppSettings
 {
-	public int SettingsSchemaVersion { get; set; } = 15;
+	public int SettingsSchemaVersion { get; set; } = 16;
 
 	public string Language { get; set; } = "en-US";
 
@@ -92,6 +92,8 @@ public sealed class AppSettings
 
 	public bool ShowProgressBar { get; set; } = true;
 
+	public bool LyricsOnlyMode { get; set; }
+
 	public bool AlwaysOnTop { get; set; } = true;
 
 	public bool HideWhenPaused { get; set; }
@@ -129,7 +131,7 @@ public sealed class AppSettings
 
 	public void Normalize()
 	{
-		SettingsSchemaVersion = Math.Max(15, SettingsSchemaVersion);
+		SettingsSchemaVersion = Math.Max(16, SettingsSchemaVersion);
 		Language = LocalizationService.NormalizeLanguage(Language);
 		WindowWidth = Math.Clamp(WindowWidth, 120.0, 3840.0);
 		WindowHeight = Math.Clamp(WindowHeight, 40.0, 1200.0);

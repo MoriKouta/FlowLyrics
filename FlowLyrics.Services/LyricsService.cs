@@ -25,7 +25,7 @@ public sealed class LyricsService : IDisposable
 
 	private static readonly TimeSpan NegativeCacheLifetime = TimeSpan.FromMinutes(1L);
 
-	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(3L);
+	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(10L);
 
 	private const int CurrentMatcherVersion = 5;
 
@@ -46,6 +46,8 @@ public sealed class LyricsService : IDisposable
 	private readonly AppLogger _logger;
 
 	private readonly ConcurrentDictionary<string, CachedJsonResponse> _requestCache = new ConcurrentDictionary<string, CachedJsonResponse>(StringComparer.Ordinal);
+
+	private readonly ConcurrentDictionary<string, SemaphoreSlim> _requestGates = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.Ordinal);
 
 	private readonly ConcurrentDictionary<string, LyricsCacheEntry> _positiveMemoryCache = new ConcurrentDictionary<string, LyricsCacheEntry>(StringComparer.Ordinal);
 
@@ -435,7 +437,7 @@ public sealed class LyricsService : IDisposable
 		HashSet<string> requestedUrls = new HashSet<string>(StringComparer.Ordinal);
 		int successfulRequests = 0;
 		int completedRequests = 0;
-		bool haltFurtherRequests = false;
+		int consecutiveTransportFailures = 0;
 		IReadOnlyList<SearchMetadataCandidate> metadataCandidates = MetadataNormalizer.BuildCandidates(request.Title, request.Artist, request.Album);
 		SearchMetadataCandidate rawMetadata = metadataCandidates[0];
 		SearchMetadataCandidate? normalizedMetadata = metadataCandidates.Count > 1 ? metadataCandidates[1] : null;
@@ -444,7 +446,7 @@ public sealed class LyricsService : IDisposable
 		CancellationToken token;
 		using (CancellationTokenSource totalCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
 		{
-			totalCancellation.CancelAfter(TimeSpan.FromSeconds(90L));
+			totalCancellation.CancelAfter(TimeSpan.FromSeconds(120L));
 			token = totalCancellation.Token;
 			bool sequenceSatisfied = ShouldStop() || await RunMetadataSequenceAsync(rawMetadata, "raw");
 			if (!sequenceSatisfied && !ShouldStop() && normalizedMetadata != null && !normalizedMetadata.IsEmpty)
@@ -481,16 +483,14 @@ public sealed class LyricsService : IDisposable
 			}
 			IReadOnlyList<LyricsCandidate> ranked = LyricsMatcher.RankCandidates(track, records.Values);
 			await LogCandidatesAsync(track, "api/search", ranked);
-			if (successfulRequests == 0 && errors.Count > 0)
+			if (successfulRequests == 0 && records.Count == 0 && errors.Count > 0)
 			{
 				List<Exception> list = errors;
 				throw list[list.Count - 1];
 			}
-			if (stopWhenSafeSyncedFound && errors.Count > 0 && !HasSafeSyncedCandidate())
-			{
-				List<Exception> list2 = errors;
-				throw list2[list2.Count - 1];
-			}
+			// A later metadata variant can time out after an earlier request already
+			// returned usable candidates. Preserve that partial success instead of
+			// replacing it with a generic communication error.
 			return ranked;
 		}
 		bool HasSafeSyncedCandidate()
@@ -546,8 +546,9 @@ public sealed class LyricsService : IDisposable
 			ReportProgress(method);
 			try
 			{
-				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 2, token)) ?? Array.Empty<LrclibRecord>();
+				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 3, token)) ?? Array.Empty<LrclibRecord>();
 				successfulRequests++;
+				consecutiveTransportFailures = 0;
 				foreach (LrclibRecord lrclibRecord in array)
 				{
 					records[lrclibRecord.Id] = lrclibRecord;
@@ -568,7 +569,7 @@ public sealed class LyricsService : IDisposable
 				if (recorded is LyricsServiceException serviceError
 					&& serviceError.Kind is LyricsErrorKind.Network or LyricsErrorKind.Timeout or LyricsErrorKind.RateLimited or LyricsErrorKind.Json)
 				{
-					haltFurtherRequests = true;
+					consecutiveTransportFailures++;
 				}
 				return 0;
 			}
@@ -580,7 +581,7 @@ public sealed class LyricsService : IDisposable
 		}
 		bool ShouldStop()
 		{
-			if (!haltFurtherRequests)
+			if (consecutiveTransportFailures < 2)
 			{
 				if (stopWhenSafeSyncedFound)
 				{
@@ -600,7 +601,7 @@ public sealed class LyricsService : IDisposable
 		}
 		Dictionary<string, string> dictionary = Fields(track.Title, track.Artist, track.Album);
 		dictionary["duration"] = Math.Round(track.Duration.TotalSeconds).ToString(CultureInfo.InvariantCulture);
-		return await GetJsonWithRetryAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 1, cancellationToken);
+		return await GetJsonWithRetryAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 2, cancellationToken);
 	}
 
 	private async Task<T?> GetJsonWithRetryAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound = false)
@@ -609,6 +610,21 @@ public sealed class LyricsService : IDisposable
 		{
 			return value;
 		}
+		SemaphoreSlim gate = _requestGates.GetOrAdd(relativeUrl, _ => new SemaphoreSlim(1, 1));
+		await gate.WaitAsync(cancellationToken);
+		try
+		{
+			if (TryReadRequestCache<T>(relativeUrl, out value)) return value;
+			return await GetJsonWithRetryCoreAsync<T>(relativeUrl, maxAttempts, cancellationToken, throwOnNotFound);
+		}
+		finally
+		{
+			gate.Release();
+		}
+	}
+
+	private async Task<T?> GetJsonWithRetryCoreAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound)
+	{
 		Exception? lastError = null;
 		int attempts = Math.Clamp(maxAttempts, 1, 3);
 		string requestUrl = new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri;
@@ -616,7 +632,7 @@ public sealed class LyricsService : IDisposable
 		{
 			await WaitForServerBackoffAsync(cancellationToken);
 			using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-			requestCancellation.CancelAfter((attempt == 0) ? TimeSpan.FromSeconds(15L) : TimeSpan.FromSeconds(30L));
+			requestCancellation.CancelAfter((attempt == 0) ? TimeSpan.FromSeconds(30L) : TimeSpan.FromSeconds(45L));
 			Stopwatch requestTimer = Stopwatch.StartNew();
 			int? statusCode = null;
 			string contentType = "unavailable";
@@ -662,20 +678,23 @@ public sealed class LyricsService : IDisposable
 			{
 				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
 				lastError = new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
+				SetServerBackoff(GetClientRetryDelay(attempt));
 			}
 			catch (JsonException ex)
 			{
 				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
-				throw new LyricsServiceException(LyricsErrorKind.Json, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
+				lastError = new LyricsServiceException(LyricsErrorKind.Json, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
+				SetServerBackoff(GetClientRetryDelay(attempt));
 			}
 			catch (HttpRequestException ex)
 			{
 				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
 				lastError = new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
+				SetServerBackoff(GetClientRetryDelay(attempt));
 			}
 			if (attempt + 1 < attempts)
 			{
-				await Task.Delay(TimeSpan.FromMilliseconds(300 + attempt * 350), cancellationToken);
+				await WaitForServerBackoffAsync(cancellationToken);
 			}
 		}
 		throw lastError ?? new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."));
@@ -944,7 +963,14 @@ public sealed class LyricsService : IDisposable
 
 	private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
 	{
-		return TimeSpan.FromMilliseconds(Math.Clamp((response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? TimeSpan.FromMilliseconds(600 + attempt * 800)).TotalMilliseconds, 300.0, 8000.0));
+		TimeSpan fallback = GetClientRetryDelay(attempt);
+		return TimeSpan.FromMilliseconds(Math.Clamp((response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? fallback).TotalMilliseconds, 500.0, 30000.0));
+	}
+
+	private static TimeSpan GetClientRetryDelay(int attempt)
+	{
+		double exponential = 750.0 * Math.Pow(2.0, Math.Clamp(attempt, 0, 4));
+		return TimeSpan.FromMilliseconds(Math.Min(12000.0, exponential + Random.Shared.Next(100, 451)));
 	}
 
 	private void TrimRequestCache()

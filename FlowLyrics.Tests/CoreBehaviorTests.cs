@@ -170,13 +170,70 @@ public sealed class CoreBehaviorTests
 	public void VolumeSessionMatcher_FollowsTheSelectedPlayerIdentity()
 	{
 		MethodInfo matcher = typeof(SystemVolumeService).GetMethod("IsSourceSessionIdentity", BindingFlags.NonPublic | BindingFlags.Static)!;
-		bool apple = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin", "AppleMusic", null, null, null, null })!;
-		bool chrome = (bool)matcher.Invoke(null, new object?[] { "chrome.exe", "chrome", null, null, null, null })!;
-		bool mismatch = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin", "Spotify", null, null, null, null })!;
+		bool apple = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", "AMPMediaPlayer", "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", null, null, null, null })!;
+		bool appleHelper = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", "AMPMediaPlayer", null, null, null, null, null })!;
+		bool chrome = (bool)matcher.Invoke(null, new object?[] { "chrome.exe", "chrome", null, null, null, null, null })!;
+		bool mismatch = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", "Spotify", "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", null, null, null, null })!;
 
 		Assert.True(apple);
+		Assert.True(appleHelper);
 		Assert.True(chrome);
 		Assert.False(mismatch);
+	}
+
+	[Fact]
+	public void SeekTargets_PreferTrackRelativeTicksBeforeNonZeroTimelineOrigin()
+	{
+		MethodInfo builder = typeof(WindowsMediaSessionProvider).GetMethod("BuildSeekTargetTicks", BindingFlags.NonPublic | BindingFlags.Static)!;
+		long[] targets = (long[])builder.Invoke(null, new object[]
+		{
+			TimeSpan.FromSeconds(60),
+			TimeSpan.FromMinutes(10),
+			TimeSpan.FromMinutes(10),
+			TimeSpan.FromMinutes(20)
+		})!;
+
+		Assert.Equal(TimeSpan.FromSeconds(60).Ticks, targets[0]);
+		Assert.Contains(TimeSpan.FromMinutes(11).Ticks, targets);
+	}
+
+	[Fact]
+	public void UiAutomationSeekMatcher_RejectsAmbiguousVolumeRange()
+	{
+		Type matcherType = typeof(WindowsMediaSessionProvider).Assembly.GetType("FlowLyrics.Services.MediaPlayerUiAutomation")!;
+		MethodInfo scorer = matcherType.GetMethod("ScoreCandidate", BindingFlags.NonPublic | BindingFlags.Static)!;
+		double volumeScore = (double)scorer.Invoke(null, new object?[]
+		{
+			"Volume", "volumeSlider", "Slider", 0d, 100d, 50d, 110d, 24d, 90d, 180d
+		})!;
+		double seekScore = (double)scorer.Invoke(null, new object?[]
+		{
+			"Playback position", "progressSlider", "Slider", 0d, 180d, 90d, 420d, 18d, 90d, 180d
+		})!;
+
+		Assert.True(double.IsNegativeInfinity(volumeScore));
+		Assert.True(seekScore > 0d);
+	}
+
+	[Fact]
+	public void LyricsOnlyMode_PreservesUnderlyingComponentChoices()
+	{
+		AppSettings settings = new()
+		{
+			LyricsOnlyMode = true,
+			ShowPanelBorder = false,
+			ShowTrackInfo = true,
+			ShowPlaybackControls = false,
+			ShowProgressBar = true
+		};
+
+		AppSettings clone = settings.Clone();
+
+		Assert.True(clone.LyricsOnlyMode);
+		Assert.False(clone.ShowPanelBorder);
+		Assert.True(clone.ShowTrackInfo);
+		Assert.False(clone.ShowPlaybackControls);
+		Assert.True(clone.ShowProgressBar);
 	}
 
 	[Fact]

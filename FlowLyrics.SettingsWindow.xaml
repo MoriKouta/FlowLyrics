@@ -231,7 +231,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.1-dev.4" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.1-dev.5" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>
@@ -586,7 +586,6 @@
             <Border Style="{StaticResource Card}">
               <StackPanel>
                 <DockPanel>
-                  <Button DockPanel.Dock="Right" Content="Lyrics Only" Click="LyricsOnly_Click" />
                   <TextBlock Style="{StaticResource SectionTitle}" Text="Components" />
                 </DockPanel>
                 <WrapPanel>
@@ -595,6 +594,7 @@
                   <CheckBox Name="ShowPlaybackControlsBox" Width="190" Content="Player" />
                   <CheckBox Name="ShowProgressBarBox" Width="190" Content="Seek Bar" />
                 </WrapPanel>
+                <Button HorizontalAlignment="Left" Margin="0,9,0,2" Padding="12,6" Content="LYRICS ONLY" Click="LyricsOnly_Click" Tag="NoTranslate" />
                 <Grid Margin="0,10,0,0">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="150" />

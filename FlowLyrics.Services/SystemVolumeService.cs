@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace FlowLyrics.Services;
 
@@ -214,6 +215,20 @@ public sealed class SystemVolumeService
 
 	private const int ClsctxAll = 23;
 
+	private const uint ProcessQueryLimitedInformation = 0x1000;
+
+	private const int ErrorInsufficientBuffer = 122;
+
+	[DllImport("kernel32.dll", SetLastError = true)]
+	private static extern nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint processId);
+
+	[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+	private static extern int GetApplicationUserModelId(nint process, ref uint applicationUserModelIdLength, [Out] StringBuilder? applicationUserModelId);
+
+	[DllImport("kernel32.dll")]
+	[return: MarshalAs(UnmanagedType.Bool)]
+	private static extern bool CloseHandle(nint handle);
+
 	public bool TryGetVolume(string? sourceAppUserModelId, out double volume, out bool muted)
 	{
 		double total = 0.0;
@@ -274,24 +289,35 @@ public sealed class SystemVolumeService
 
 	internal static bool IsSpotifySessionIdentity(string? processName, string? sessionIdentifier, string? sessionInstanceIdentifier, string? displayName)
 	{
-		return IsSourceSessionIdentity("spotify", processName, sessionIdentifier, sessionInstanceIdentifier, displayName, null);
+		return IsSourceSessionIdentity("spotify", processName, null, sessionIdentifier, sessionInstanceIdentifier, displayName, null);
 	}
 
 	internal static bool IsSourceSessionIdentity(
 		string? sourceAppUserModelId,
 		string? processName,
+		string? processAppUserModelId,
 		string? sessionIdentifier,
 		string? sessionInstanceIdentifier,
 		string? displayName,
 		string? iconPath)
 	{
+		string normalizedSource = NormalizeIdentity(sourceAppUserModelId);
+		string normalizedProcessAppId = NormalizeIdentity(processAppUserModelId);
+		if (normalizedSource.Length > 0 && normalizedProcessAppId.Length > 0
+			&& (string.Equals(normalizedSource, normalizedProcessAppId, StringComparison.Ordinal)
+				|| normalizedSource.Contains(normalizedProcessAppId, StringComparison.Ordinal)
+				|| normalizedProcessAppId.Contains(normalizedSource, StringComparison.Ordinal)))
+		{
+			return true;
+		}
+
 		string[] tokens = GetSourceIdentityTokens(sourceAppUserModelId);
 		if (tokens.Length == 0)
 		{
 			return false;
 		}
 
-		foreach (string candidate in new[] { processName, sessionIdentifier, sessionInstanceIdentifier, displayName, iconPath })
+		foreach (string candidate in new[] { processName, processAppUserModelId, sessionIdentifier, sessionInstanceIdentifier, displayName, iconPath })
 		{
 			string normalized = NormalizeIdentity(candidate);
 			if (normalized.Length == 0) continue;
@@ -406,8 +432,10 @@ public sealed class SystemVolumeService
 	private static bool IsSourceSession(string sourceAppUserModelId, IAudioSessionControl control, IAudioSessionControl2 control2)
 	{
 		string processName = null;
+		string processAppUserModelId = null;
 		if (Succeeded(control2.GetProcessId(out var processId)) && processId != 0)
 		{
+			processAppUserModelId = TryGetProcessApplicationUserModelId(processId);
 			try
 			{
 				using Process process = Process.GetProcessById(checked((int)processId));
@@ -420,6 +448,7 @@ public sealed class SystemVolumeService
 		return IsSourceSessionIdentity(
 			sourceAppUserModelId,
 			processName,
+			processAppUserModelId,
 			ReadSessionIdentifier(control2),
 			ReadSessionInstanceIdentifier(control2),
 			ReadDisplayName(control),
@@ -431,7 +460,7 @@ public sealed class SystemVolumeService
 		string normalized = NormalizeIdentity(sourceAppUserModelId);
 		if (normalized.Length == 0) return Array.Empty<string>();
 		if (normalized.Contains("spotify", StringComparison.Ordinal)) return new[] { "spotify" };
-		if (normalized.Contains("applemusic", StringComparison.Ordinal) || normalized.Contains("itunes", StringComparison.Ordinal)) return new[] { "applemusic", "itunes" };
+		if (normalized.Contains("applemusic", StringComparison.Ordinal) || normalized.Contains("itunes", StringComparison.Ordinal)) return new[] { "applemusic", "itunes", "ampmediaplayer", "amplibraryagent" };
 		if (normalized.Contains("tidal", StringComparison.Ordinal)) return new[] { "tidal" };
 		if (normalized.Contains("videolan", StringComparison.Ordinal) || normalized.Contains("vlc", StringComparison.Ordinal)) return new[] { "videolan", "vlc" };
 		if (normalized.Contains("msedge", StringComparison.Ordinal) || normalized.Contains("microsoftedge", StringComparison.Ordinal)) return new[] { "msedge", "microsoftedge" };
@@ -451,6 +480,31 @@ public sealed class SystemVolumeService
 	{
 		if (string.IsNullOrWhiteSpace(value)) return string.Empty;
 		return new string(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+	}
+
+	internal static string? TryGetProcessApplicationUserModelId(uint processId)
+	{
+		if (processId == 0) return null;
+		nint processHandle = IntPtr.Zero;
+		try
+		{
+			processHandle = OpenProcess(ProcessQueryLimitedInformation, inheritHandle: false, processId);
+			if (processHandle == IntPtr.Zero) return null;
+			uint length = 0;
+			int result = GetApplicationUserModelId(processHandle, ref length, null);
+			if (result != ErrorInsufficientBuffer || length == 0 || length > 32768) return null;
+			StringBuilder value = new StringBuilder(checked((int)length));
+			result = GetApplicationUserModelId(processHandle, ref length, value);
+			return result == 0 ? value.ToString().Trim() : null;
+		}
+		catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException or OverflowException)
+		{
+			return null;
+		}
+		finally
+		{
+			if (processHandle != IntPtr.Zero) CloseHandle(processHandle);
+		}
 	}
 
 	private static string? ReadSessionIdentifier(IAudioSessionControl2 control)
