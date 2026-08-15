@@ -283,6 +283,12 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 			if (duration > TimeSpan.Zero && position > duration) position = duration;
 
 			string sourceId = session.SourceAppUserModelId?.Trim() ?? string.Empty;
+			RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+				sourceId,
+				properties?.Title,
+				properties?.Artist,
+				properties?.AlbumTitle,
+				properties?.AlbumArtist);
 			string sessionId = CreateSessionId(session, sourceId);
 			DateTimeOffset lastActivity;
 			lock (_gate)
@@ -301,9 +307,9 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				SourceAppUserModelId = sourceId,
 				DisplaySourceName = MediaSourceClassifier.GetDisplayName(sourceId),
 				Metadata = new MediaTrackMetadata(
-					properties?.Title?.Trim() ?? string.Empty,
-					properties?.Artist?.Trim() ?? string.Empty,
-					properties?.AlbumTitle?.Trim() ?? string.Empty,
+					metadata.Title,
+					metadata.Artist,
+					metadata.Album,
 					duration),
 				Position = position,
 				TimelineUpdatedAtUtc = timeline.LastUpdatedTime,

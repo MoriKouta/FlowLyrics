@@ -32,6 +32,60 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
+	public void ProviderMetadataRepair_SplitsAppleMusicArtistAndAlbum()
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+			"AppleInc.AppleMusicWin_nzyj5cx40ttqa!App",
+			"ライラック",
+			"Mrs. GREEN APPLE — ライラック - Single",
+			string.Empty);
+
+		Assert.Equal("ライラック", metadata.Title);
+		Assert.Equal("Mrs. GREEN APPLE", metadata.Artist);
+		Assert.Equal("ライラック - Single", metadata.Album);
+	}
+
+	[Fact]
+	public void ProviderMetadataRepair_ExtractsJapaneseQuotedYouTubeTitle()
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+			"MSEdge",
+			"YOASOBI「怪物」Offcial Music Video (YOASOBI - Monster)",
+			"YOASOBI",
+			string.Empty);
+
+		Assert.Equal("怪物", metadata.Title);
+		Assert.Equal("YOASOBI", metadata.Artist);
+	}
+
+	[Fact]
+	public void ProviderMetadataRepair_UsesYouTubeSlashCreditInsteadOfChannelName()
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+			"Microsoft.MicrosoftEdge.Stable_8wekyb3d8bbwe!MSEDGE",
+			"ビビデバ / 星街すいせい(official)",
+			"Suisei Channel",
+			string.Empty);
+
+		Assert.Equal("ビビデバ", metadata.Title);
+		Assert.Equal("星街すいせい", metadata.Artist);
+	}
+
+	[Fact]
+	public void ProviderMetadataRepair_LeavesAmbiguousBrowserMetadataAlone()
+	{
+		RepairedProviderMetadata metadata = ProviderMetadataRepair.Repair(
+			"chrome",
+			"Episode 12 - Interview with an Artist",
+			"Example Podcast",
+			"Season 2");
+
+		Assert.Equal("Episode 12 - Interview with an Artist", metadata.Title);
+		Assert.Equal("Example Podcast", metadata.Artist);
+		Assert.Equal("Season 2", metadata.Album);
+	}
+
+	[Fact]
 	public void TrackIdentity_IsPlayerIndependentButVersionSensitive()
 	{
 		TrackInfo spotify = new("Magnetic", "ILLIT", "SUPER REAL ME", TimeSpan.FromSeconds(160), "spotify-id");

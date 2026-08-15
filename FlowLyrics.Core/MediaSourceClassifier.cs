@@ -23,6 +23,12 @@ public static class MediaSourceClassifier
 		return ContainsAny(value, "msedge", "microsoftedge", "chrome", "chromium", "firefox");
 	}
 
+	public static bool IsAppleMusic(string? sourceAppUserModelId)
+	{
+		string value = sourceAppUserModelId ?? string.Empty;
+		return ContainsAny(value, "applemusic", "apple.music", "itunes");
+	}
+
 	private static bool Contains(string value, string token) =>
 		value.Contains(token, StringComparison.OrdinalIgnoreCase);
 

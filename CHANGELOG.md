@@ -9,6 +9,7 @@
 - Rebuilt the same implementation as `1.3.1-dev.3` for a fresh downloadable confirmation package.
 - Added `1.3.1-dev.4` with the PLAYER source selector at the top of Lyrics, immediate source switching, and collapsed exclusion controls.
 - Added `1.3.1-dev.5` with resilient LRCLIB requests, verified multi-player audio/seek fallbacks, and refined compact controls.
+- Added `1.3.1-dev.6` with provider-scoped Apple Music and browser metadata repair plus a neutral EXCLUDE toggle.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
@@ -26,11 +27,13 @@
 - Sent track-relative GSMTC seek positions first and added a conservative UI Automation range fallback for players that expose a timeline but reject the system seek command.
 - Device-pixel calibrated the entire volume popup frame directly over the volume button and removed the layout margin that could bias its visible surface.
 - Changed EXCLUDE to a frameless accordion header with leading `▶`/`▼` state icons and unframed details.
+- Removed the native blue hover surface from EXCLUDE and kept its label white in both accordion states.
+- Recovered Apple Music albums embedded in its artist field and conservatively extracted credited YouTube titles/artists from official-video naming patterns.
 - Moved Lyrics Only directly above Border Width and made a second press restore the previously selected component states.
 
 ### Tests
 
-- Added automated coverage for metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
+- Added automated coverage for provider metadata repair, metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
 
 ## 1.3.0 - 2026-07-20
 

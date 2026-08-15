@@ -1130,10 +1130,11 @@ public class SettingsWindow : Window, IComponentConnector
 			FontSize = 9.0,
 			FontWeight = FontWeights.Bold,
 			Cursor = System.Windows.Input.Cursors.Hand,
+			Foreground = System.Windows.Media.Brushes.White,
+			FocusVisualStyle = null,
+			Template = CreatePlainToggleTemplate(),
 			Tag = "NoTranslate"
 		};
-		_ignoredMediaSourcesToggle.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "Orange");
-		_ignoredMediaSourcesToggle.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "Orange");
 		playerContent.Children.Add(_ignoredMediaSourcesToggle);
 
 		StackPanel ignoredContent = new StackPanel();
@@ -1753,6 +1754,20 @@ public class SettingsWindow : Window, IComponentConnector
 		disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.38, "Surface"));
 		template.Triggers.Add(disabled);
 		return template;
+	}
+
+	private static ControlTemplate CreatePlainToggleTemplate()
+	{
+		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border));
+		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetBinding(System.Windows.FrameworkElement.HorizontalAlignmentProperty, new System.Windows.Data.Binding("HorizontalContentAlignment") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		presenter.SetBinding(System.Windows.FrameworkElement.VerticalAlignmentProperty, new System.Windows.Data.Binding("VerticalContentAlignment") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
+		surface.AppendChild(presenter);
+		return new ControlTemplate(typeof(ToggleButton)) { VisualTree = surface };
 	}
 
 	private static ControlTemplate CreateSoftTabTemplate(System.Windows.Media.Brush accent)
