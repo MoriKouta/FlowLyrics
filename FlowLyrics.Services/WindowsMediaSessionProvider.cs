@@ -131,7 +131,15 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		try
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			return await session.TryChangePlaybackPositionAsync(Math.Max(0L, position.Ticks));
+			GlobalSystemMediaTransportControlsSessionTimelineProperties timeline = session.GetTimelineProperties();
+			TimeSpan origin = GetTimelineOrigin(timeline);
+			TimeSpan target = origin + (position < TimeSpan.Zero ? TimeSpan.Zero : position);
+			if (timeline.MaxSeekTime > timeline.MinSeekTime)
+			{
+				if (target < timeline.MinSeekTime) target = timeline.MinSeekTime;
+				if (target > timeline.MaxSeekTime) target = timeline.MaxSeekTime;
+			}
+			return await session.TryChangePlaybackPositionAsync(Math.Max(0L, target.Ticks));
 		}
 		catch (OperationCanceledException) { throw; }
 		catch (Exception ex)
@@ -218,11 +226,12 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 			GlobalSystemMediaTransportControlsSessionPlaybackInfo playback = session.GetPlaybackInfo();
 			GlobalSystemMediaTransportControlsSessionPlaybackControls controls = playback.Controls;
 			DateTimeOffset capturedAt = DateTimeOffset.UtcNow;
+			TimeSpan origin = GetTimelineOrigin(timeline);
 			TimeSpan duration = timeline.EndTime - timeline.StartTime;
 			if (duration <= TimeSpan.Zero) duration = timeline.MaxSeekTime - timeline.MinSeekTime;
 			if (duration < TimeSpan.Zero) duration = TimeSpan.Zero;
 
-			TimeSpan position = timeline.Position;
+			TimeSpan position = timeline.Position - origin;
 			if (playback.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
 				&& timeline.LastUpdatedTime != default)
 			{
@@ -265,7 +274,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 					controls.IsPlayPauseToggleEnabled,
 					controls.IsNextEnabled,
 					controls.IsPreviousEnabled,
-					controls.IsPlaybackPositionEnabled),
+					controls.IsPlaybackPositionEnabled || duration > TimeSpan.Zero),
 				IsCurrentSession = ReferenceEquals(session, currentSession),
 				LastActivityUtc = lastActivity,
 				CapturedAtUtc = capturedAt
@@ -280,6 +289,13 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 			System.Diagnostics.Debug.WriteLine("Media Session metadata read failed for " + (session.SourceAppUserModelId ?? "unknown") + ": " + ex.GetType().Name + ": " + ex.Message);
 			return null;
 		}
+	}
+
+	private static TimeSpan GetTimelineOrigin(GlobalSystemMediaTransportControlsSessionTimelineProperties timeline)
+	{
+		if (timeline.EndTime > timeline.StartTime) return timeline.StartTime;
+		if (timeline.MaxSeekTime > timeline.MinSeekTime) return timeline.MinSeekTime;
+		return timeline.StartTime;
 	}
 
 	private async Task<GlobalSystemMediaTransportControlsSession?> ResolveSessionAsync(string sessionId, CancellationToken cancellationToken)

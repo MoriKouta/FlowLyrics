@@ -261,6 +261,22 @@ public static class LyricsMatcher
 			select candidate).ToArray();
 	}
 
+	public static LyricsCandidate? SelectBestEffortCandidate(IEnumerable<LyricsCandidate> candidates)
+	{
+		return candidates
+			.GroupBy(candidate => candidate.Record.Id)
+			.Select(group => group.First())
+			.Where(candidate => candidate.Record.Instrumental
+				|| !string.IsNullOrWhiteSpace(candidate.Record.SyncedLyrics)
+				|| !string.IsNullOrWhiteSpace(candidate.Record.PlainLyrics))
+			.OrderByDescending(candidate => candidate.Score)
+			.ThenByDescending(HasSyncedLyrics)
+			.ThenBy(candidate => candidate.LyricsScriptMismatch ? 1 : 0)
+			.ThenBy(DurationPriority)
+			.ThenBy(candidate => candidate.Record.Id)
+			.FirstOrDefault();
+	}
+
 	private static double DurationPriority(LyricsCandidate candidate)
 	{
 		return candidate.DurationDifferenceSeconds.HasValue ? Math.Abs(candidate.DurationDifferenceSeconds.Value) : double.MaxValue;

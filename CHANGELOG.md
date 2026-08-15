@@ -7,15 +7,19 @@
 - Started the `1.3.1` development cycle with confirmation build `1.3.1-dev.1`.
 - Added the `1.3.1-dev.2` confirmation build with generic Windows Media Session support.
 - Rebuilt the same implementation as `1.3.1-dev.3` for a fresh downloadable confirmation package.
+- Added `1.3.1-dev.4` with the PLAYER source selector at the top of Lyrics, immediate source switching, and collapsed exclusion controls.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
 - Made lyrics cache and manual LRCLIB overrides player-independent while retaining and migrating legacy keys.
 - Centered the volume popup precisely and made the active Reverse Colors button visually explicit.
+- Stabilized Apple Music timelines, normalized non-zero media timeline origins, restored optimistic seeking, and prevented stale post-seek positions from snapping back.
+- Auto-applied the highest-scoring usable LRCLIB candidate when strict automatic safety checks do not produce a match.
+- Generalized per-session volume and mute control from Spotify to the selected player, including Apple Music, TIDAL, VLC, and major browsers.
 
 ### Tests
 
-- Added automated coverage for metadata normalization, source-independent identity, LRCLIB query encoding, AUTO/Preferred/ignored source selection, capability propagation, and legacy cache migration.
+- Added automated coverage for metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
 
 ## 1.3.0 - 2026-07-20
 

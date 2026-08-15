@@ -123,8 +123,8 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="{x:Type Slider}">
-              <Grid HorizontalAlignment="Center">
-                <primitives:Track Name="PART_Track" Width="28" Orientation="Vertical">
+              <Grid Width="{TemplateBinding Width}" HorizontalAlignment="Center">
+                <primitives:Track Name="PART_Track" Width="{TemplateBinding Width}" HorizontalAlignment="Center" Orientation="Vertical">
                   <primitives:Track.DecreaseRepeatButton>
                     <primitives:RepeatButton Command="{x:Static Slider.DecreaseLarge}" Background="{DynamicResource UiAccentBrush}" BorderThickness="0">
                       <Control.Template>
@@ -340,7 +340,7 @@
     </Border>
     <primitives:Popup Name="VolumePopup" Placement="Custom" AllowsTransparency="True" StaysOpen="True" PlacementTarget="{Binding ElementName=VolumeButton}">
       <Border Name="VolumePopupSurface" Margin="4" Padding="7,10" CornerRadius="8.5" Background="#2EFFFFFF" BorderBrush="{DynamicResource UiAccentBrush}" BorderThickness="0.5" MouseEnter="VolumeHover_MouseEnter" MouseLeave="VolumeHover_MouseLeave">
-        <Slider Name="VolumeSlider" Width="22" Height="160" Minimum="0" Maximum="1" Value="1" Style="{StaticResource VerticalVolumeSlider}" PreviewMouseLeftButtonDown="VolumeSlider_PreviewMouseLeftButtonDown" PreviewMouseMove="VolumeSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="VolumeSlider_PreviewMouseLeftButtonUp" ValueChanged="VolumeSlider_ValueChanged" />
+        <Slider Name="VolumeSlider" Width="28" Height="160" HorizontalAlignment="Center" Minimum="0" Maximum="1" Value="1" Style="{StaticResource VerticalVolumeSlider}" PreviewMouseLeftButtonDown="VolumeSlider_PreviewMouseLeftButtonDown" PreviewMouseMove="VolumeSlider_PreviewMouseMove" PreviewMouseLeftButtonUp="VolumeSlider_PreviewMouseLeftButtonUp" ValueChanged="VolumeSlider_ValueChanged" />
       </Border>
     </primitives:Popup>
     <primitives:Thumb Name="ResizeTopLeft" HorizontalAlignment="Left" VerticalAlignment="Top" Width="28" Height="28" Margin="4" Cursor="SizeNWSE" PreviewMouseLeftButtonDown="ResizeCorner_PreviewMouseLeftButtonDown">

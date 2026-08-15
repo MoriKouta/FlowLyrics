@@ -118,9 +118,11 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _isDirectVolumeDrag;
 
-	private double _lastSpotifyVolume = 1.0;
+	private double _lastSessionVolume = 1.0;
 
-	private double? _pendingSpotifyVolume;
+	private double? _pendingSessionVolume;
+
+	private string _volumeSourceId = string.Empty;
 
 	private DateTime _volumeLastInsideUtc = DateTime.MinValue;
 
@@ -284,6 +286,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		InitializeComponent();
 		ApplyCompactUtilityControlSizing();
+		VolumePopup.PlacementTarget = VolumeButton;
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializeVolumeIcon();
@@ -348,12 +351,12 @@ public class MainWindow : Window, IComponentConnector
 		_volumeWriteTimer.Tick += delegate
 		{
 			_volumeWriteTimer.Stop();
-			double? pendingSpotifyVolume = _pendingSpotifyVolume;
-			if (pendingSpotifyVolume.HasValue)
+			double? pendingSessionVolume = _pendingSessionVolume;
+			if (pendingSessionVolume.HasValue && !string.IsNullOrWhiteSpace(_volumeSourceId))
 			{
-				double valueOrDefault = pendingSpotifyVolume.GetValueOrDefault();
-				_pendingSpotifyVolume = null;
-				_systemVolumeService.TrySetVolume(valueOrDefault);
+				double valueOrDefault = pendingSessionVolume.GetValueOrDefault();
+				_pendingSessionVolume = null;
+				_systemVolumeService.TrySetVolume(_volumeSourceId, valueOrDefault);
 			}
 		};
 		_localLrcReloadTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -621,6 +624,7 @@ public class MainWindow : Window, IComponentConnector
 					{
 						LyricsLookupStatus.LocalLrc => "LOCAL LRC", 
 						LyricsLookupStatus.LrclibManual => "LRCLIB — MANUALLY SELECTED", 
+						LyricsLookupStatus.LrclibBestMatch => "LRCLIB — BEST MATCH",
 						LyricsLookupStatus.Cache => "CACHE", 
 						_ => "LRCLIB — AUTO SELECTED", 
 					}) : "CACHE");
@@ -1423,7 +1427,7 @@ public class MainWindow : Window, IComponentConnector
 			PlayPauseButton.IsEnabled = snapshot.CanTogglePlayPause;
 			NextButton.IsEnabled = snapshot.CanSkipNext;
 			LockButton.IsEnabled = true;
-			VolumeButton.IsEnabled = IsSpotifySource(snapshot);
+			VolumeButton.IsEnabled = !string.IsNullOrWhiteSpace(snapshot.SourceAppUserModelId);
 			if (_reverseColorsButton != null)
 			{
 				_reverseColorsButton.IsEnabled = true;
@@ -1629,7 +1633,7 @@ public class MainWindow : Window, IComponentConnector
 		VolumePopupSurface.Padding = new Thickness(7.0, 10.0, 7.0, 10.0);
 		VolumePopupSurface.CornerRadius = new CornerRadius(8.5);
 		VolumePopupSurface.BorderThickness = new Thickness(0.5);
-		VolumeSlider.Width = 22.0;
+		VolumeSlider.Width = 28.0;
 	}
 
 	private TextBlock CreateDotReverseIcon()
@@ -1875,12 +1879,6 @@ public class MainWindow : Window, IComponentConnector
 	{
 		string source = snapshot?.SourceDisplayName;
 		return string.IsNullOrWhiteSpace(source) ? "MEDIA SESSION" : source.Trim().ToUpperInvariant();
-	}
-
-	private static bool IsSpotifySource(PlaybackSnapshot snapshot)
-	{
-		return snapshot.SourceDisplayName.Equals("Spotify", StringComparison.OrdinalIgnoreCase)
-			|| snapshot.SourceAppUserModelId.Contains("spotify", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static System.Windows.Media.Brush GetContrastingBrush(System.Windows.Media.Color color)
@@ -2496,10 +2494,14 @@ public class MainWindow : Window, IComponentConnector
 
 	private async void PlaybackSeekSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 	{
-		_isSeeking = true;
 		_pendingSeekRatio = null;
 		_seekWasDirectClick = false;
-		if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) != null || !(PlaybackSeekSlider.ActualWidth > 0.0) || (object)_snapshot == null || !_snapshot.CanSeek || !(_snapshot.Track.Duration > TimeSpan.Zero))
+		if (!(PlaybackSeekSlider.ActualWidth > 0.0) || (object)_snapshot == null || !_snapshot.CanSeek || !(_snapshot.Track.Duration > TimeSpan.Zero))
+		{
+			return;
+		}
+		_isSeeking = true;
+		if (FindVisualParent<Thumb>(e.OriginalSource as DependencyObject) != null)
 		{
 			return;
 		}
@@ -2549,22 +2551,24 @@ public class MainWindow : Window, IComponentConnector
 	{
 		_volumeLastInsideUtc = DateTime.UtcNow;
 		_volumeWriteTimer.Stop();
-		_pendingSpotifyVolume = null;
+		_pendingSessionVolume = null;
+		_volumeSourceId = _snapshot?.SourceAppUserModelId?.Trim() ?? string.Empty;
 		_updatingVolume = true;
-		double volume;
-		bool muted;
-		bool num = _systemVolumeService.TryGetVolume(out volume, out muted);
-		VolumeSlider.IsEnabled = _snapshot != null && IsSpotifySource(_snapshot);
+		double volume = _lastSessionVolume;
+		bool muted = false;
+		bool num = !string.IsNullOrWhiteSpace(_volumeSourceId)
+			&& _systemVolumeService.TryGetVolume(_volumeSourceId, out volume, out muted);
+		VolumeSlider.IsEnabled = num;
 		if (num)
 		{
-			_lastSpotifyVolume = volume;
-			VolumeSlider.Value = _lastSpotifyVolume;
+			_lastSessionVolume = volume;
+			VolumeSlider.Value = _lastSessionVolume;
 			VolumeLabel.Text = (muted ? "MUTE" : "VOL");
 			UpdateVolumeIcon(muted);
 		}
 		else
 		{
-			VolumeSlider.Value = _lastSpotifyVolume;
+			VolumeSlider.Value = _lastSessionVolume;
 			VolumeLabel.Text = "VOL";
 			UpdateVolumeIcon(muted: false);
 		}
@@ -2686,8 +2690,8 @@ public class MainWindow : Window, IComponentConnector
 	{
 		if (!_updatingVolume && base.IsLoaded)
 		{
-			_lastSpotifyVolume = e.NewValue;
-			_pendingSpotifyVolume = e.NewValue;
+			_lastSessionVolume = e.NewValue;
+			_pendingSessionVolume = e.NewValue;
 			VolumeLabel.Text = "VOL";
 			UpdateVolumeIcon(muted: false);
 			if (!_volumeWriteTimer.IsEnabled)
@@ -2700,11 +2704,14 @@ public class MainWindow : Window, IComponentConnector
 	private void VolumeButton_Click(object sender, RoutedEventArgs e)
 	{
 		_volumeWriteTimer.Stop();
-		_pendingSpotifyVolume = null;
-		if (_systemVolumeService.TryToggleMute() && _systemVolumeService.TryGetVolume(out var volume, out var muted))
+		_pendingSessionVolume = null;
+		_volumeSourceId = _snapshot?.SourceAppUserModelId?.Trim() ?? string.Empty;
+		if (!string.IsNullOrWhiteSpace(_volumeSourceId)
+			&& _systemVolumeService.TryToggleMute(_volumeSourceId)
+			&& _systemVolumeService.TryGetVolume(_volumeSourceId, out var volume, out var muted))
 		{
 			_updatingVolume = true;
-			_lastSpotifyVolume = volume;
+			_lastSessionVolume = volume;
 			VolumeSlider.Value = volume;
 			VolumeLabel.Text = (muted ? "MUTE" : "VOL");
 			UpdateVolumeIcon(muted);
@@ -2714,7 +2721,9 @@ public class MainWindow : Window, IComponentConnector
 
 	private static CustomPopupPlacement[] PlaceVolumePopup(System.Windows.Size popupSize, System.Windows.Size targetSize, System.Windows.Point offset)
 	{
-		double x = (targetSize.Width - popupSize.Width) / 2.0;
+		// Center the complete popup surface on the button. The slider template uses
+		// the exact same centerline, so neither its 28 px track nor thumb can overflow.
+		double x = Math.Round((targetSize.Width - popupSize.Width) / 2.0, MidpointRounding.AwayFromZero);
 		double y = 0.0 - popupSize.Height - 2.0;
 		return new CustomPopupPlacement[1]
 		{

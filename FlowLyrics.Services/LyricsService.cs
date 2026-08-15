@@ -25,8 +25,6 @@ public sealed class LyricsService : IDisposable
 
 	private static readonly TimeSpan NegativeCacheLifetime = TimeSpan.FromMinutes(1L);
 
-	private static readonly TimeSpan CandidateCacheLifetime = TimeSpan.FromMinutes(10L);
-
 	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(3L);
 
 	private const int CurrentMatcherVersion = 5;
@@ -228,22 +226,22 @@ public sealed class LyricsService : IDisposable
 				}
 				if (manualCache.CacheKind == "Candidates")
 				{
-					await _logger.WriteAsync("candidate-cache accepted ids=" + string.Join(',', manualCache.CandidateIds) + " cacheKey=" + track.CacheKey);
-					return new LyricsLookupResult
-					{
-						Status = LyricsLookupStatus.CandidatesFound,
-						LoadedFromCache = true
-					};
+					await _logger.WriteAsync("candidate-cache discarded reason=best-match-enabled ids=" + string.Join(',', manualCache.CandidateIds) + " cacheKey=" + track.CacheKey);
+					if (cacheRead!.IsCurrentBuild) await _cacheStore.DeleteAsync(track, cancellationToken);
+					manualCache = null;
 				}
-				if (IsValidPositiveCache(track, manualCache))
+				if (manualCache != null && IsValidPositiveCache(track, manualCache))
 				{
 					await PromoteCacheAsync(track, cacheRead!, cancellationToken);
 					_positiveMemoryCache[track.StableIdentityKey] = manualCache;
 					await _logger.WriteAsync($"positive-cache accepted id={manualCache.LrclibId} cacheKey={track.CacheKey}");
 					return FromCache(manualCache, selectedManually: false);
 				}
-				await _logger.WriteAsync($"positive-cache rejected reason=metadata-conflict id={manualCache.LrclibId} cacheKey={track.CacheKey}");
-				await _cacheStore.DeleteAsync(track, cancellationToken);
+				if (manualCache != null)
+				{
+					await _logger.WriteAsync($"positive-cache rejected reason=metadata-conflict id={manualCache.LrclibId} cacheKey={track.CacheKey}");
+					await _cacheStore.DeleteAsync(track, cancellationToken);
+				}
 			}
 		}
 		networkSearchStarting?.Invoke();
@@ -274,24 +272,13 @@ public sealed class LyricsService : IDisposable
 			await _logger.WriteAsync($"automatic-selection accepted id={selected.Record.Id} score={selected.Score} cacheKey={track.CacheKey}");
 			return await CacheAndCreateResultAsync(track, selected.Record, "Auto", cancellationToken);
 		}
-		if (ranked.Count > 0)
+		LyricsCandidate? bestMatch = LyricsMatcher.SelectBestEffortCandidate(ranked);
+		if (bestMatch != null)
 		{
-			await _logger.WriteAsync("automatic-selection rejected reason=ambiguous candidates=" + string.Join(',', ranked.Select((LyricsCandidate candidate) => candidate.Record.Id)) + " cacheKey=" + track.CacheKey);
-			await _cacheStore.WriteAsync(track, new LyricsCacheEntry
-			{
-				TrackKey = track.CacheKey,
-				CacheKind = "Candidates",
-				CandidateIds = ranked.Select((LyricsCandidate candidate) => candidate.Record.Id).ToList(),
-				MatcherVersion = 5,
-				SavedAtUtc = DateTimeOffset.UtcNow,
-				ExpiresAtUtc = DateTimeOffset.UtcNow.Add(CandidateCacheLifetime)
-			}, cancellationToken);
-			return new LyricsLookupResult
-			{
-				Status = LyricsLookupStatus.CandidatesFound,
-				Candidates = ranked
-			};
+			await _logger.WriteAsync($"best-match-selection accepted id={bestMatch.Record.Id} score={bestMatch.Score} reasons={Safe(string.Join(';', bestMatch.RejectionReasons))} cacheKey={track.CacheKey}");
+			return await CacheAndCreateResultAsync(track, bestMatch.Record, "BestMatch", cancellationToken);
 		}
+		if (ranked.Count > 0) await _logger.WriteAsync("automatic-selection rejected reason=no-usable-lyrics candidates=" + string.Join(',', ranked.Select(candidate => candidate.Record.Id)) + " cacheKey=" + track.CacheKey);
 		await _cacheStore.WriteAsync(track, new LyricsCacheEntry
 		{
 			TrackKey = track.CacheKey,
@@ -724,7 +711,12 @@ public sealed class LyricsService : IDisposable
 		return new LyricsLookupResult
 		{
 			Lyrics = ToLyricsResult(entry),
-			Status = ((!(selectionMode == "Manual")) ? LyricsLookupStatus.LrclibAuto : LyricsLookupStatus.LrclibManual),
+			Status = selectionMode switch
+			{
+				"Manual" => LyricsLookupStatus.LrclibManual,
+				"BestMatch" => LyricsLookupStatus.LrclibBestMatch,
+				_ => LyricsLookupStatus.LrclibAuto
+			},
 			LrclibRecord = record,
 			SelectedManually = (selectionMode == "Manual")
 		};
@@ -781,6 +773,12 @@ public sealed class LyricsService : IDisposable
 		{
 			return true;
 		}
+		if (string.Equals(entry.SelectionMode, "BestMatch", StringComparison.OrdinalIgnoreCase))
+		{
+			return entry.IsInstrumental
+				|| !string.IsNullOrWhiteSpace(entry.SyncedLyrics)
+				|| !string.IsNullOrWhiteSpace(entry.PlainLyrics);
+		}
 		if (!entry.LrclibId.HasValue || string.IsNullOrWhiteSpace(entry.LrclibTrackName) || string.IsNullOrWhiteSpace(entry.LrclibArtistName))
 		{
 			return false;
@@ -815,7 +813,13 @@ public sealed class LyricsService : IDisposable
 		return new LyricsLookupResult
 		{
 			Lyrics = ToLyricsResult(entry),
-			Status = (entry.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase) ? LyricsLookupStatus.LocalLrc : ((!selectedManually) ? LyricsLookupStatus.LrclibAuto : LyricsLookupStatus.LrclibManual)),
+			Status = entry.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase)
+				? LyricsLookupStatus.LocalLrc
+				: selectedManually
+					? LyricsLookupStatus.LrclibManual
+					: string.Equals(entry.SelectionMode, "BestMatch", StringComparison.OrdinalIgnoreCase)
+						? LyricsLookupStatus.LrclibBestMatch
+						: LyricsLookupStatus.LrclibAuto,
 			LrclibRecord = lrclibRecord,
 			LoadedFromCache = true,
 			SelectedManually = selectedManually

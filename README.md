@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Windows media players. It follows the selected Windows Global System Media Transport Controls session, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.1-dev.3` confirmation build. The current stable release is `1.3.0`.
+> This package is the `1.3.1-dev.4` confirmation build. The current stable release is `1.3.0`.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -12,7 +12,7 @@ It does not require a Spotify Developer account, Client ID, or account password.
 
 - Automatically follows track changes, playback, pause, and seeking in compatible Windows media players
 - Stable AUTO source selection, Preferred Player fallback, ignored-source settings, and live Media Session diagnostics
-- Safer LRCLIB matching that validates title, artist, version, and duration before automatic use
+- LRCLIB matching that uses a strict match when available and otherwise displays the highest-scoring usable result
 - Japanese-script preference that prevents romanized Japanese lyrics from being auto-applied
 - Editable progressive LRCLIB candidate search, metadata preview, and persistent per-track manual selection
 - Per-track cache clearing and a one-minute limit for “not found” cache entries
@@ -25,7 +25,7 @@ It does not require a Spotify Developer account, Client ID, or account password.
 - Automatically sized lyric context with adjustable active-line position, alignment, spacing, and opacity
 - Ten curated color presets, custom colors, coordinated random palettes, named user palettes with portable `.flowpalette` import/export, a shared Player UI / Settings accent, and synchronized Reverse Colors controls
 - Adjustable font, outline, shadow, background, border, padding, and corner radius
-- Capability-aware previous, play/pause, next, and seek controls for the selected Media Session; Spotify-only mute and volume controls
+- Capability-aware previous, play/pause, next, seek, mute, and per-app volume controls for the selected Media Session
 - Current time, track duration, and a timestamp preview when hovering over the seek bar
 - Non-modal Settings window so playback controls remain usable while customizing the overlay
 - Four-corner resizing, tray controls, Windows startup, and optional global shortcuts
@@ -41,7 +41,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download the provided `FlowLyrics-v1.3.1-dev.3-win-x64-portable.zip`.
+1. Download the provided `FlowLyrics-v1.3.1-dev.4-win-x64-portable.zip`.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in a compatible media player or browser.
@@ -57,8 +57,8 @@ Windows SmartScreen may appear because the current personal build is not code-si
 | Drag any corner grip | Resize the window |
 | Three-dot button or right-click | Open Settings and lyric actions |
 | Player controls | Previous, play/pause, next, and seek |
-| Hover the dot volume icon | Open the vertical Spotify-only volume slider |
-| Click the dot volume icon | Mute or unmute Spotify only |
+| Hover the dot volume icon | Open the selected player's vertical volume slider |
+| Click the dot volume icon | Mute or unmute the selected player |
 | Click the dot contrast icon | Reverse overlay colors while preserving the Player UI accent |
 | `Ctrl + Alt + L` | Lock or unlock the overlay |
 | `Ctrl + Alt + K` | Show or hide the overlay |

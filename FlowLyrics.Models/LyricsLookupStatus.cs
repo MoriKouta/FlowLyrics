@@ -4,6 +4,7 @@ public enum LyricsLookupStatus
 {
 	None,
 	LrclibAuto,
+	LrclibBestMatch,
 	LrclibManual,
 	LocalLrc,
 	Cache,

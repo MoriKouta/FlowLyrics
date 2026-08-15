@@ -112,6 +112,8 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private StackPanel? _ignoredMediaSourcesPanel;
 
+	private ToggleButton? _ignoredMediaSourcesToggle;
+
 	private TextBlock? _mediaSessionStatusText;
 
 	private readonly List<System.Windows.Controls.CheckBox> _ignoredMediaSourceBoxes = new();
@@ -1013,88 +1015,103 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void InitializeMediaSessionControls()
 	{
-		if (_mediaSessionControlsInitialized || GetTabStack("Behavior") is not StackPanel behaviorStack)
+		if (_mediaSessionControlsInitialized || GetTabStack("Lyrics") is not StackPanel lyricsStack)
 		{
 			return;
 		}
 
-		Border sourceCard = new Border();
-		sourceCard.SetResourceReference(FrameworkElement.StyleProperty, "Card");
-		sourceCard.Padding = new Thickness(16.0, 13.0, 16.0, 13.0);
-		StackPanel sourceContent = new StackPanel();
-		sourceContent.Children.Add(new TextBlock
+		Border playerCard = new Border();
+		playerCard.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		StackPanel playerContent = new StackPanel();
+		TextBlock playerTitle = new TextBlock
 		{
-			Text = "PLAYBACK SOURCE",
-			FontFamily = _englishDotFont,
-			FontSize = 11.0,
-			FontWeight = FontWeights.Bold
-		});
-		sourceContent.Children.Add(new TextBlock
-		{
-			Text = "Choose a preferred player, or keep AUTO for stable session selection.",
-			TextWrapping = TextWrapping.Wrap,
-			Margin = new Thickness(0.0, 4.0, 0.0, 10.0)
-		});
+			Text = "PLAYER",
+			Tag = "NoTranslate"
+		};
+		playerTitle.SetResourceReference(FrameworkElement.StyleProperty, "SectionTitle");
+		playerContent.Children.Add(playerTitle);
 		_playbackSourceBox = new System.Windows.Controls.ComboBox
 		{
 			MinWidth = 250.0,
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
-			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
+			Margin = new Thickness(0.0, 0.0, 0.0, 10.0)
 		};
 		_playbackSourceBox.SelectionChanged += PlaybackSourceBox_SelectionChanged;
-		sourceContent.Children.Add(_playbackSourceBox);
-		_mediaSessionStatusText = new TextBlock
-		{
-			TextWrapping = TextWrapping.Wrap,
-			Margin = new Thickness(0.0, 0.0, 0.0, 9.0)
-		};
-		sourceContent.Children.Add(_mediaSessionStatusText);
-		WrapPanel sourceActions = new WrapPanel();
-		System.Windows.Controls.Button refreshButton = new System.Windows.Controls.Button
-		{
-			Content = "REFRESH",
-			FontFamily = _englishDotFont,
-			FontSize = 8.5,
-			Padding = new Thickness(11.0, 6.0, 11.0, 6.0),
-			Margin = new Thickness(0.0, 0.0, 7.0, 0.0)
-		};
-		refreshButton.Click += async delegate { await RefreshMediaSessionsAsync(); };
-		System.Windows.Controls.Button diagnosticsButton = new System.Windows.Controls.Button
-		{
-			Content = "MEDIA SESSION DIAGNOSTICS",
-			FontFamily = _englishDotFont,
-			FontSize = 8.5,
-			Padding = new Thickness(11.0, 6.0, 11.0, 6.0)
-		};
-		diagnosticsButton.Click += OpenMediaSessionDiagnostics_Click;
-		sourceActions.Children.Add(refreshButton);
-		sourceActions.Children.Add(diagnosticsButton);
-		sourceContent.Children.Add(sourceActions);
-		sourceCard.Child = sourceContent;
+		playerContent.Children.Add(_playbackSourceBox);
 
-		Border ignoredCard = new Border();
-		ignoredCard.SetResourceReference(FrameworkElement.StyleProperty, "Card");
-		ignoredCard.Padding = new Thickness(16.0, 13.0, 16.0, 13.0);
+		_ignoredMediaSourcesToggle = new ToggleButton
+		{
+			Content = "EXCLUDE  ▾",
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+			Padding = new Thickness(10.0, 5.0, 10.0, 5.0),
+			Background = System.Windows.Media.Brushes.Transparent,
+			BorderThickness = new Thickness(1.0),
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			FontWeight = FontWeights.Bold,
+			Cursor = System.Windows.Input.Cursors.Hand,
+			Tag = "NoTranslate"
+		};
+		_ignoredMediaSourcesToggle.SetResourceReference(Control.ForegroundProperty, "Orange");
+		_ignoredMediaSourcesToggle.SetResourceReference(Control.BorderBrushProperty, "Orange");
+		playerContent.Children.Add(_ignoredMediaSourcesToggle);
+
 		StackPanel ignoredContent = new StackPanel();
 		ignoredContent.Children.Add(new TextBlock
 		{
-			Text = "IGNORED MEDIA SOURCES",
-			FontFamily = _englishDotFont,
-			FontSize = 11.0,
-			FontWeight = FontWeights.Bold
-		});
-		ignoredContent.Children.Add(new TextBlock
-		{
-			Text = "Ignored sources remain visible in diagnostics but are excluded from AUTO and fallback selection. Browser entries apply to every Media Session from that browser.",
+			Text = "Not used by AUTO · Browser = all sessions",
 			TextWrapping = TextWrapping.Wrap,
-			Margin = new Thickness(0.0, 4.0, 0.0, 9.0)
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
+			Tag = "NoTranslate"
 		});
 		_ignoredMediaSourcesPanel = new StackPanel();
 		ignoredContent.Children.Add(_ignoredMediaSourcesPanel);
-		ignoredCard.Child = ignoredContent;
+		_mediaSessionStatusText = new TextBlock
+		{
+			TextWrapping = TextWrapping.Wrap,
+			FontFamily = _englishDotFont,
+			FontSize = 9.0,
+			Margin = new Thickness(0.0, 8.0, 0.0, 7.0),
+			Tag = "NoTranslate"
+		};
+		ignoredContent.Children.Add(_mediaSessionStatusText);
+		System.Windows.Controls.Button diagnosticsButton = new System.Windows.Controls.Button
+		{
+			Content = "DIAGNOSTICS",
+			FontFamily = _englishDotFont,
+			FontSize = 8.5,
+			Padding = new Thickness(10.0, 5.0, 10.0, 5.0),
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+			Margin = new Thickness(0.0),
+			Tag = "NoTranslate"
+		};
+		diagnosticsButton.Click += OpenMediaSessionDiagnostics_Click;
+		ignoredContent.Children.Add(diagnosticsButton);
 
-		behaviorStack.Children.Insert(0, sourceCard);
-		behaviorStack.Children.Insert(1, ignoredCard);
+		Border detailsSurface = new Border
+		{
+			Child = ignoredContent,
+			CornerRadius = new CornerRadius(7.0),
+			BorderThickness = new Thickness(1.0),
+			Padding = new Thickness(12.0),
+			Margin = new Thickness(0.0, 10.0, 0.0, 0.0),
+			Visibility = Visibility.Collapsed
+		};
+		detailsSurface.SetResourceReference(Border.BorderBrushProperty, "Line");
+		_ignoredMediaSourcesToggle.Checked += delegate
+		{
+			detailsSurface.Visibility = Visibility.Visible;
+			UpdateIgnoredMediaSourcesToggle();
+		};
+		_ignoredMediaSourcesToggle.Unchecked += delegate
+		{
+			detailsSurface.Visibility = Visibility.Collapsed;
+			UpdateIgnoredMediaSourcesToggle();
+		};
+		playerContent.Children.Add(detailsSurface);
+		playerCard.Child = playerContent;
+
+		lyricsStack.Children.Insert(0, playerCard);
 		_mediaSessionControlsInitialized = true;
 		PopulateMediaSessionControls();
 	}
@@ -1195,9 +1212,18 @@ public class SettingsWindow : Window, IComponentConnector
 			bool preferredPresent = string.IsNullOrWhiteSpace(preferred) || sources.Any(source => string.Equals(source.SourceAppUserModelId, preferred, StringComparison.OrdinalIgnoreCase));
 			string mode = string.IsNullOrWhiteSpace(preferred)
 				? "AUTO"
-				: preferredPresent ? T("Preferred player") : T("Preferred unavailable · AUTO fallback");
-			_mediaSessionStatusText.Text = mode + " · " + T("Selected") + ": " + selectedLabel + " · " + _detectedMediaSessions.Count + " " + T("session(s)");
+				: preferredPresent ? "FIXED" : "FALLBACK";
+			_mediaSessionStatusText.Text = mode + " · " + selectedLabel + " · " + _detectedMediaSessions.Count;
 		}
+		UpdateIgnoredMediaSourcesToggle();
+	}
+
+	private void UpdateIgnoredMediaSourcesToggle()
+	{
+		if (_ignoredMediaSourcesToggle == null) return;
+		int count = _ignoredMediaSourceBoxes.Count(box => box.IsChecked == true);
+		string arrow = _ignoredMediaSourcesToggle.IsChecked == true ? "▴" : "▾";
+		_ignoredMediaSourcesToggle.Content = "EXCLUDE " + count + "  " + arrow;
 	}
 
 	private static System.Windows.Controls.ComboBoxItem CreateSourceComboItem(string content, string sourceId, string toolTip)
@@ -1210,30 +1236,49 @@ public class SettingsWindow : Window, IComponentConnector
 		};
 	}
 
-	private void PlaybackSourceBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+	private async void PlaybackSourceBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
 	{
 		if (_updatingMediaSessionControls || _suppressPreview) return;
 		string preferred = GetSelectedMediaSourceId();
-		foreach (System.Windows.Controls.CheckBox box in _ignoredMediaSourceBoxes)
+		_updatingMediaSessionControls = true;
+		try
 		{
-			if (box.IsChecked == true && string.Equals(box.Tag?.ToString(), preferred, StringComparison.OrdinalIgnoreCase))
+			foreach (System.Windows.Controls.CheckBox box in _ignoredMediaSourceBoxes)
 			{
-				box.IsChecked = false;
+				if (box.IsChecked == true && string.Equals(box.Tag?.ToString(), preferred, StringComparison.OrdinalIgnoreCase))
+				{
+					box.IsChecked = false;
+				}
 			}
 		}
+		finally
+		{
+			_updatingMediaSessionControls = false;
+		}
 		NotifyPreviewChanged();
+		await RefreshMediaSessionsAsync();
 	}
 
-	private void IgnoredMediaSource_Changed(object sender, RoutedEventArgs e)
+	private async void IgnoredMediaSource_Changed(object sender, RoutedEventArgs e)
 	{
 		if (_updatingMediaSessionControls || _suppressPreview) return;
 		if (sender is System.Windows.Controls.CheckBox { IsChecked: true } box
 			&& string.Equals(box.Tag?.ToString(), GetSelectedMediaSourceId(), StringComparison.OrdinalIgnoreCase)
 			&& _playbackSourceBox != null)
 		{
-			_playbackSourceBox.SelectedIndex = 0;
+			_updatingMediaSessionControls = true;
+			try
+			{
+				_playbackSourceBox.SelectedIndex = 0;
+			}
+			finally
+			{
+				_updatingMediaSessionControls = false;
+			}
 		}
+		UpdateIgnoredMediaSourcesToggle();
 		NotifyPreviewChanged();
+		await RefreshMediaSessionsAsync();
 	}
 
 	private string GetSelectedMediaSourceId()
@@ -2000,7 +2045,11 @@ public class SettingsWindow : Window, IComponentConnector
 			LrclibArtistText.Text = ValueOrDash(lrclibRecord?.ArtistName);
 			LrclibAlbumText.Text = ValueOrDash(lrclibRecord?.AlbumName);
 			LrclibDurationText.Text = ((lrclibRecord == null) ? "—" : FormatDuration(lrclibRecord.Duration));
-			SelectionModeText.Text = ((lyricsLookupResult == null || lyricsLookupResult.Status == LyricsLookupStatus.NoLyrics || lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound) ? "—" : (lyricsLookupResult.SelectedManually ? "Manually selected" : "Auto selected"));
+			SelectionModeText.Text = ((lyricsLookupResult == null || lyricsLookupResult.Status == LyricsLookupStatus.NoLyrics || lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
+				? "—"
+				: lyricsLookupResult.Status == LyricsLookupStatus.LrclibBestMatch
+					? "Best match"
+					: lyricsLookupResult.SelectedManually ? "Manually selected" : "Auto selected");
 			LoadedFromCacheText.Text = ((lyricsLookupResult != null && lyricsLookupResult.LoadedFromCache) ? "Yes" : "No");
 			LocalLrcStateText.Text = ((lyricsLookupResult != null && lyricsLookupResult.Status == LyricsLookupStatus.LocalLrc) ? ("Yes · " + ValueOrDash(lyricsLookupResult.LocalLrcPath)) : "No");
 			bool flag2 = lyricsLookupResult != null && lyricsLookupResult.Lyrics?.HasPlainLyrics == true && !lyricsLookupResult.Lyrics.HasSyncedLyrics;
@@ -2034,6 +2083,7 @@ public class SettingsWindow : Window, IComponentConnector
 		return lookup.Status switch
 		{
 			LyricsLookupStatus.LrclibAuto => "LRCLIB — Auto selected", 
+			LyricsLookupStatus.LrclibBestMatch => "LRCLIB — Best match",
 			LyricsLookupStatus.LrclibManual => "LRCLIB — Manually selected", 
 			LyricsLookupStatus.LocalLrc => "Local LRC", 
 			LyricsLookupStatus.Cache => "Cache" + (lookup.SelectedManually ? " · Manually selected" : string.Empty), 

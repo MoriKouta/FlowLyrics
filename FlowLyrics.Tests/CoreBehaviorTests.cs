@@ -75,8 +75,6 @@ public sealed class CoreBehaviorTests
 		Assert.Equal("vlc", automatic.Single(item => item.IsSelectedByFlowLyrics).SourceAppUserModelId);
 
 		service.ConfigureSelection("spotify", Array.Empty<string>());
-		await service.GetSessionsAsync();
-		await Task.Delay(900);
 		IReadOnlyList<MediaSessionInfo> preferred = await service.GetSessionsAsync();
 		Assert.Equal("spotify", preferred.Single(item => item.IsSelectedByFlowLyrics).SourceAppUserModelId);
 
@@ -108,6 +106,77 @@ public sealed class CoreBehaviorTests
 		Assert.False(snapshot.CanSkipNext);
 		Assert.False(snapshot.CanSeek);
 		Assert.Equal("Google Chrome", snapshot.SourceDisplayName);
+	}
+
+	[Fact]
+	public async Task AppleStyleTimeline_RemainsMonotonicAndKeepsSeekInteractive()
+	{
+		FakeMediaSessionProvider provider = new();
+		provider.Sessions = new[]
+		{
+			Session("applemusic", "Apple Music", MediaPlaybackState.Playing, current: true) with
+			{
+				Position = TimeSpan.FromSeconds(10),
+				HasTimeline = true,
+				TimelineUpdatedAtUtc = DateTimeOffset.UtcNow,
+				Capabilities = new MediaPlaybackCapabilities(true, true, true, true, true, false)
+			}
+		};
+		using MediaSessionService service = new(provider);
+
+		Assert.Null(await service.GetSnapshotAsync());
+		await Task.Delay(700);
+		PlaybackSnapshot stable = (await service.GetSnapshotAsync())!;
+		Assert.True(stable.CanSeek);
+
+		provider.Sessions = new[]
+		{
+			provider.Sessions[0] with
+			{
+				Position = TimeSpan.FromSeconds(8),
+				TimelineUpdatedAtUtc = DateTimeOffset.UtcNow,
+				CapturedAtUtc = DateTimeOffset.UtcNow
+			}
+		};
+		PlaybackSnapshot jittered = (await service.GetSnapshotAsync())!;
+		Assert.True(jittered.Position >= stable.Position);
+
+		Assert.True(await service.TrySeekAsync(TimeSpan.FromSeconds(60)));
+		PlaybackSnapshot afterSeek = (await service.GetSnapshotAsync())!;
+		Assert.True(afterSeek.Position >= TimeSpan.FromSeconds(59.5));
+	}
+
+	[Fact]
+	public void BestEffortLyrics_UsesTheHighestScoringUsableCandidate()
+	{
+		LyricsCandidate lower = new()
+		{
+			Record = new LrclibRecord { Id = 1, SyncedLyrics = "[00:00.00]lower" },
+			Score = 70
+		};
+		LyricsCandidate higher = new()
+		{
+			Record = new LrclibRecord { Id = 2, PlainLyrics = "higher" },
+			Score = 88
+		};
+
+		LyricsCandidate? selected = LyricsMatcher.SelectBestEffortCandidate(new[] { lower, higher });
+
+		Assert.NotNull(selected);
+		Assert.Equal(2, selected!.Record.Id);
+	}
+
+	[Fact]
+	public void VolumeSessionMatcher_FollowsTheSelectedPlayerIdentity()
+	{
+		MethodInfo matcher = typeof(SystemVolumeService).GetMethod("IsSourceSessionIdentity", BindingFlags.NonPublic | BindingFlags.Static)!;
+		bool apple = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin", "AppleMusic", null, null, null, null })!;
+		bool chrome = (bool)matcher.Invoke(null, new object?[] { "chrome.exe", "chrome", null, null, null, null })!;
+		bool mismatch = (bool)matcher.Invoke(null, new object?[] { "AppleInc.AppleMusicWin", "Spotify", null, null, null, null })!;
+
+		Assert.True(apple);
+		Assert.True(chrome);
+		Assert.False(mismatch);
 	}
 
 	[Fact]

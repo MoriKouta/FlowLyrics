@@ -37,6 +37,22 @@ public sealed class MediaSessionService : IDisposable
 
 	private string _stableMetadataIdentity = string.Empty;
 
+	private string _timelineIdentity = string.Empty;
+
+	private TimeSpan _stableTimelinePosition;
+
+	private DateTimeOffset _stableTimelineCapturedAtUtc = DateTimeOffset.MinValue;
+
+	private bool _stableTimelineWasPlaying;
+
+	private DateTimeOffset _lastProviderTimelineUpdatedAtUtc = DateTimeOffset.MinValue;
+
+	private DateTimeOffset _pendingSeekUntilUtc = DateTimeOffset.MinValue;
+
+	private double? _pendingBackwardOffsetSeconds;
+
+	private DateTimeOffset _pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
+
 	private bool _disposed;
 
 	public MediaSessionService()
@@ -54,20 +70,24 @@ public sealed class MediaSessionService : IDisposable
 
 	public void ConfigureSelection(string? preferredSourceId, IEnumerable<string>? ignoredSourceIds)
 	{
+		string preferred = preferredSourceId?.Trim() ?? string.Empty;
+		HashSet<string> ignored = new(
+			ignoredSourceIds?.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()) ?? Array.Empty<string>(),
+			StringComparer.OrdinalIgnoreCase);
+		if (ignored.Contains(preferred)) preferred = string.Empty;
+		bool changed;
 		lock (_gate)
 		{
-			_preferredSourceId = preferredSourceId?.Trim() ?? string.Empty;
+			changed = !string.Equals(_preferredSourceId, preferred, StringComparison.OrdinalIgnoreCase)
+				|| !_ignoredSourceIds.SetEquals(ignored);
+			if (!changed) return;
+			_preferredSourceId = preferred;
 			_ignoredSourceIds.Clear();
-			if (ignoredSourceIds != null)
-			{
-				foreach (string sourceId in ignoredSourceIds.Where(id => !string.IsNullOrWhiteSpace(id)))
-				{
-					_ignoredSourceIds.Add(sourceId.Trim());
-				}
-			}
-			if (_ignoredSourceIds.Contains(_preferredSourceId)) _preferredSourceId = string.Empty;
+			_ignoredSourceIds.UnionWith(ignored);
+			_selectedSessionId = string.Empty;
 			_candidateSessionId = string.Empty;
 			_candidateSinceUtc = DateTimeOffset.MinValue;
+			ResetMetadataStabilityLocked();
 		}
 		SessionsChanged?.Invoke(this, EventArgs.Empty);
 	}
@@ -102,18 +122,20 @@ public sealed class MediaSessionService : IDisposable
 			selected.Metadata.ArtistRaw,
 			selected.Metadata.AlbumRaw,
 			selected.Metadata.Duration);
-		if (!IsMetadataStable(track, selected.SessionId, DateTimeOffset.UtcNow)) return null;
+		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+		if (!IsMetadataStable(track, selected.SessionId, nowUtc)) return null;
 
 		MediaPlaybackCapabilities capabilities = selected.Capabilities;
+		(TimeSpan stablePosition, DateTimeOffset stableCapturedAtUtc) = StabilizeTimeline(selected, track, nowUtc);
 		return new PlaybackSnapshot(
 			track,
-			selected.Position,
+			stablePosition,
 			selected.IsPlaying,
-			selected.CapturedAtUtc,
+			stableCapturedAtUtc,
 			capabilities.CanTogglePlayPause || capabilities.CanPlay || capabilities.CanPause,
 			capabilities.CanPrevious,
 			capabilities.CanNext,
-			capabilities.CanSeek,
+			capabilities.CanSeek || (selected.HasTimeline && track.Duration > TimeSpan.Zero),
 			capabilities.CanPlay,
 			capabilities.CanPause,
 			selected.SessionId,
@@ -142,7 +164,20 @@ public sealed class MediaSessionService : IDisposable
 	public async Task<bool> TrySeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
 	{
 		string sessionId = GetSelectedSessionId();
-		return !string.IsNullOrEmpty(sessionId) && await _provider.TrySeekAsync(sessionId, position, cancellationToken);
+		if (string.IsNullOrEmpty(sessionId) || !await _provider.TrySeekAsync(sessionId, position, cancellationToken)) return false;
+		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+		lock (_gate)
+		{
+			if (string.Equals(sessionId, _selectedSessionId, StringComparison.Ordinal))
+			{
+				_stableTimelinePosition = position < TimeSpan.Zero ? TimeSpan.Zero : position;
+				_stableTimelineCapturedAtUtc = nowUtc;
+				_pendingSeekUntilUtc = nowUtc + TimeSpan.FromSeconds(2.5);
+				_pendingBackwardOffsetSeconds = null;
+				_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
+			}
+		}
+		return true;
 	}
 
 	public void Dispose()
@@ -238,6 +273,134 @@ public sealed class MediaSessionService : IDisposable
 		}
 	}
 
+	private (TimeSpan Position, DateTimeOffset CapturedAtUtc) StabilizeTimeline(
+		MediaSessionInfo session,
+		TrackInfo track,
+		DateTimeOffset nowUtc)
+	{
+		string identity = session.SessionId + "|" + track.Title.Trim().ToLowerInvariant()
+			+ "|" + track.Artist.Trim().ToLowerInvariant()
+			+ "|" + track.Album.Trim().ToLowerInvariant();
+		TimeSpan providerPosition = ClampPosition(session.Position, track.Duration);
+		lock (_gate)
+		{
+			if (!string.Equals(identity, _timelineIdentity, StringComparison.Ordinal)
+				|| _stableTimelineCapturedAtUtc == DateTimeOffset.MinValue)
+			{
+				_timelineIdentity = identity;
+				_stableTimelinePosition = providerPosition;
+				_stableTimelineCapturedAtUtc = nowUtc;
+				_stableTimelineWasPlaying = session.IsPlaying;
+				_lastProviderTimelineUpdatedAtUtc = session.TimelineUpdatedAtUtc;
+				_pendingSeekUntilUtc = DateTimeOffset.MinValue;
+				_pendingBackwardOffsetSeconds = null;
+				_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
+				return (_stableTimelinePosition, _stableTimelineCapturedAtUtc);
+			}
+
+			TimeSpan expected = _stableTimelinePosition;
+			TimeSpan elapsed = nowUtc - _stableTimelineCapturedAtUtc;
+			if (_stableTimelineWasPlaying && elapsed > TimeSpan.Zero && elapsed < TimeSpan.FromSeconds(10))
+			{
+				expected += elapsed;
+			}
+			expected = ClampPosition(expected, track.Duration);
+			double deltaSeconds = (providerPosition - expected).TotalSeconds;
+			TimeSpan result;
+
+			if (nowUtc < _pendingSeekUntilUtc)
+			{
+				if (Math.Abs(deltaSeconds) <= 1.25)
+				{
+					_pendingSeekUntilUtc = DateTimeOffset.MinValue;
+					result = session.IsPlaying && providerPosition < expected ? expected : providerPosition;
+				}
+				else
+				{
+					result = expected;
+				}
+			}
+			else if (session.IsPlaying)
+			{
+				if (deltaSeconds >= 1.5)
+				{
+					// A forward jump cannot cause lyric-line oscillation, so accept it at once.
+					result = providerPosition;
+					ClearPendingBackwardCorrectionLocked();
+				}
+				else if (deltaSeconds >= 0.0)
+				{
+					result = expected + TimeSpan.FromSeconds(Math.Min(deltaSeconds, 0.12));
+					ClearPendingBackwardCorrectionLocked();
+				}
+				else if (deltaSeconds > -1.0 || !IsStableBackwardCorrectionLocked(deltaSeconds, nowUtc))
+				{
+					// GSMTC providers (notably Apple Music) often publish a slightly older
+					// position after a newer one. Keep playback monotonic until a real
+					// backward jump remains consistent for several polls.
+					result = expected;
+				}
+				else
+				{
+					result = providerPosition;
+					ClearPendingBackwardCorrectionLocked();
+				}
+			}
+			else
+			{
+				double pausedDeltaSeconds = (providerPosition - _stableTimelinePosition).TotalSeconds;
+				if (pausedDeltaSeconds >= 0.0)
+				{
+					result = providerPosition;
+					ClearPendingBackwardCorrectionLocked();
+				}
+				else if (pausedDeltaSeconds > -1.0 || !IsStableBackwardCorrectionLocked(pausedDeltaSeconds, nowUtc))
+				{
+					result = _stableTimelinePosition;
+				}
+				else
+				{
+					result = providerPosition;
+					ClearPendingBackwardCorrectionLocked();
+				}
+			}
+
+			_stableTimelinePosition = ClampPosition(result, track.Duration);
+			_stableTimelineCapturedAtUtc = nowUtc;
+			_stableTimelineWasPlaying = session.IsPlaying;
+			if (session.TimelineUpdatedAtUtc > _lastProviderTimelineUpdatedAtUtc)
+			{
+				_lastProviderTimelineUpdatedAtUtc = session.TimelineUpdatedAtUtc;
+			}
+			return (_stableTimelinePosition, _stableTimelineCapturedAtUtc);
+		}
+	}
+
+	private bool IsStableBackwardCorrectionLocked(double offsetSeconds, DateTimeOffset nowUtc)
+	{
+		if (!_pendingBackwardOffsetSeconds.HasValue
+			|| Math.Abs(_pendingBackwardOffsetSeconds.Value - offsetSeconds) > 0.8)
+		{
+			_pendingBackwardOffsetSeconds = offsetSeconds;
+			_pendingBackwardOffsetSinceUtc = nowUtc;
+			return false;
+		}
+		return nowUtc - _pendingBackwardOffsetSinceUtc >= TimeSpan.FromSeconds(1.8);
+	}
+
+	private void ClearPendingBackwardCorrectionLocked()
+	{
+		_pendingBackwardOffsetSeconds = null;
+		_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
+	}
+
+	private static TimeSpan ClampPosition(TimeSpan position, TimeSpan duration)
+	{
+		if (position < TimeSpan.Zero) return TimeSpan.Zero;
+		if (duration > TimeSpan.Zero && position > duration) return duration;
+		return position;
+	}
+
 	private static MediaSessionInfo? ChooseBest(IEnumerable<MediaSessionInfo> sessions)
 	{
 		return sessions
@@ -263,6 +426,18 @@ public sealed class MediaSessionService : IDisposable
 		_pendingMetadataIdentity = string.Empty;
 		_pendingMetadataSinceUtc = DateTimeOffset.MinValue;
 		_stableMetadataIdentity = string.Empty;
+		ResetTimelineLocked();
+	}
+
+	private void ResetTimelineLocked()
+	{
+		_timelineIdentity = string.Empty;
+		_stableTimelinePosition = TimeSpan.Zero;
+		_stableTimelineCapturedAtUtc = DateTimeOffset.MinValue;
+		_stableTimelineWasPlaying = false;
+		_lastProviderTimelineUpdatedAtUtc = DateTimeOffset.MinValue;
+		_pendingSeekUntilUtc = DateTimeOffset.MinValue;
+		ClearPendingBackwardCorrectionLocked();
 	}
 
 	private string GetSelectedSessionId()

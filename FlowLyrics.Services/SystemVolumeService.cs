@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace FlowLyrics.Services;
@@ -212,12 +214,12 @@ public sealed class SystemVolumeService
 
 	private const int ClsctxAll = 23;
 
-	public bool TryGetVolume(out double volume, out bool muted)
+	public bool TryGetVolume(string? sourceAppUserModelId, out double volume, out bool muted)
 	{
 		double total = 0.0;
 		int count = 0;
 		bool allMuted = true;
-		VisitPreferredSpotifySessions(delegate(ISimpleAudioVolume session)
+		VisitPreferredSourceSessions(sourceAppUserModelId, delegate(ISimpleAudioVolume session)
 		{
 			if (Failed(session.GetMasterVolume(out var level)) || Failed(session.GetMute(out var muted2)))
 			{
@@ -233,10 +235,10 @@ public sealed class SystemVolumeService
 		return count > 0;
 	}
 
-	public bool TrySetVolume(double volume)
+	public bool TrySetVolume(string? sourceAppUserModelId, double volume)
 	{
 		float level = (float)Math.Clamp(volume, 0.0, 1.0);
-		return VisitPreferredSpotifySessions(delegate(ISimpleAudioVolume session)
+		return VisitPreferredSourceSessions(sourceAppUserModelId, delegate(ISimpleAudioVolume session)
 		{
 			Guid context = Guid.Empty;
 			if (Failed(session.SetMasterVolume(level, ref context)))
@@ -247,14 +249,14 @@ public sealed class SystemVolumeService
 		});
 	}
 
-	public bool TryToggleMute()
+	public bool TryToggleMute(string? sourceAppUserModelId)
 	{
-		if (!TryGetVolume(out var _, out var muted))
+		if (!TryGetVolume(sourceAppUserModelId, out var _, out var muted))
 		{
 			return false;
 		}
 		bool newMuted = !muted;
-		return VisitPreferredSpotifySessions(delegate(ISimpleAudioVolume session)
+		return VisitPreferredSourceSessions(sourceAppUserModelId, delegate(ISimpleAudioVolume session)
 		{
 			Guid context = Guid.Empty;
 			return Succeeded(session.SetMute(newMuted, ref context));
@@ -272,23 +274,43 @@ public sealed class SystemVolumeService
 
 	internal static bool IsSpotifySessionIdentity(string? processName, string? sessionIdentifier, string? sessionInstanceIdentifier, string? displayName)
 	{
-		if (!IsSpotifyProcessName(processName) && !ContainsSpotify(sessionIdentifier) && !ContainsSpotify(sessionInstanceIdentifier))
-		{
-			return ContainsSpotify(displayName);
-		}
-		return true;
+		return IsSourceSessionIdentity("spotify", processName, sessionIdentifier, sessionInstanceIdentifier, displayName, null);
 	}
 
-	private static bool VisitPreferredSpotifySessions(Func<ISimpleAudioVolume, bool> action)
+	internal static bool IsSourceSessionIdentity(
+		string? sourceAppUserModelId,
+		string? processName,
+		string? sessionIdentifier,
+		string? sessionInstanceIdentifier,
+		string? displayName,
+		string? iconPath)
 	{
-		if (!VisitSpotifySessions(action, activeOnly: true))
+		string[] tokens = GetSourceIdentityTokens(sourceAppUserModelId);
+		if (tokens.Length == 0)
 		{
-			return VisitSpotifySessions(action, activeOnly: false);
+			return false;
+		}
+
+		foreach (string candidate in new[] { processName, sessionIdentifier, sessionInstanceIdentifier, displayName, iconPath })
+		{
+			string normalized = NormalizeIdentity(candidate);
+			if (normalized.Length == 0) continue;
+			if (tokens.Any(token => normalized.Contains(token, StringComparison.Ordinal))) return true;
+		}
+		return false;
+	}
+
+	private static bool VisitPreferredSourceSessions(string? sourceAppUserModelId, Func<ISimpleAudioVolume, bool> action)
+	{
+		if (string.IsNullOrWhiteSpace(sourceAppUserModelId)) return false;
+		if (!VisitSourceSessions(sourceAppUserModelId, action, activeOnly: true))
+		{
+			return VisitSourceSessions(sourceAppUserModelId, action, activeOnly: false);
 		}
 		return true;
 	}
 
-	private static bool VisitSpotifySessions(Func<ISimpleAudioVolume, bool> action, bool activeOnly)
+	private static bool VisitSourceSessions(string sourceAppUserModelId, Func<ISimpleAudioVolume, bool> action, bool activeOnly)
 	{
 		IMMDeviceEnumerator iMMDeviceEnumerator = null;
 		IMMDeviceCollection devices = null;
@@ -296,7 +318,7 @@ public sealed class SystemVolumeService
 		try
 		{
 			iMMDeviceEnumerator = (IMMDeviceEnumerator)(object)new MMDeviceEnumeratorComObject();
-			if (Failed(iMMDeviceEnumerator.EnumAudioEndpoints(EDataFlow.Render, 1, out devices)) || Failed(devices.GetCount(out var count)))
+			if (Failed(iMMDeviceEnumerator.EnumAudioEndpoints(EDataFlow.Render, DeviceStateActive, out devices)) || Failed(devices.GetCount(out var count)))
 			{
 				return false;
 			}
@@ -312,7 +334,7 @@ public sealed class SystemVolumeService
 						continue;
 					}
 					Guid interfaceId = typeof(IAudioSessionManager2).GUID;
-					if (Failed(device.Activate(ref interfaceId, 23, IntPtr.Zero, out endpoint)) || !(endpoint is IAudioSessionManager2 audioSessionManager) || Failed(audioSessionManager.GetSessionEnumerator(out sessionEnumerator)) || Failed(sessionEnumerator.GetCount(out var count2)))
+					if (Failed(device.Activate(ref interfaceId, ClsctxAll, IntPtr.Zero, out endpoint)) || !(endpoint is IAudioSessionManager2 audioSessionManager) || Failed(audioSessionManager.GetSessionEnumerator(out sessionEnumerator)) || Failed(sessionEnumerator.GetCount(out var count2)))
 					{
 						continue;
 					}
@@ -349,7 +371,7 @@ public sealed class SystemVolumeService
 							}
 							goto end_IL_00c9;
 							IL_0119:
-							if (IsSpotifySession(sessionControl, control) && action(arg))
+							if (IsSourceSession(sourceAppUserModelId, sessionControl, control) && action(arg))
 							{
 								num++;
 							}
@@ -381,7 +403,7 @@ public sealed class SystemVolumeService
 		}
 	}
 
-	private static bool IsSpotifySession(IAudioSessionControl control, IAudioSessionControl2 control2)
+	private static bool IsSourceSession(string sourceAppUserModelId, IAudioSessionControl control, IAudioSessionControl2 control2)
 	{
 		string processName = null;
 		if (Succeeded(control2.GetProcessId(out var processId)) && processId != 0)
@@ -395,23 +417,40 @@ public sealed class SystemVolumeService
 			{
 			}
 		}
-		if (IsSpotifyProcessName(processName))
-		{
-			return true;
-		}
-		if (ContainsSpotify(ReadSessionIdentifier(control2)))
-		{
-			return true;
-		}
-		if (ContainsSpotify(ReadSessionInstanceIdentifier(control2)))
-		{
-			return true;
-		}
-		if (ContainsSpotify(ReadDisplayName(control)))
-		{
-			return true;
-		}
-		return ContainsSpotify(ReadIconPath(control));
+		return IsSourceSessionIdentity(
+			sourceAppUserModelId,
+			processName,
+			ReadSessionIdentifier(control2),
+			ReadSessionInstanceIdentifier(control2),
+			ReadDisplayName(control),
+			ReadIconPath(control));
+	}
+
+	private static string[] GetSourceIdentityTokens(string? sourceAppUserModelId)
+	{
+		string normalized = NormalizeIdentity(sourceAppUserModelId);
+		if (normalized.Length == 0) return Array.Empty<string>();
+		if (normalized.Contains("spotify", StringComparison.Ordinal)) return new[] { "spotify" };
+		if (normalized.Contains("applemusic", StringComparison.Ordinal) || normalized.Contains("itunes", StringComparison.Ordinal)) return new[] { "applemusic", "itunes" };
+		if (normalized.Contains("tidal", StringComparison.Ordinal)) return new[] { "tidal" };
+		if (normalized.Contains("videolan", StringComparison.Ordinal) || normalized.Contains("vlc", StringComparison.Ordinal)) return new[] { "videolan", "vlc" };
+		if (normalized.Contains("msedge", StringComparison.Ordinal) || normalized.Contains("microsoftedge", StringComparison.Ordinal)) return new[] { "msedge", "microsoftedge" };
+		if (normalized.Contains("chrome", StringComparison.Ordinal) || normalized.Contains("chromium", StringComparison.Ordinal)) return new[] { "chrome", "chromium" };
+		if (normalized.Contains("firefox", StringComparison.Ordinal)) return new[] { "firefox" };
+		if (normalized.Contains("zunemusic", StringComparison.Ordinal) || normalized.Contains("mediaplayer", StringComparison.Ordinal)) return new[] { "zunemusic", "musicui", "mediaplayer", "wmplayer" };
+
+		return (sourceAppUserModelId ?? string.Empty)
+			.Split(new[] { '.', '_', '!', '-', '/', '\\' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Select(NormalizeIdentity)
+			.Where(token => token.Length >= 4 && token is not "microsoft" and not "windows" and not "application" and not "package" and not "app" and not "exe")
+			.Distinct(StringComparer.Ordinal)
+			.ToArray();
+	}
+
+	private static string NormalizeIdentity(string? value)
+	{
+		if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+		return new string(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 	}
 
 	private static string? ReadSessionIdentifier(IAudioSessionControl2 control)
@@ -464,15 +503,6 @@ public sealed class SystemVolumeService
 		{
 			Marshal.FreeCoTaskMem(pointer);
 		}
-	}
-
-	private static bool ContainsSpotify(string? value)
-	{
-		if (!string.IsNullOrWhiteSpace(value))
-		{
-			return value.Contains("spotify", StringComparison.OrdinalIgnoreCase);
-		}
-		return false;
 	}
 
 	internal static bool Succeeded(int hresult)
