@@ -1052,8 +1052,8 @@ public class SettingsWindow : Window, IComponentConnector
 			Cursor = System.Windows.Input.Cursors.Hand,
 			Tag = "NoTranslate"
 		};
-		_ignoredMediaSourcesToggle.SetResourceReference(Control.ForegroundProperty, "Orange");
-		_ignoredMediaSourcesToggle.SetResourceReference(Control.BorderBrushProperty, "Orange");
+		_ignoredMediaSourcesToggle.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "Orange");
+		_ignoredMediaSourcesToggle.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "Orange");
 		playerContent.Children.Add(_ignoredMediaSourcesToggle);
 
 		StackPanel ignoredContent = new StackPanel();
