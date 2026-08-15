@@ -6,6 +6,7 @@
 
 - Started the `1.3.1` development cycle with confirmation build `1.3.1-dev.1`.
 - Added the `1.3.1-dev.2` confirmation build with generic Windows Media Session support.
+- Rebuilt the same implementation as `1.3.1-dev.3` for a fresh downloadable confirmation package.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
