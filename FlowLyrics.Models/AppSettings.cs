@@ -8,7 +8,7 @@ namespace FlowLyrics.Models;
 
 public sealed class AppSettings
 {
-	public int SettingsSchemaVersion { get; set; } = 16;
+	public int SettingsSchemaVersion { get; set; } = 17;
 
 	public string Language { get; set; } = "en-US";
 
@@ -41,6 +41,12 @@ public sealed class AppSettings
 	public string ShadowColor { get; set; } = "#E6000000";
 
 	public double ShadowDepth { get; set; }
+
+	public string GlowColor { get; set; } = "#CCFFFFFF";
+
+	public double GlowStrength { get; set; }
+
+	public double GlowOpacity { get; set; } = 0.65;
 
 	public double PreviousLineOpacity { get; set; } = 0.34;
 
@@ -131,7 +137,7 @@ public sealed class AppSettings
 
 	public void Normalize()
 	{
-		SettingsSchemaVersion = Math.Max(16, SettingsSchemaVersion);
+		SettingsSchemaVersion = Math.Max(17, SettingsSchemaVersion);
 		Language = LocalizationService.NormalizeLanguage(Language);
 		WindowWidth = Math.Clamp(WindowWidth, 120.0, 3840.0);
 		WindowHeight = Math.Clamp(WindowHeight, 40.0, 1200.0);
@@ -139,6 +145,8 @@ public sealed class AppSettings
 		MinimumFontSize = Math.Clamp(MinimumFontSize, 4.0, Math.Min(72.0, FontSize));
 		OutlineThickness = Math.Clamp(OutlineThickness, 0.0, 8.0);
 		ShadowDepth = Math.Clamp(ShadowDepth, 0.0, 12.0);
+		GlowStrength = Math.Clamp(GlowStrength, 0.0, 40.0);
+		GlowOpacity = Math.Clamp(GlowOpacity, 0.0, 1.0);
 		PreviousLineOpacity = Math.Clamp(PreviousLineOpacity, 0.08, 1.0);
 		NextLineOpacity = Math.Clamp(NextLineOpacity, 0.08, 1.0);
 		InactiveFontScale = Math.Clamp(InactiveFontScale, 0.55, 1.0);

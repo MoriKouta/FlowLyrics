@@ -4,7 +4,7 @@
 
 FlowLyrics is a customizable, always-on-top lyrics overlay for Windows media players. It follows the selected Windows Global System Media Transport Controls session, displays synchronized lyrics, and can become click-through when locked.
 
-> This package is the `1.3.1-dev.8` confirmation build. The current stable release is `1.3.0`.
+> This package is the `1.3.1-dev.9` confirmation build. The current stable release is `1.3.0`.
 
 It does not require a Spotify Developer account, Client ID, or account password. Playback information comes from Windows Global System Media Transport Controls (SMTC), and lyrics are searched through LRCLIB.
 
@@ -21,12 +21,12 @@ It does not require a Spotify Developer account, Client ID, or account password.
 - Continuous full-text scrolling when only plain lyrics are available, with manual-scroll pause and an auto-scroll switch
 - A Settings checkbox that fits the complete lyrics into the current overlay window and stays enabled while Settings is open
 - Local `.lrc` support with automatic file-change detection
-- Non-destructive Personal Sync with per-source or all-player offsets, selectable lyric-line alignment, undo/redo, anchors, and lyric-hold ranges
+- Non-destructive Personal Sync with a movable lyrics-first editor, numerical ±0.1/±0.5 adjustments, visual editable anchors and lyric-hold ranges, and searchable sync history
 - Transparent or colored background, always-on-top mode, and click-through lock mode
 - Fluid wrapping and automatic font scaling for narrow or small windows
 - Automatically sized lyric context with adjustable active-line position, alignment, spacing, and opacity
 - Ten curated color presets, custom colors, coordinated random palettes, named user palettes with portable `.flowpalette` import/export, a shared Player UI / Settings accent, and synchronized Reverse Colors controls
-- Adjustable font, outline, shadow, background, border, padding, and corner radius
+- Adjustable font, outline, shadow, behind-text Glow color/strength/opacity, background, border, padding, and corner radius
 - Capability-aware previous, play/pause, next, seek, mute, and per-app volume controls for the selected Media Session
 - Current time, track duration, and a timestamp preview when hovering over the seek bar
 - Non-modal Settings window so playback controls remain usable while customizing the overlay
@@ -43,7 +43,7 @@ The portable build is self-contained and does not require a separate .NET instal
 
 ## Install and run
 
-1. Download the provided `FlowLyrics-v1.3.1-dev.8-win-x64-portable.zip`.
+1. Download the provided `FlowLyrics-v1.3.1-dev.9-win-x64-portable.zip`.
 2. Extract the ZIP to a folder you can write to.
 3. Run `FlowLyrics.exe`.
 4. Start playing a track in a compatible media player or browser.
@@ -62,7 +62,7 @@ Windows SmartScreen may appear because the current personal build is not code-si
 | Hover the dot volume icon | Open the selected player's vertical volume slider |
 | Click the dot volume icon | Mute or unmute the selected player |
 | Click the dot contrast icon | Reverse overlay colors while preserving the Player UI accent |
-| `SYNC` in the track header | Adjust the current synced lyrics without changing LRCLIB, LRC, or cache timestamps |
+| Dotted `S` beside the player controls | Open the movable Personal Sync editor without changing LRCLIB, LRC, or cache timestamps |
 | `Ctrl + Alt + L` | Lock or unlock the overlay |
 | `Ctrl + Alt + K` | Show or hide the overlay |
 | Double-click the tray icon | Show or hide the overlay |

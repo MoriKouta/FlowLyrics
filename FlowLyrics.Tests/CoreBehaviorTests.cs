@@ -595,6 +595,39 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
+	public void GlowSettings_NormalizeAndEveryCuratedPaletteProvidesGlowColor()
+	{
+		AppSettings settings = new() { GlowStrength = 999, GlowOpacity = -1 };
+		settings.Normalize();
+
+		Assert.Equal(40.0, settings.GlowStrength);
+		Assert.Equal(0.0, settings.GlowOpacity);
+		Assert.All(ColorPalettes.Themes, palette => Assert.StartsWith("#", palette.Glow));
+	}
+
+	[Fact]
+	public async Task PersonalSyncStore_DoesNotPersistAnEmptyProfile()
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-sync-empty-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			PersonalSyncContext context = PersonalSyncTestContext("spotify", 10);
+			PersonalSyncProfile profile = PersonalSyncTestProfile(context, PersonalSyncScope.Source, 0);
+			profile.Mode = PersonalSyncMode.None;
+			PersonalSyncStore store = new(directory);
+
+			await store.UpsertAsync(profile);
+
+			Assert.False(File.Exists(store.FilePath));
+			Assert.Empty(await store.ListAsync());
+		}
+		finally
+		{
+			if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+		}
+	}
+
+	[Fact]
 	public async Task CacheStore_MigratesLegacyMetadataPathWithoutDeletingIt()
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-tests-" + Guid.NewGuid().ToString("N"));

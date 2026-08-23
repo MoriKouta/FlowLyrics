@@ -138,6 +138,16 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private StackPanel? _personalSyncProfilesPanel;
 
+	private PersonalSyncManagerWindow? _personalSyncManagerWindow;
+
+	private bool _glowControlsInitialized;
+
+	private System.Windows.Controls.TextBox? _glowColorBox;
+
+	private Slider? _glowStrengthSlider;
+
+	private Slider? _glowOpacitySlider;
+
 	internal System.Windows.Controls.TabControl SettingsTabs;
 
 	internal System.Windows.Controls.ComboBox FontFamilyBox;
@@ -315,6 +325,7 @@ public class SettingsWindow : Window, IComponentConnector
 			InitializeTextControls();
 			InitializeReverseColorsControl();
 			InitializePaletteManager();
+			InitializeGlowControls();
 			InitializeMediaSessionControls();
 			InitializePersonalSyncProfiles();
 			InitializeBehaviorReset();
@@ -328,11 +339,15 @@ public class SettingsWindow : Window, IComponentConnector
 			await RefreshMediaSessionsAsync();
 		};
 		_mediaSessionService.SessionsChanged += MediaSessionService_SessionsChanged;
+		_personalSyncStore.ProfilesChanged += PersonalSyncStore_ProfilesChanged;
 		base.Closed += delegate
 		{
 			_mediaSessionService.SessionsChanged -= MediaSessionService_SessionsChanged;
+			_personalSyncStore.ProfilesChanged -= PersonalSyncStore_ProfilesChanged;
 			_mediaSessionDiagnosticsWindow?.Close();
 			_mediaSessionDiagnosticsWindow = null;
+			_personalSyncManagerWindow?.Close();
+			_personalSyncManagerWindow = null;
 		};
 	}
 
@@ -929,6 +944,134 @@ public class SettingsWindow : Window, IComponentConnector
 		return button;
 	}
 
+	private void InitializeGlowControls()
+	{
+		if (_glowControlsInitialized)
+		{
+			return;
+		}
+
+		System.Windows.Controls.Button? uiPickButton = _uiColorPickButton ?? FindVisualChildren<System.Windows.Controls.Button>(this)
+			.FirstOrDefault(button => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
+		if (uiPickButton?.Parent is not Grid colorGrid || OutlineSlider.Parent is not Grid effectsGrid || effectsGrid.Parent is not StackPanel effectsCard)
+		{
+			return;
+		}
+
+		_glowColorBox = new System.Windows.Controls.TextBox
+		{
+			Text = ResultSettings.GlowColor,
+			Visibility = Visibility.Collapsed,
+			Tag = "NoTranslate"
+		};
+		_glowStrengthSlider = new Slider { Minimum = 0.0, Maximum = 40.0, TickFrequency = 0.5, Value = ResultSettings.GlowStrength };
+		_glowOpacitySlider = new Slider { Minimum = 0.0, Maximum = 1.0, TickFrequency = 0.05, Value = ResultSettings.GlowOpacity };
+
+		int glowColorRow = colorGrid.RowDefinitions.Count;
+		colorGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		TextBlock glowColorLabel = CreateFieldLabel("Glow");
+		Border glowSwatch = new() { Margin = new Thickness(4.0), CornerRadius = new CornerRadius(3.0) };
+		glowSwatch.SetBinding(Border.BackgroundProperty, new Binding(nameof(System.Windows.Controls.TextBox.Text)) { Source = _glowColorBox });
+		System.Windows.Controls.Button glowPick = new()
+		{
+			Content = "Pick",
+			Tag = "GlowColorBox",
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Left
+		};
+		glowPick.Click += CustomColor_Click;
+		Grid.SetRow(glowColorLabel, glowColorRow);
+		Grid.SetRow(glowSwatch, glowColorRow);
+		Grid.SetColumn(glowSwatch, 1);
+		Grid.SetRow(glowPick, glowColorRow);
+		Grid.SetColumn(glowPick, 2);
+		colorGrid.Children.Add(glowColorLabel);
+		colorGrid.Children.Add(glowSwatch);
+		colorGrid.Children.Add(glowPick);
+
+		int effectsIndex = effectsCard.Children.IndexOf(effectsGrid);
+		Grid textEffectsGrid = CreateThreeColumnGrid();
+		MoveSettingsRow(effectsGrid, 0, textEffectsGrid, 0);
+		MoveSettingsRow(effectsGrid, 1, textEffectsGrid, 1);
+		AddSettingsRow(textEffectsGrid, 2, "Glow Strength", _glowStrengthSlider, "{0:0.0}px");
+		AddSettingsRow(textEffectsGrid, 3, "Glow Opacity", _glowOpacitySlider, "{0:P0}");
+
+		Grid surfaceGrid = CreateThreeColumnGrid();
+		MoveSettingsRow(effectsGrid, 2, surfaceGrid, 0);
+		MoveSettingsRow(effectsGrid, 3, surfaceGrid, 1);
+		MoveSettingsRow(effectsGrid, 4, surfaceGrid, 2);
+		MoveSettingsRow(effectsGrid, 5, surfaceGrid, 3);
+		effectsCard.Children.Remove(effectsGrid);
+		TextBlock? sectionTitle = effectsCard.Children.OfType<TextBlock>().FirstOrDefault();
+		if (sectionTitle != null)
+		{
+			sectionTitle.Text = "Text Effects";
+			sectionTitle.Tag = "NoTranslate";
+		}
+		effectsCard.Children.Insert(Math.Max(0, effectsIndex), textEffectsGrid);
+		TextBlock surfaceTitle = new()
+		{
+			Text = "Surface",
+			Margin = new Thickness(0.0, 18.0, 0.0, 4.0),
+			Tag = "NoTranslate"
+		};
+		surfaceTitle.SetResourceReference(FrameworkElement.StyleProperty, "SectionTitle");
+		effectsCard.Children.Insert(Math.Max(0, effectsIndex) + 1, surfaceTitle);
+		effectsCard.Children.Insert(Math.Max(0, effectsIndex) + 2, surfaceGrid);
+
+		_glowColorBox.TextChanged += delegate { NotifyPreviewChanged(); };
+		_glowStrengthSlider.ValueChanged += delegate { NotifyPreviewChanged(); };
+		_glowOpacitySlider.ValueChanged += delegate { NotifyPreviewChanged(); };
+		_glowControlsInitialized = true;
+	}
+
+	private static Grid CreateThreeColumnGrid()
+	{
+		Grid grid = new();
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150.0) });
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78.0) });
+		return grid;
+	}
+
+	private static TextBlock CreateFieldLabel(string text)
+	{
+		TextBlock label = new() { Text = text, Tag = "NoTranslate" };
+		label.SetResourceReference(FrameworkElement.StyleProperty, "FieldLabel");
+		return label;
+	}
+
+	private static void AddSettingsRow(Grid grid, int row, string labelText, Slider slider, string format)
+	{
+		while (grid.RowDefinitions.Count <= row) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		TextBlock label = CreateFieldLabel(labelText);
+		TextBlock value = new()
+		{
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+			VerticalAlignment = VerticalAlignment.Center,
+			Tag = "NoTranslate"
+		};
+		value.SetBinding(TextBlock.TextProperty, new Binding(nameof(Slider.Value)) { Source = slider, StringFormat = format });
+		Grid.SetRow(label, row);
+		Grid.SetRow(slider, row);
+		Grid.SetColumn(slider, 1);
+		Grid.SetRow(value, row);
+		Grid.SetColumn(value, 2);
+		grid.Children.Add(label);
+		grid.Children.Add(slider);
+		grid.Children.Add(value);
+	}
+
+	private static void MoveSettingsRow(Grid source, int sourceRow, Grid destination, int destinationRow)
+	{
+		while (destination.RowDefinitions.Count <= destinationRow) destination.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		foreach (UIElement child in source.Children.Cast<UIElement>().Where(item => Grid.GetRow(item) == sourceRow).ToArray())
+		{
+			source.Children.Remove(child);
+			Grid.SetRow(child, destinationRow);
+			destination.Children.Add(child);
+		}
+	}
+
 	private SavedColorPalette CaptureCurrentPalette(string name)
 	{
 		return new SavedColorPalette
@@ -938,6 +1081,9 @@ public class SettingsWindow : Window, IComponentConnector
 			NextTextColor = NormalizeColor(NextColorBox.Text),
 			OutlineColor = NormalizeColor(OutlineColorBox.Text),
 			ShadowColor = NormalizeColor(ShadowColorBox.Text),
+			GlowColor = NormalizeColor(_glowColorBox?.Text ?? ResultSettings.GlowColor),
+			GlowStrength = _glowStrengthSlider?.Value ?? ResultSettings.GlowStrength,
+			GlowOpacity = _glowOpacitySlider?.Value ?? ResultSettings.GlowOpacity,
 			BackgroundColor = NormalizeColor(BackgroundColorBox.Text),
 			BorderColor = NormalizeColor(BorderColorBox.Text),
 			UiColor = NormalizeColor(UiColorBox.Text)
@@ -954,6 +1100,9 @@ public class SettingsWindow : Window, IComponentConnector
 			NextTextColor = palette.NextTextColor,
 			OutlineColor = palette.OutlineColor,
 			ShadowColor = palette.ShadowColor,
+			GlowColor = palette.GlowColor,
+			GlowStrength = palette.GlowStrength,
+			GlowOpacity = palette.GlowOpacity,
 			BackgroundColor = palette.BackgroundColor,
 			BorderColor = palette.BorderColor,
 			UiColor = palette.UiColor
@@ -1026,6 +1175,9 @@ public class SettingsWindow : Window, IComponentConnector
 		NextColorBox.Text = palette.NextTextColor;
 		OutlineColorBox.Text = palette.OutlineColor;
 		ShadowColorBox.Text = palette.ShadowColor;
+		if (_glowColorBox != null) _glowColorBox.Text = palette.GlowColor;
+		if (_glowStrengthSlider != null) _glowStrengthSlider.Value = Math.Clamp(palette.GlowStrength, 0.0, 40.0);
+		if (_glowOpacitySlider != null) _glowOpacitySlider.Value = Math.Clamp(palette.GlowOpacity, 0.0, 1.0);
 		BackgroundColorBox.Text = palette.BackgroundColor;
 		BorderColorBox.Text = palette.BorderColor;
 		UiColorBox.Text = palette.UiColor;
@@ -1036,7 +1188,7 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void ValidatePalette(SavedColorPalette palette)
 	{
-		foreach (string color in new[] { palette.CurrentTextColor, palette.NextTextColor, palette.OutlineColor, palette.ShadowColor, palette.BackgroundColor, palette.BorderColor, palette.UiColor })
+		foreach (string color in new[] { palette.CurrentTextColor, palette.NextTextColor, palette.OutlineColor, palette.ShadowColor, palette.GlowColor, palette.BackgroundColor, palette.BorderColor, palette.UiColor })
 		{
 			ValidateColor(color);
 		}
@@ -1241,10 +1393,10 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			return;
 		}
-		Border card = new Border();
+		Border card = new();
 		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
 		StackPanel content = new();
-		TextBlock title = new()
+		content.Children.Add(new TextBlock
 		{
 			Text = "PERSONAL SYNC",
 			FontFamily = _englishDotFont,
@@ -1252,11 +1404,10 @@ public class SettingsWindow : Window, IComponentConnector
 			FontSize = 13.0,
 			FontWeight = FontWeights.Bold,
 			Tag = "NoTranslate"
-		};
-		content.Children.Add(title);
+		});
 		content.Children.Add(new TextBlock
 		{
-			Text = "Saved timing adjustments. Source-specific profiles take priority over all-player profiles.",
+			Text = "Current track timing and saved sync history.",
 			Margin = new Thickness(0.0, 4.0, 0.0, 9.0),
 			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(192, 187, 192)),
 			TextWrapping = TextWrapping.Wrap,
@@ -1264,8 +1415,14 @@ public class SettingsWindow : Window, IComponentConnector
 		});
 		_personalSyncProfilesPanel = new StackPanel();
 		content.Children.Add(_personalSyncProfilesPanel);
+		System.Windows.Controls.Button historyButton = CreateProfileButton("ALL SYNC HISTORY");
+		historyButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+		historyButton.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
+		historyButton.Click += delegate { OpenPersonalSyncHistory(); };
+		content.Children.Add(historyButton);
 		card.Child = content;
-		lyricsStack.Children.Insert(Math.Min(1, lyricsStack.Children.Count), card);
+		// The Local LRC card is the final static card in this tab.
+		lyricsStack.Children.Insert(Math.Max(0, lyricsStack.Children.Count - 1), card);
 		_personalSyncProfilesInitialized = true;
 		RefreshPersonalSyncProfiles();
 	}
@@ -1274,14 +1431,13 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (_personalSyncProfilesPanel == null) return;
 		_personalSyncProfilesPanel.Children.Clear();
-		IReadOnlyList<PersonalSyncProfile> profiles;
-		try { profiles = await _personalSyncStore.ListAsync(); }
-		catch { profiles = Array.Empty<PersonalSyncProfile>(); }
-		if (profiles.Count == 0)
+		PlaybackSnapshot? snapshot = _currentSnapshotProvider();
+		LyricsLookupResult? lookup = _lookupProvider();
+		if (snapshot == null || lookup == null)
 		{
 			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
-				Text = "NO SAVED ADJUSTMENTS",
+				Text = "PLAY A TRACK TO VIEW ITS SYNC",
 				FontFamily = _englishDotFont,
 				FontSize = 9.0,
 				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
@@ -1289,69 +1445,72 @@ public class SettingsWindow : Window, IComponentConnector
 			});
 			return;
 		}
-
-		foreach (PersonalSyncProfile profile in profiles)
+		PersonalSyncResolution resolution;
+		try
 		{
-			Border row = new()
+			PersonalSyncContext context = PersonalSyncIdentity.Create(snapshot, lookup);
+			resolution = await _personalSyncStore.ResolveAsync(context);
+		}
+		catch { resolution = new PersonalSyncResolution(null, false); }
+		PersonalSyncProfile? profile = resolution.Profile;
+		if (profile == null)
+		{
+			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
-				Margin = new Thickness(0.0, 0.0, 0.0, 7.0),
-				Padding = new Thickness(10.0, 8.0, 10.0, 8.0),
-				CornerRadius = new CornerRadius(7.0),
-				Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(35, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
-				BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(45, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
-				BorderThickness = new Thickness(1.0)
-			};
-			StackPanel body = new();
-			body.Children.Add(new TextBlock
-			{
-				Text = profile.Track.Title + (string.IsNullOrWhiteSpace(profile.Track.Artist) ? string.Empty : " — " + profile.Track.Artist),
-				FontWeight = FontWeights.SemiBold,
-				TextTrimming = TextTrimming.CharacterEllipsis
-			});
-			body.Children.Add(new TextBlock
-			{
-				Text = (profile.Scope == PersonalSyncScope.Track ? "ALL PLAYERS" : profile.Source.Source.ToUpperInvariant())
-					+ " · " + profile.Mode.ToString().ToUpperInvariant()
-					+ (profile.Mode == PersonalSyncMode.Offset ? " " + profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s" : " · " + profile.Anchors.Count + " SYNC POINT / " + profile.Segments.Count + " HOLD"),
+				Text = resolution.HasProfileForDifferentLyrics ? "SYNC EXISTS FOR DIFFERENT LYRICS" : "CURRENT TRACK · NOT SYNCED",
 				FontFamily = _englishDotFont,
-				FontSize = 8.5,
-				Margin = new Thickness(0.0, 3.0, 0.0, 6.0),
-				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(196, 192, 197)),
+				FontSize = 9.0,
+				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
 				Tag = "NoTranslate"
 			});
-			WrapPanel editActions = new() { Margin = new Thickness(-3.0, 0.0, 0.0, 0.0), Visibility = Visibility.Collapsed };
-			System.Windows.Controls.Button earlier = CreateProfileButton("−0.1");
-			earlier.Click += async delegate { NudgePersonalSyncProfile(profile, -0.1); await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
-			editActions.Children.Add(earlier);
-			System.Windows.Controls.Button later = CreateProfileButton("+0.1");
-			later.Click += async delegate { NudgePersonalSyncProfile(profile, 0.1); await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
-			editActions.Children.Add(later);
-			System.Windows.Controls.Button scope = CreateProfileButton(profile.Scope == PersonalSyncScope.Track ? "ALL → SOURCE" : "SOURCE → ALL");
-			scope.Click += async delegate { profile.Scope = profile.Scope == PersonalSyncScope.Track ? PersonalSyncScope.Source : PersonalSyncScope.Track; await _personalSyncStore.UpsertAsync(profile); RefreshPersonalSyncProfiles(); };
-			editActions.Children.Add(scope);
-			WrapPanel actions = new() { Margin = new Thickness(-3.0, 0.0, 0.0, 0.0) };
-			System.Windows.Controls.Button edit = CreateProfileButton("EDIT");
-			edit.Click += delegate { editActions.Visibility = editActions.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible; };
-			actions.Children.Add(edit);
-			System.Windows.Controls.Button reset = CreateProfileButton("RESET");
-			reset.Click += async delegate
-			{
-				profile.Mode = PersonalSyncMode.None;
-				profile.OffsetSeconds = 0.0;
-				profile.Anchors.Clear();
-				profile.Segments.Clear();
-				await _personalSyncStore.UpsertAsync(profile);
-				RefreshPersonalSyncProfiles();
-			};
-			actions.Children.Add(reset);
-			System.Windows.Controls.Button delete = CreateProfileButton("DELETE");
-			delete.Click += async delegate { await _personalSyncStore.DeleteAsync(profile.Id); RefreshPersonalSyncProfiles(); };
-			actions.Children.Add(delete);
-			body.Children.Add(actions);
-			body.Children.Add(editActions);
-			row.Child = body;
-			_personalSyncProfilesPanel.Children.Add(row);
+			return;
 		}
+		System.Windows.Controls.Button currentProfile = new()
+		{
+			HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
+			Padding = new Thickness(11.0, 9.0, 11.0, 9.0),
+			Margin = new Thickness(0.0, 0.0, 0.0, 2.0),
+			Tag = "NoTranslate"
+		};
+		StackPanel body = new();
+		body.Children.Add(new TextBlock
+		{
+			Text = profile.Track.Title + (string.IsNullOrWhiteSpace(profile.Track.Artist) ? string.Empty : " — " + profile.Track.Artist),
+			FontWeight = FontWeights.SemiBold,
+			TextTrimming = TextTrimming.CharacterEllipsis
+		});
+		body.Children.Add(new TextBlock
+		{
+			Text = (profile.Scope == PersonalSyncScope.Track ? "ALL PLAYERS" : profile.Source.Source.ToUpperInvariant()) + " · "
+				+ (profile.Mode == PersonalSyncMode.Advanced
+					? profile.Anchors.Count + " POINT / " + profile.Segments.Count + " HOLD"
+					: profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s"),
+			FontFamily = _englishDotFont,
+			FontSize = 8.5,
+			Margin = new Thickness(0.0, 3.0, 0.0, 0.0),
+			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(byte.MaxValue, 138, 61)),
+			Tag = "NoTranslate"
+		});
+		currentProfile.Content = body;
+		currentProfile.Click += delegate { OpenPersonalSyncHistory(profile.Id); };
+		_personalSyncProfilesPanel.Children.Add(currentProfile);
+	}
+
+	private void OpenPersonalSyncHistory(Guid? profileId = null)
+	{
+		if (_personalSyncManagerWindow != null)
+		{
+			_personalSyncManagerWindow.Activate();
+			return;
+		}
+		_personalSyncManagerWindow = new PersonalSyncManagerWindow(_personalSyncStore, _currentLanguage, profileId) { Owner = this };
+		_personalSyncManagerWindow.Closed += delegate { _personalSyncManagerWindow = null; RefreshPersonalSyncProfiles(); };
+		_personalSyncManagerWindow.Show();
+	}
+
+	private void PersonalSyncStore_ProfilesChanged(object? sender, EventArgs e)
+	{
+		Dispatcher.BeginInvoke((Action)RefreshPersonalSyncProfiles);
 	}
 
 	private System.Windows.Controls.Button CreateProfileButton(string content)
@@ -2180,6 +2339,9 @@ public class SettingsWindow : Window, IComponentConnector
 		OutlineSlider.Value = settings.OutlineThickness;
 		ShadowColorBox.Text = settings.ShadowColor;
 		ShadowSlider.Value = settings.ShadowDepth;
+		if (_glowColorBox != null) _glowColorBox.Text = settings.GlowColor;
+		if (_glowStrengthSlider != null) _glowStrengthSlider.Value = settings.GlowStrength;
+		if (_glowOpacitySlider != null) _glowOpacitySlider.Value = settings.GlowOpacity;
 		BackgroundColorBox.Text = settings.BackgroundColor;
 		BackgroundOpacitySlider.Value = settings.BackgroundOpacity;
 		OverlayOpacitySlider.Value = settings.OverlayOpacity;
@@ -2370,6 +2532,7 @@ public class SettingsWindow : Window, IComponentConnector
 			OpenLrclibButton.IsEnabled = lrclibRecord != null;
 			ResetManualButton.IsEnabled = true;
 		}
+		if (_personalSyncProfilesInitialized) RefreshPersonalSyncProfiles();
 	}
 
 	private string SourceLabel(LyricsLookupResult? lookup)
@@ -2583,6 +2746,7 @@ public class SettingsWindow : Window, IComponentConnector
 		ValidateColor(NextColorBox.Text);
 		ValidateColor(OutlineColorBox.Text);
 		ValidateColor(ShadowColorBox.Text);
+		ValidateColor(_glowColorBox?.Text ?? ResultSettings.GlowColor);
 		ValidateColor(BackgroundColorBox.Text);
 		ValidateColor(BorderColorBox.Text);
 		ValidateColor(UiColorBox.Text);
@@ -2614,6 +2778,9 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.OutlineThickness = OutlineSlider.Value;
 		appSettings.ShadowColor = NormalizeColor(ShadowColorBox.Text);
 		appSettings.ShadowDepth = ShadowSlider.Value;
+		appSettings.GlowColor = NormalizeColor(_glowColorBox?.Text ?? ResultSettings.GlowColor);
+		appSettings.GlowStrength = _glowStrengthSlider?.Value ?? ResultSettings.GlowStrength;
+		appSettings.GlowOpacity = _glowOpacitySlider?.Value ?? ResultSettings.GlowOpacity;
 		appSettings.BackgroundColor = NormalizeColor(BackgroundColorBox.Text);
 		appSettings.BackgroundOpacity = BackgroundOpacitySlider.Value;
 		appSettings.OverlayOpacity = OverlayOpacitySlider.Value;
@@ -2699,6 +2866,9 @@ public class SettingsWindow : Window, IComponentConnector
 		BackgroundColorBox.Text = theme.Background;
 		OutlineColorBox.Text = theme.Outline;
 		ShadowColorBox.Text = theme.Shadow;
+		if (_glowColorBox != null) _glowColorBox.Text = theme.Glow;
+		if (_glowStrengthSlider != null) _glowStrengthSlider.Value = 14.0;
+		if (_glowOpacitySlider != null) _glowOpacitySlider.Value = 0.55;
 		BorderColorBox.Text = theme.Border;
 		UiColorBox.Text = theme.Ui;
 		_suppressPreview = false;
@@ -2707,10 +2877,14 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void CustomColor_Click(object sender, RoutedEventArgs e)
 	{
-		if (!(sender is System.Windows.Controls.Button { Tag: string tag }) || !(FindName(tag) is System.Windows.Controls.TextBox textBox))
+		if (sender is not System.Windows.Controls.Button { Tag: string tag })
 		{
 			return;
 		}
+		System.Windows.Controls.TextBox? textBox = string.Equals(tag, "GlowColorBox", StringComparison.Ordinal)
+			? _glowColorBox
+			: FindName(tag) as System.Windows.Controls.TextBox;
+		if (textBox == null) return;
 		System.Windows.Media.Color color = ParseColor(textBox.Text);
 		using ColorDialog colorDialog = new ColorDialog
 		{
@@ -2735,6 +2909,9 @@ public class SettingsWindow : Window, IComponentConnector
 		NextColorBox.Text = appSettings.NextTextColor;
 		OutlineColorBox.Text = appSettings.OutlineColor;
 		ShadowColorBox.Text = appSettings.ShadowColor;
+		if (_glowColorBox != null) _glowColorBox.Text = appSettings.GlowColor;
+		if (_glowStrengthSlider != null) _glowStrengthSlider.Value = appSettings.GlowStrength;
+		if (_glowOpacitySlider != null) _glowOpacitySlider.Value = appSettings.GlowOpacity;
 		BackgroundColorBox.Text = appSettings.BackgroundColor;
 		BorderColorBox.Text = appSettings.BorderColor;
 		UiColorBox.Text = appSettings.UiColor;

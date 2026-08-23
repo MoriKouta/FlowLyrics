@@ -797,23 +797,31 @@ public class MainWindow : Window, IComponentConnector
 	{
 		_personalSyncButton = new System.Windows.Controls.Button
 		{
-			Content = "SYNC",
+			Content = new TextBlock
+			{
+				Text = "S",
+				FontFamily = _englishDotFont,
+				FontSize = 12.0,
+				FontWeight = FontWeights.Bold,
+				Foreground = System.Windows.Media.Brushes.White,
+				HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center
+			},
 			FontFamily = _englishDotFont,
-			FontSize = 9.0,
+			FontSize = 12.0,
 			FontWeight = FontWeights.SemiBold,
 			Foreground = System.Windows.Media.Brushes.White,
-			Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(34, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
-			BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(100, byte.MaxValue, byte.MaxValue, byte.MaxValue)),
-			BorderThickness = new Thickness(1.0),
-			Padding = new Thickness(9.0, 4.0, 9.0, 4.0),
-			HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-			VerticalAlignment = VerticalAlignment.Top,
+			Width = 30.0,
+			Height = 30.0,
+			Margin = new Thickness(2.0, 0.0, 2.0, 0.0),
+			Padding = new Thickness(0.0),
 			Cursor = System.Windows.Input.Cursors.Hand,
 			IsEnabled = false
 		};
+		if (base.Resources["SmallMediaButton"] is Style syncButtonStyle) _personalSyncButton.Style = syncButtonStyle;
 		_personalSyncButton.Click += PersonalSyncButton_Click;
-		HeaderPanel.Children.Add(_personalSyncButton);
-		TrackInfoPanel.Margin = new Thickness(0.0, 0.0, 76.0, 0.0);
+		int syncButtonIndex = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
+		RightControlGroup.Children.Insert(syncButtonIndex, _personalSyncButton);
 
 		StackPanel content = new() { Margin = new Thickness(13.0), Width = 286.0 };
 		DockPanel titleRow = new() { LastChildFill = true };
@@ -943,26 +951,11 @@ public class MainWindow : Window, IComponentConnector
 
 	private void PersonalSyncButton_Click(object sender, RoutedEventArgs e)
 	{
-		if (_personalSyncPopup == null || _snapshot == null || _lyrics?.HasSyncedLyrics != true || _lyricsLookup == null)
+		if (_snapshot == null || _lyrics?.HasSyncedLyrics != true || _lyricsLookup == null)
 		{
 			return;
 		}
-		if (_personalSyncPopup.IsOpen)
-		{
-			ClosePersonalSyncEditor(save: true);
-			return;
-		}
-
-		_personalSyncEditingProfile = _personalSyncActiveProfile == null
-			? CreateCurrentPersonalSyncProfile()
-			: _personalSyncActiveProfile.Clone();
-		_personalSyncUndo.Clear();
-		_personalSyncRedo.Clear();
-		_personalSyncSelectedLineIndex = -1;
-		_personalSyncActiveProfile = _personalSyncEditingProfile;
-		RefreshPersonalSyncPopup();
-		_personalSyncPopup.IsOpen = true;
-		InvalidatePersonalSyncRendering();
+		OpenAdvancedPersonalSync_Click(sender, e);
 	}
 
 	private PersonalSyncProfile CreateCurrentPersonalSyncProfile()
@@ -1148,19 +1141,21 @@ public class MainWindow : Window, IComponentConnector
 		PersonalSyncProfile? profile = _personalSyncActiveProfile;
 		if (profile == null || profile.Mode == PersonalSyncMode.None)
 		{
-			_personalSyncButton.Content = _personalSyncResolution.HasProfileForDifferentLyrics ? "SYNC ?" : "SYNC";
 			_personalSyncButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(34, byte.MaxValue, byte.MaxValue, byte.MaxValue));
+			_personalSyncButton.Opacity = _personalSyncResolution.HasProfileForDifferentLyrics ? 0.78 : 1.0;
 		}
 		else
 		{
-			_personalSyncButton.Content = profile.Mode == PersonalSyncMode.Advanced
-				? "SYNC •"
-				: "SYNC " + profile.OffsetSeconds.ToString("+0.0;-0.0;0.0");
 			_personalSyncButton.Background = CreateDisplayBrush(_settings.UiColor, 0.5, System.Windows.Media.Color.FromRgb(byte.MaxValue, 107, 44), preservePlayerUi: true, ignoreSourceAlpha: true);
+			_personalSyncButton.Opacity = 1.0;
 		}
 		_personalSyncButton.ToolTip = _personalSyncResolution.HasProfileForDifferentLyrics
 			? PersonalSyncText("A profile for different lyrics was not applied.", "別の歌詞用の調整は適用されていません。")
-			: PersonalSyncText("Personal lyric timing", "個人用の歌詞タイミング");
+			: profile == null || profile.Mode == PersonalSyncMode.None
+				? PersonalSyncText("Personal lyric timing", "個人用の歌詞タイミング")
+				: PersonalSyncText("Personal Sync: ", "Personal Sync: ") + (profile.Mode == PersonalSyncMode.Advanced
+					? PersonalSyncText("timeline edits", "途中変更あり")
+					: profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s");
 	}
 
 	private async void PersonalSyncPopup_Closed(object? sender, EventArgs e)
@@ -1231,7 +1226,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void OpenAdvancedPersonalSync_Click(object sender, RoutedEventArgs e)
 	{
-		if (_personalSyncEditingProfile == null || _snapshot == null || _lyrics?.HasSyncedLyrics != true) return;
+		if (_snapshot == null || _lyrics?.HasSyncedLyrics != true) return;
 		if (_personalSyncAdvancedWindow != null)
 		{
 			_personalSyncAdvancedWindow.Activate();
@@ -1242,7 +1237,7 @@ public class MainWindow : Window, IComponentConnector
 		_personalSyncAdvancedWindow = new PersonalSyncWindow(
 			_personalSyncStore,
 			context,
-			_personalSyncEditingProfile,
+			_personalSyncActiveProfile,
 			_lyrics.Lines,
 			() =>
 			{
@@ -1258,20 +1253,21 @@ public class MainWindow : Window, IComponentConnector
 		{
 			if (profile == null)
 			{
-				_personalSyncEditingProfile = null;
 				_personalSyncActiveProfile = null;
+				_personalSyncResolution = new PersonalSyncResolution(null, false);
+				UpdatePersonalSyncButton();
 				InvalidatePersonalSyncRendering();
 				return;
 			}
-			if (_personalSyncEditingProfile != null) _personalSyncUndo.Push(_personalSyncEditingProfile.Clone());
-			_personalSyncEditingProfile = profile.Clone();
-			_personalSyncRedo.Clear();
-			ApplyPersonalSyncEdit();
+			_personalSyncActiveProfile = profile.Clone();
+			_personalSyncResolution = new PersonalSyncResolution(_personalSyncActiveProfile, false);
+			UpdatePersonalSyncButton();
+			InvalidatePersonalSyncRendering();
 		};
 		_personalSyncAdvancedWindow.Closed += delegate
 		{
 			_personalSyncAdvancedWindow = null;
-			RefreshPersonalSyncPopup();
+			RefreshPersonalSyncResolution(force: true);
 		};
 		_personalSyncAdvancedWindow.Show();
 	}
@@ -1671,6 +1667,9 @@ public class MainWindow : Window, IComponentConnector
 		System.Windows.Media.FontFamily fontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily);
 		System.Windows.Media.Brush stroke = CreateDisplayBrush(_settings.OutlineColor, 1.0, Colors.Black);
 		System.Windows.Media.Brush shadowBrush = CreateDisplayBrush(_settings.ShadowColor, 1.0, Colors.Black);
+		System.Windows.Media.Color glowColor = ParseColor(_settings.GlowColor, Colors.White);
+		if (_settings.ReverseColors) glowColor = ApplyReverseColor(glowColor);
+		double glowOpacity = Math.Clamp(_settings.GlowOpacity * glowColor.A / 255.0, 0.0, 1.0);
 		string textAlignment = _settings.TextAlignment;
 		TextAlignment textAlignment2 = ((textAlignment == "Center") ? TextAlignment.Center : ((textAlignment == "Right") ? TextAlignment.Right : TextAlignment.Left));
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -1684,6 +1683,16 @@ public class MainWindow : Window, IComponentConnector
 			outlinedText.StrokeThickness = _settings.OutlineThickness;
 			outlinedText.ShadowBrush = shadowBrush;
 			outlinedText.ShadowDepth = _settings.ShadowDepth;
+			outlinedText.Effect = _settings.GlowStrength > 0.05 && glowOpacity > 0.001
+				? new System.Windows.Media.Effects.DropShadowEffect
+				{
+					Color = System.Windows.Media.Color.FromRgb(glowColor.R, glowColor.G, glowColor.B),
+					BlurRadius = _settings.GlowStrength,
+					ShadowDepth = 0.0,
+					Opacity = glowOpacity,
+					RenderingBias = System.Windows.Media.Effects.RenderingBias.Quality
+				}
+				: null;
 			outlinedText.TextAlignment = textAlignment2;
 			outlinedText.AutoFit = _settings.AutoFitText;
 			outlinedText.Wrap = _settings.WrapLongLines;
@@ -1907,6 +1916,10 @@ public class MainWindow : Window, IComponentConnector
 		yield return PreviousButton;
 		yield return PlayPauseButton;
 		yield return NextButton;
+		if (_personalSyncButton != null)
+		{
+			yield return _personalSyncButton;
+		}
 		if (_reverseColorsButton != null)
 		{
 			yield return _reverseColorsButton;
@@ -1972,6 +1985,10 @@ public class MainWindow : Window, IComponentConnector
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		VolumeButton.Visibility = ((!flag4) ? Visibility.Collapsed : Visibility.Visible);
+		if (_personalSyncButton != null)
+		{
+			_personalSyncButton.Visibility = VolumeButton.Visibility;
+		}
 		if (_reverseColorsButton != null)
 		{
 			_reverseColorsButton.Visibility = VolumeButton.Visibility;

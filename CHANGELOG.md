@@ -12,6 +12,7 @@
 - Added `1.3.1-dev.6` with provider-scoped Apple Music and browser metadata repair plus a neutral EXCLUDE toggle.
 - Added `1.3.1-dev.7` with ranked multilingual YouTube metadata interpretations, corrected populated Apple Music fields, dotted EXCLUDE disclosure, and anchored plain-lyrics auto-scroll resume.
 - Added `1.3.1-dev.8` with non-destructive Personal Sync profiles, source-aware fallback, line alignment, undo/redo, advanced anchors and lyric-hold ranges, profile management, and diagnostics.
+- Added `1.3.1-dev.9` with a movable lyrics-first Personal Sync editor, searchable visual sync history, a compact player `S` control, and customizable behind-text Glow.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.
@@ -22,6 +23,7 @@
 - Generalized per-session volume and mute control from Spotify to the selected player, including Apple Music, TIDAL, VLC, and major browsers.
 - Made Lyrics Only a persistent visual mode that preserves and disables the underlying component choices instead of clearing them.
 - Kept Personal Sync data in a separate atomic JSON store so LRCLIB responses, local LRC files, and lyrics-cache timestamps are never rewritten.
+- Split text effects from window surfaces in Settings, and extended curated, random, saved, imported, and exported palettes with Glow color, strength, and opacity.
 
 ### Fixed
 
@@ -33,11 +35,14 @@
 - Removed the native blue hover surface from EXCLUDE and kept its label white in both accordion states.
 - Recovered Apple Music albums embedded in its artist field and conservatively extracted credited YouTube titles/artists from official-video naming patterns.
 - Moved Lyrics Only directly above Border Width and made a second press restore the previously selected component states.
+- Prevented Personal Sync from creating a saved profile when its editor is opened and closed without an edit.
+- Placed the Personal Sync editor beside the lyric overlay when screen space permits, while retaining a normal draggable window for manual placement.
 
 ### Tests
 
 - Added automated coverage for provider metadata repair, metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
 - Added Personal Sync coverage for no-op mapping, positive/negative offsets, arbitrary seeking, anchors, lyric holds, source precedence, lyrics-ID mismatch protection, persistence, and timestamp immutability.
+- Added Glow normalization/preset coverage and a persistence regression test for untouched Personal Sync profiles.
 
 ## 1.3.0 - 2026-07-20
 
