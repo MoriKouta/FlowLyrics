@@ -447,6 +447,34 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
+	public void PersonalSync_HoldCanResumeFromAnExplicitlySelectedLyric()
+	{
+		PersonalSyncProfile profile = new()
+		{
+			Mode = PersonalSyncMode.Advanced,
+			Segments = new()
+			{
+				new PersonalSyncSegment
+				{
+					Type = PersonalSyncSegmentType.Hold,
+					PlaybackStartSeconds = 10,
+					PlaybackEndSeconds = 20,
+					LyricsTimeSeconds = 8
+				}
+			},
+			Anchors = new()
+			{
+				new PersonalSyncAnchor { PlaybackSeconds = 20, LyricsSeconds = 15 }
+			}
+		};
+
+		Assert.Equal(8, PersonalSyncMapper.MapPlaybackToLyrics(10, profile), 6);
+		Assert.Equal(8, PersonalSyncMapper.MapPlaybackToLyrics(19.9, profile), 6);
+		Assert.Equal(15, PersonalSyncMapper.MapPlaybackToLyrics(20, profile), 6);
+		Assert.Equal(16, PersonalSyncMapper.MapPlaybackToLyrics(21, profile), 6);
+	}
+
+	[Fact]
 	public async Task PersonalSyncStore_PrefersSourceProfileThenTrackFallback()
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-personal-sync-" + Guid.NewGuid().ToString("N"));
@@ -572,6 +600,112 @@ public sealed class CoreBehaviorTests
 
 		Assert.Equal(firstContext.Track.StableTrackKey, secondContext.Track.StableTrackKey);
 		Assert.NotEqual(firstContext.Source.StableSourceKey, secondContext.Source.StableSourceKey);
+	}
+
+	[Fact]
+	public void PersonalSyncIdentity_LabelsBrowserYouTubeSeparatelyAndMarksInference()
+	{
+		TrackInfo track = new("BAD", "ATEEZ", "GOLDEN HOUR : Part.3", TimeSpan.FromSeconds(225),
+			SearchAlternates: new[] { new SearchMetadataCandidate("BAD", "ATEEZ", string.Empty) },
+			OriginalMediaTitle: "ATEEZ(에이티즈) - 'BAD' Official MV",
+			OriginalMediaArtist: "KQ ENTERTAINMENT");
+		PlaybackSnapshot snapshot = new(track, TimeSpan.Zero, true, DateTimeOffset.UtcNow,
+			SourceAppUserModelId: "chrome", SourceDisplayName: "Google Chrome");
+
+		PersonalSyncContext context = PersonalSyncIdentity.Create(snapshot, new LyricsLookupResult
+		{
+			LrclibRecord = new LrclibRecord { Id = 36384212 }
+		});
+
+		Assert.Equal("YouTube", context.Source.Provider);
+		Assert.Equal("YouTube · Google Chrome", context.Source.ContextLabel);
+		Assert.True(context.Source.ProviderInferred);
+	}
+
+	[Fact]
+	public void PersonalSyncIdentity_LabelsOtherBrowserMediaWithoutClaimingYouTube()
+	{
+		TrackInfo track = new("Episode 1", "Podcast", string.Empty, TimeSpan.FromMinutes(20),
+			OriginalMediaTitle: "Episode 1", OriginalMediaArtist: "Podcast");
+		PlaybackSnapshot snapshot = new(track, TimeSpan.Zero, true, DateTimeOffset.UtcNow,
+			SourceAppUserModelId: "firefox", SourceDisplayName: "Firefox");
+
+		PersonalSyncContext context = PersonalSyncIdentity.Create(snapshot, new LyricsLookupResult());
+
+		Assert.Equal("Browser media", context.Source.Provider);
+		Assert.Equal("Browser media · Firefox", context.Source.ContextLabel);
+		Assert.False(context.Source.ProviderInferred);
+	}
+
+	[Fact]
+	public void PersonalSyncProfile_CloneKeepsVisibleSourceGrouping()
+	{
+		PersonalSyncProfile profile = new()
+		{
+			Source = new PersonalSyncSourceIdentity
+			{
+				Source = "Google Chrome",
+				Provider = "YouTube",
+				ContextLabel = "YouTube · Google Chrome",
+				ProviderInferred = true
+			}
+		};
+
+		PersonalSyncProfile clone = profile.Clone();
+
+		Assert.Equal("YouTube", clone.Source.Provider);
+		Assert.Equal("YouTube · Google Chrome", clone.Source.ContextLabel);
+		Assert.True(clone.Source.ProviderInferred);
+	}
+
+	[Fact]
+	public void PersonalSyncEditors_DoNotExposeManualTimeEntryFields()
+	{
+		FieldInfo[] editorTextBoxes = typeof(FlowLyrics.PersonalSyncWindow)
+			.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+			.Where(field => field.FieldType == typeof(System.Windows.Controls.TextBox))
+			.ToArray();
+		FieldInfo[] historyTextBoxes = typeof(FlowLyrics.PersonalSyncManagerWindow)
+			.GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+			.Where(field => field.FieldType == typeof(System.Windows.Controls.TextBox))
+			.ToArray();
+
+		Assert.Empty(editorTextBoxes);
+		Assert.Single(historyTextBoxes);
+		Assert.Equal("_searchBox", historyTextBoxes[0].Name);
+	}
+
+	[Fact]
+	public void PersonalSyncWindows_ConstructWithThemedControlsOnStaThread()
+	{
+		Exception? failure = null;
+		Thread thread = new(() =>
+		{
+			try
+			{
+				string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-sync-ui-" + Guid.NewGuid().ToString("N"));
+				PersonalSyncStore store = new(directory);
+				PersonalSyncContext context = PersonalSyncTestContext("chrome", 42);
+				_ = new FlowLyrics.PersonalSyncWindow(
+					store,
+					context,
+					null,
+					new[] { new LyricLine(TimeSpan.FromSeconds(1), "line") },
+					() => 0,
+					() => TimeSpan.FromSeconds(1),
+					"ja-JP");
+				_ = new FlowLyrics.PersonalSyncManagerWindow(store, "ja-JP");
+			}
+			catch (Exception ex)
+			{
+				failure = ex;
+			}
+		});
+		thread.SetApartmentState(ApartmentState.STA);
+		thread.Start();
+		thread.Join();
+
+		Assert.Null(failure);
 	}
 
 	[Fact]

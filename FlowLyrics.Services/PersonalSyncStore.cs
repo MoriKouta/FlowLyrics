@@ -192,6 +192,8 @@ public sealed class PersonalSyncStore
 		profile.SchemaVersion = PersonalSyncProfile.CurrentSchemaVersion;
 		profile.Track ??= new PersonalSyncTrackIdentity();
 		profile.Source ??= new PersonalSyncSourceIdentity();
+		if (string.IsNullOrWhiteSpace(profile.Source.Provider)) profile.Source.Provider = profile.Source.Source;
+		if (string.IsNullOrWhiteSpace(profile.Source.ContextLabel)) profile.Source.ContextLabel = profile.Source.Source;
 		profile.Lyrics ??= new PersonalSyncLyricsIdentity();
 		profile.Anchors ??= new List<PersonalSyncAnchor>();
 		profile.Segments ??= new List<PersonalSyncSegment>();

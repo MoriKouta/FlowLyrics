@@ -13,6 +13,7 @@
 - Added `1.3.1-dev.7` with ranked multilingual YouTube metadata interpretations, corrected populated Apple Music fields, dotted EXCLUDE disclosure, and anchored plain-lyrics auto-scroll resume.
 - Added `1.3.1-dev.8` with non-destructive Personal Sync profiles, source-aware fallback, line alignment, undo/redo, advanced anchors and lyric-hold ranges, profile management, and diagnostics.
 - Added `1.3.1-dev.9` with a movable lyrics-first Personal Sync editor, searchable visual sync history, a compact player `S` control, and customizable behind-text Glow.
+- Added `1.3.1-dev.10` with a press-to-hold/select-to-resume Personal Sync workflow, top-to-bottom visual timing flow, button-only point editing, source-aware history, matched `S`/`R` player glyphs, and guaranteed separate Glow/Text Effects/Surface controls.
 - Replaced Spotify-only GSMTC discovery with a platform-neutral provider contract, stable AUTO selection, Preferred Player fallback, source blacklist, metadata stabilization, and capability-aware controls.
 - Added player/source labels, a live Media Session Diagnostics window, raw/normalized metadata inspection, and clipboard-safe diagnostics.
 - Reworked LRCLIB candidate search into sequential full-fields, title/artist, and title-only requests with exact query encoding, ID deduplication, safe metadata normalization fallback, and detailed bounded HTTP diagnostics.

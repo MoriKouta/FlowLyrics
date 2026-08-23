@@ -946,15 +946,17 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void InitializeGlowControls()
 	{
-		if (_glowControlsInitialized)
-		{
-			return;
-		}
-
+		if (_glowControlsInitialized) return;
+		StackPanel? colorStack = GetTabStack("Color");
 		System.Windows.Controls.Button? uiPickButton = _uiColorPickButton ?? FindVisualChildren<System.Windows.Controls.Button>(this)
 			.FirstOrDefault(button => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
-		if (uiPickButton?.Parent is not Grid colorGrid || OutlineSlider.Parent is not Grid effectsGrid || effectsGrid.Parent is not StackPanel effectsCard)
+		Grid? colorGrid = uiPickButton?.Parent as Grid;
+		Grid? effectsGrid = OutlineSlider.Parent as Grid;
+		StackPanel? originalEffectsContent = effectsGrid?.Parent as StackPanel;
+		Border? originalEffectsCard = originalEffectsContent?.Parent as Border;
+		if (colorStack == null || colorGrid == null || effectsGrid == null || originalEffectsContent == null || originalEffectsCard == null)
 		{
+			Debug.WriteLine("Glow UI contract failed: Color tab structure was not found.");
 			return;
 		}
 
@@ -974,7 +976,7 @@ public class SettingsWindow : Window, IComponentConnector
 		glowSwatch.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding(nameof(System.Windows.Controls.TextBox.Text)) { Source = _glowColorBox });
 		System.Windows.Controls.Button glowPick = new()
 		{
-			Content = "Pick",
+			Content = "PICK",
 			Tag = "GlowColorBox",
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Left
 		};
@@ -987,12 +989,12 @@ public class SettingsWindow : Window, IComponentConnector
 		colorGrid.Children.Add(glowColorLabel);
 		colorGrid.Children.Add(glowSwatch);
 		colorGrid.Children.Add(glowPick);
+		colorGrid.Children.Add(_glowColorBox);
 
-		int effectsIndex = effectsCard.Children.IndexOf(effectsGrid);
 		Grid textEffectsGrid = CreateThreeColumnGrid();
 		MoveSettingsRow(effectsGrid, 0, textEffectsGrid, 0);
 		MoveSettingsRow(effectsGrid, 1, textEffectsGrid, 1);
-		AddSettingsRow(textEffectsGrid, 2, "Glow Strength", _glowStrengthSlider, "{0:0.0}px");
+		AddSettingsRow(textEffectsGrid, 2, "Glow Blur", _glowStrengthSlider, "{0:0.0}px");
 		AddSettingsRow(textEffectsGrid, 3, "Glow Opacity", _glowOpacitySlider, "{0:P0}");
 
 		Grid surfaceGrid = CreateThreeColumnGrid();
@@ -1000,28 +1002,37 @@ public class SettingsWindow : Window, IComponentConnector
 		MoveSettingsRow(effectsGrid, 3, surfaceGrid, 1);
 		MoveSettingsRow(effectsGrid, 4, surfaceGrid, 2);
 		MoveSettingsRow(effectsGrid, 5, surfaceGrid, 3);
-		effectsCard.Children.Remove(effectsGrid);
-		TextBlock? sectionTitle = effectsCard.Children.OfType<TextBlock>().FirstOrDefault();
-		if (sectionTitle != null)
+		Border textEffectsCard = CreateSettingsCard("TEXT EFFECTS", textEffectsGrid, "TextEffectsCard");
+		Border surfaceCard = CreateSettingsCard("SURFACE", surfaceGrid, "SurfaceCard");
+		int cardIndex = colorStack.Children.IndexOf(originalEffectsCard);
+		if (cardIndex < 0)
 		{
-			sectionTitle.Text = "Text Effects";
-			sectionTitle.Tag = "NoTranslate";
+			Debug.WriteLine("Glow UI contract failed: Effects card was not in the Color tab.");
+			return;
 		}
-		effectsCard.Children.Insert(Math.Max(0, effectsIndex), textEffectsGrid);
-		TextBlock surfaceTitle = new()
-		{
-			Text = "Surface",
-			Margin = new Thickness(0.0, 18.0, 0.0, 4.0),
-			Tag = "NoTranslate"
-		};
-		surfaceTitle.SetResourceReference(FrameworkElement.StyleProperty, "SectionTitle");
-		effectsCard.Children.Insert(Math.Max(0, effectsIndex) + 1, surfaceTitle);
-		effectsCard.Children.Insert(Math.Max(0, effectsIndex) + 2, surfaceGrid);
+		colorStack.Children.Remove(originalEffectsCard);
+		colorStack.Children.Insert(cardIndex, textEffectsCard);
+		colorStack.Children.Insert(cardIndex + 1, surfaceCard);
 
 		_glowColorBox.TextChanged += delegate { NotifyPreviewChanged(); };
 		_glowStrengthSlider.ValueChanged += delegate { NotifyPreviewChanged(); };
 		_glowOpacitySlider.ValueChanged += delegate { NotifyPreviewChanged(); };
-		_glowControlsInitialized = true;
+		_glowControlsInitialized = colorStack.Children.Contains(textEffectsCard)
+			&& colorStack.Children.Contains(surfaceCard)
+			&& glowPick.Parent == colorGrid;
+		if (!_glowControlsInitialized) throw new InvalidOperationException("Glow controls could not be attached to the Color tab.");
+	}
+
+	private Border CreateSettingsCard(string title, UIElement content, string name)
+	{
+		StackPanel panel = new() { Tag = name };
+		TextBlock heading = new() { Text = title, Tag = "NoTranslate" };
+		heading.SetResourceReference(FrameworkElement.StyleProperty, "SectionTitle");
+		panel.Children.Add(heading);
+		panel.Children.Add(content);
+		Border card = new() { Child = panel, Tag = name };
+		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
+		return card;
 	}
 
 	private static Grid CreateThreeColumnGrid()

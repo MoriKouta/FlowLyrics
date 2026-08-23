@@ -18,6 +18,7 @@ public static class PersonalSyncIdentity
 		string sourceId = snapshot.SourceAppUserModelId?.Trim() ?? string.Empty;
 		string sourceName = string.IsNullOrWhiteSpace(snapshot.SourceDisplayName) ? "Media Session" : snapshot.SourceDisplayName.Trim();
 		string videoId = TryExtractYouTubeVideoId(originalTitle) ?? string.Empty;
+		PersonalSyncSourceDescription sourceDescription = PersonalSyncSourceClassifier.Classify(snapshot, videoId);
 		string sourceSeed = string.Join("|",
 			Normalize(sourceId.Length > 0 ? sourceId : sourceName),
 			videoId.Length > 0 ? "youtube:" + videoId : "media",
@@ -38,6 +39,9 @@ public static class PersonalSyncIdentity
 			{
 				StableSourceKey = "source:" + Hash(sourceSeed),
 				Source = sourceName,
+				Provider = sourceDescription.Provider,
+				ContextLabel = sourceDescription.ContextLabel,
+				ProviderInferred = sourceDescription.IsInferred,
 				SourceAppUserModelId = sourceId,
 				OriginalMediaTitle = originalTitle,
 				OriginalMediaArtist = originalArtist,

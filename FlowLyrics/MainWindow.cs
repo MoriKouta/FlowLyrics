@@ -801,14 +801,18 @@ public class MainWindow : Window, IComponentConnector
 			{
 				Text = "S",
 				FontFamily = _englishDotFont,
-				FontSize = 12.0,
+				FontSize = 16.5,
+				LineHeight = 16.5,
 				FontWeight = FontWeights.Bold,
 				Foreground = System.Windows.Media.Brushes.White,
+				TextAlignment = TextAlignment.Center,
 				HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-				VerticalAlignment = VerticalAlignment.Center
+				VerticalAlignment = VerticalAlignment.Center,
+				RenderTransform = new TranslateTransform(1.2, 0.0),
+				IsHitTestVisible = false
 			},
 			FontFamily = _englishDotFont,
-			FontSize = 12.0,
+			FontSize = 16.5,
 			FontWeight = FontWeights.SemiBold,
 			Foreground = System.Windows.Media.Brushes.White,
 			Width = 30.0,
@@ -818,6 +822,7 @@ public class MainWindow : Window, IComponentConnector
 			Cursor = System.Windows.Input.Cursors.Hand,
 			IsEnabled = false
 		};
+		if (_personalSyncButton.Content is TextBlock syncIcon) TextOptions.SetTextFormattingMode(syncIcon, TextFormattingMode.Display);
 		if (base.Resources["SmallMediaButton"] is Style syncButtonStyle) _personalSyncButton.Style = syncButtonStyle;
 		_personalSyncButton.Click += PersonalSyncButton_Click;
 		int syncButtonIndex = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));

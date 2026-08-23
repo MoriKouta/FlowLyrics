@@ -231,7 +231,7 @@
           <TextBlock FontFamily="{StaticResource EnglishDotFont}" FontSize="31" FontWeight="Bold" Foreground="{DynamicResource Orange}" Text="Lyrics" Tag="NoTranslate" />
         </StackPanel>
         <Border HorizontalAlignment="Right" Background="Transparent" BorderThickness="0">
-          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.1-dev.9" Tag="NoTranslate" />
+          <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" TextAlignment="Center" FontFamily="{StaticResource EnglishDotFont}" Foreground="White" FontSize="11.5" FontWeight="SemiBold" Text="v1.3.1-dev.10" Tag="NoTranslate" />
         </Border>
       </Grid>
     </Border>
@@ -433,6 +433,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
                   <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Active Lyrics" />
                   <Border Grid.Row="0" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=CurrentColorBox, Path=Text}" />
@@ -455,12 +456,15 @@
                   <TextBlock Grid.Row="6" Style="{StaticResource FieldLabel}" Text="Player UI" />
                   <Border Grid.Row="6" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=UiColorBox, Path=Text}" />
                   <Button Grid.Row="6" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="UiColorBox" Click="CustomColor_Click" />
+                  <TextBlock Grid.Row="7" Style="{StaticResource FieldLabel}" Text="Glow" />
+                  <Border Grid.Row="7" Grid.Column="1" Margin="4" CornerRadius="3" Background="{Binding ElementName=GlowColorBox, Path=Text}" />
+                  <Button Grid.Row="7" Grid.Column="2" HorizontalAlignment="Left" Content="Pick" Tag="GlowColorBox" Click="CustomColor_Click" />
                 </Grid>
               </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}">
               <StackPanel>
-                <TextBlock Style="{StaticResource SectionTitle}" Text="Effects &amp; Surface" />
+                <TextBlock Style="{StaticResource SectionTitle}" Text="TEXT EFFECTS" />
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="150" />
@@ -472,8 +476,6 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                   </Grid.RowDefinitions>
                   <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Outline" />
                   <Slider Name="OutlineSlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="8" TickFrequency="0.1" />
@@ -481,18 +483,42 @@
                   <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Shadow Distance" />
                   <Slider Name="ShadowSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="12" TickFrequency="0.5" />
                   <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=ShadowSlider, Path=Value, StringFormat={}{0:0.0}px}" />
-                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Background Opacity" />
-                  <Slider Name="BackgroundOpacitySlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="1" TickFrequency="0.05" />
-                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=BackgroundOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
-                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Window Opacity" />
-                  <Slider Name="OverlayOpacitySlider" Grid.Row="3" Grid.Column="1" Minimum="0.15" Maximum="1" TickFrequency="0.05" />
-                  <TextBlock Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=OverlayOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
-                  <TextBlock Grid.Row="4" Style="{StaticResource FieldLabel}" Text="Corner Radius" />
-                  <Slider Name="CornerRadiusSlider" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="40" TickFrequency="1" />
-                  <TextBlock Grid.Row="4" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=CornerRadiusSlider, Path=Value, StringFormat={}{0:0}px}" />
-                  <TextBlock Grid.Row="5" Style="{StaticResource FieldLabel}" Text="Padding" />
-                  <Slider Name="PanelPaddingSlider" Grid.Row="5" Grid.Column="1" Minimum="4" Maximum="60" TickFrequency="1" />
-                  <TextBlock Grid.Row="5" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=PanelPaddingSlider, Path=Value, StringFormat={}{0:0}px}" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Glow Blur" />
+                  <Slider Name="GlowStrengthSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="40" TickFrequency="0.5" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=GlowStrengthSlider, Path=Value, StringFormat={}{0:0.0}px}" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Glow Opacity" />
+                  <Slider Name="GlowOpacitySlider" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=GlowOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Text="SURFACE" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="78" />
+                  </Grid.ColumnDefinitions>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Background Opacity" />
+                  <Slider Name="BackgroundOpacitySlider" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="0" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=BackgroundOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Window Opacity" />
+                  <Slider Name="OverlayOpacitySlider" Grid.Row="1" Grid.Column="1" Minimum="0.15" Maximum="1" TickFrequency="0.05" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=OverlayOpacitySlider, Path=Value, StringFormat={}{0:P0}}" />
+                  <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Corner Radius" />
+                  <Slider Name="CornerRadiusSlider" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="40" TickFrequency="1" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=CornerRadiusSlider, Path=Value, StringFormat={}{0:0}px}" />
+                  <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Padding" />
+                  <Slider Name="PanelPaddingSlider" Grid.Row="3" Grid.Column="1" Minimum="4" Maximum="60" TickFrequency="1" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding ElementName=PanelPaddingSlider, Path=Value, StringFormat={}{0:0}px}" />
                 </Grid>
               </StackPanel>
             </Border>
@@ -666,6 +692,7 @@
       <TextBox Name="NextColorBox" />
       <TextBox Name="OutlineColorBox" />
       <TextBox Name="ShadowColorBox" />
+      <TextBox Name="GlowColorBox" />
       <TextBox Name="BackgroundColorBox" />
       <TextBox Name="BorderColorBox" />
       <TextBox Name="UiColorBox" />

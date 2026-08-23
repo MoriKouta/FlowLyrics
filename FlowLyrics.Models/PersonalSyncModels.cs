@@ -35,6 +35,9 @@ public sealed class PersonalSyncSourceIdentity
 {
 	public string StableSourceKey { get; set; } = string.Empty;
 	public string Source { get; set; } = string.Empty;
+	public string Provider { get; set; } = string.Empty;
+	public string ContextLabel { get; set; } = string.Empty;
+	public bool ProviderInferred { get; set; }
 	public string SourceAppUserModelId { get; set; } = string.Empty;
 	public string OriginalMediaTitle { get; set; } = string.Empty;
 	public string OriginalMediaArtist { get; set; } = string.Empty;
@@ -60,6 +63,7 @@ public sealed class PersonalSyncAnchor
 public sealed class PersonalSyncSegment
 {
 	public Guid Id { get; set; } = Guid.NewGuid();
+	public Guid? ResumeAnchorId { get; set; }
 	public PersonalSyncSegmentType Type { get; set; } = PersonalSyncSegmentType.Normal;
 	public double PlaybackStartSeconds { get; set; }
 	public double PlaybackEndSeconds { get; set; }
@@ -68,7 +72,7 @@ public sealed class PersonalSyncSegment
 
 public sealed class PersonalSyncProfile
 {
-	public const int CurrentSchemaVersion = 1;
+	public const int CurrentSchemaVersion = 2;
 
 	public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 	public Guid Id { get; set; } = Guid.NewGuid();
@@ -102,6 +106,9 @@ public sealed class PersonalSyncProfile
 			{
 				StableSourceKey = Source.StableSourceKey,
 				Source = Source.Source,
+				Provider = Source.Provider,
+				ContextLabel = Source.ContextLabel,
+				ProviderInferred = Source.ProviderInferred,
 				SourceAppUserModelId = Source.SourceAppUserModelId,
 				OriginalMediaTitle = Source.OriginalMediaTitle,
 				OriginalMediaArtist = Source.OriginalMediaArtist,
@@ -125,6 +132,7 @@ public sealed class PersonalSyncProfile
 			Segments = Segments.ConvertAll(segment => new PersonalSyncSegment
 			{
 				Id = segment.Id,
+				ResumeAnchorId = segment.ResumeAnchorId,
 				Type = segment.Type,
 				PlaybackStartSeconds = segment.PlaybackStartSeconds,
 				PlaybackEndSeconds = segment.PlaybackEndSeconds,
