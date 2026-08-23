@@ -971,7 +971,7 @@ public class SettingsWindow : Window, IComponentConnector
 		colorGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		TextBlock glowColorLabel = CreateFieldLabel("Glow");
 		Border glowSwatch = new() { Margin = new Thickness(4.0), CornerRadius = new CornerRadius(3.0) };
-		glowSwatch.SetBinding(Border.BackgroundProperty, new Binding(nameof(System.Windows.Controls.TextBox.Text)) { Source = _glowColorBox });
+		glowSwatch.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding(nameof(System.Windows.Controls.TextBox.Text)) { Source = _glowColorBox });
 		System.Windows.Controls.Button glowPick = new()
 		{
 			Content = "Pick",
@@ -1050,7 +1050,7 @@ public class SettingsWindow : Window, IComponentConnector
 			VerticalAlignment = VerticalAlignment.Center,
 			Tag = "NoTranslate"
 		};
-		value.SetBinding(TextBlock.TextProperty, new Binding(nameof(Slider.Value)) { Source = slider, StringFormat = format });
+		value.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(Slider.Value)) { Source = slider, StringFormat = format });
 		Grid.SetRow(label, row);
 		Grid.SetRow(slider, row);
 		Grid.SetColumn(slider, 1);
