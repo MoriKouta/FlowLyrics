@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using FlowLyrics.Core;
 using FlowLyrics.Models;
 using FlowLyrics.Services;
 
@@ -376,8 +377,7 @@ public sealed class PersonalSyncManagerWindow : Window
 	{
 		PersonalSyncProfile? profile = Selected();
 		if (profile == null) return;
-		profile.OffsetSeconds = Round(profile.OffsetSeconds + delta);
-		if (profile.Mode == PersonalSyncMode.None) profile.Mode = PersonalSyncMode.Offset;
+		PersonalSyncTimeline.ShiftWholeTrack(profile, delta);
 		await _store.UpsertAsync(profile);
 		await RefreshAsync(profile.Id);
 	}

@@ -1,9 +1,11 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using FlowLyrics.Core;
 using FlowLyrics.Models;
 using FlowLyrics.Services;
@@ -15,6 +17,100 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class PersonalSyncGlobalAlignmentTests
 {
+	[Fact]
+	public async Task HistoryGlobalNudge_MovesPointsAndHoldsAndPersistsTheWholeTimeline()
+	{
+		string directory = Temp();
+		try
+		{
+			var context = Context(); var profile = Advanced(context); var store = new PersonalSyncStore(directory);
+			await store.UpsertAsync(profile);
+			Sta(() =>
+			{
+				var window = new PersonalSyncManagerWindow(store, "en-US", profile.Id);
+				try
+				{
+					window.ShowActivated = false; window.Show(); Pump();
+					PersonalSyncRuntimeTests.WaitUntil(() => Read<ListBox>(window, "_list").Items.Count == 1);
+					Task edit = (Task)Invoke(window, "EditOffsetAsync", 0.5)!;
+					PersonalSyncRuntimeTests.WaitUntil(() => edit.IsCompleted); edit.GetAwaiter().GetResult();
+					Assert.Contains("+5.5", Read<TextBlock>(window, "_offsetValue").Text);
+				}
+				finally { window.Close(); }
+			});
+			AssertShifted((await new PersonalSyncStore(directory).ResolveAsync(context)).Profile!, .5);
+		}
+		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+	}
+
+	[Theory]
+	[InlineData("menu-nudge", .5)]
+	[InlineData("editing-nudge", .5)]
+	[InlineData("legacy-align", 11)]
+	public void OverlayTimingCommands_PreserveAdvancedEdits(string command, double delta)
+	{
+		string directory = Temp();
+		try
+		{
+			Sta(() =>
+			{
+				using MediaSessionService media = new(new EmptyProvider());
+				MainWindow window = new(new SettingsService(directory), media);
+				try
+				{
+					window.ShowActivated = false; window.Show(); Pump(); StopTimers();
+					TrackInfo track = new("Study", "Artist", "", TimeSpan.FromSeconds(150));
+					LyricsResult lyrics = new([new(TimeSpan.FromSeconds(20), "A"), new(TimeSpan.FromSeconds(24), "B")], null, "LRCLIB");
+					LyricsLookupResult lookup = new() { Lyrics = lyrics, LrclibRecord = new() { Id = 321 }, Status = LyricsLookupStatus.LrclibAuto };
+					PlaybackSnapshot snapshot = new(track, TimeSpan.FromSeconds(36), false, DateTimeOffset.UtcNow);
+					var profile = Advanced(PersonalSyncIdentity.Create(snapshot, lookup));
+					Set("_snapshot", snapshot); Set("_lyrics", lyrics); Set("_lyricsLookup", lookup); Set("_personalSyncActiveProfile", profile);
+					Read<AppSettings>(window, "_settings").GlobalLyricsOffsetMs = 0;
+					if (command == "menu-nudge")
+					{
+						Invoke(window, "AdjustCurrentTrackOffset", -500);
+						PersonalSyncRuntimeTests.WaitUntil(() => !ReferenceEquals(profile, Read<PersonalSyncProfile>(window, "_personalSyncActiveProfile")));
+					}
+					else
+					{
+						Set("_personalSyncEditingProfile", profile); Set("_personalSyncSelectedLineIndex", 0);
+						if (command == "editing-nudge") Invoke(window, "AdjustPersonalSyncOffset", .5);
+						else Invoke(window, "PersonalSyncAlign_Click", window, new RoutedEventArgs());
+					}
+					AssertShifted(Read<PersonalSyncProfile>(window, "_personalSyncActiveProfile"), delta);
+				}
+				finally
+				{
+					StopTimers(); Read<IDisposable?>(window, "_hotkeys")?.Dispose(); Read<IDisposable?>(window, "_tray")?.Dispose();
+					Read<LyricsService>(window, "_lyricsService").Dispose(); Set("_allowClose", true); window.Close();
+				}
+				void Set(string field, object value) => typeof(MainWindow).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, value);
+				void StopTimers()
+				{
+					foreach (FieldInfo field in typeof(MainWindow).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+						if (field.GetValue(window) is DispatcherTimer timer) timer.Stop();
+				}
+			});
+		}
+		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+	}
+
+	private static PersonalSyncProfile Advanced(PersonalSyncContext context)
+	{
+		var anchor = new PersonalSyncAnchor { PlaybackSeconds = 75, LyricsSeconds = 55 };
+		return new() { Track = context.Track, Source = context.Source, Lyrics = context.Lyrics, Mode = PersonalSyncMode.Advanced,
+			OffsetSeconds = 5, Anchors = [anchor], Segments = [new() { Type = PersonalSyncSegmentType.Hold,
+				PlaybackStartSeconds = 60, PlaybackEndSeconds = 75, LyricsTimeSeconds = 55, ResumeAnchorId = anchor.Id }] };
+	}
+	private static void AssertShifted(PersonalSyncProfile profile, double delta)
+	{
+		Assert.Equal(PersonalSyncMode.Advanced, profile.Mode); Assert.Equal(5 + delta, profile.OffsetSeconds, 6);
+		var anchor = Assert.Single(profile.Anchors); var hold = Assert.Single(profile.Segments);
+		Assert.Equal(75 + delta, anchor.PlaybackSeconds, 6); Assert.Equal(55, anchor.LyricsSeconds);
+		Assert.Equal(60 + delta, hold.PlaybackStartSeconds, 6); Assert.Equal(75 + delta, hold.PlaybackEndSeconds, 6);
+		Assert.Equal(55, hold.LyricsTimeSeconds); Assert.Equal(anchor.Id, hold.ResumeAnchorId);
+	}
+
 	[Theory]
 	[InlineData(0, false)]
 	[InlineData(5, false)]

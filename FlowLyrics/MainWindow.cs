@@ -1185,21 +1185,17 @@ public class MainWindow : Window, IComponentConnector
 	{
 		if (_personalSyncEditingProfile == null) return;
 		PushPersonalSyncUndo();
-		_personalSyncEditingProfile.Mode = PersonalSyncMode.Offset;
-		_personalSyncEditingProfile.OffsetSeconds = Math.Clamp(Math.Round((_personalSyncEditingProfile.OffsetSeconds + delta) * 10.0) / 10.0, -120.0, 120.0);
-		_personalSyncEditingProfile.Anchors.Clear();
-		_personalSyncEditingProfile.Segments.Clear();
+		PersonalSyncTimeline.ShiftWholeTrack(_personalSyncEditingProfile, delta);
 		ApplyPersonalSyncEdit();
 	}
 
 	private void PersonalSyncAlign_Click(object sender, RoutedEventArgs e)
 	{
 		if (_personalSyncEditingProfile == null || _lyrics?.HasSyncedLyrics != true || _personalSyncSelectedLineIndex < 0 || _personalSyncSelectedLineIndex >= _lyrics.Lines.Count) return;
+		double? current = PersonalSyncTimeline.PlaybackForLyric(_lyrics.Lines[_personalSyncSelectedLineIndex].Time.TotalSeconds, _personalSyncEditingProfile);
+		if (!current.HasValue) return;
 		PushPersonalSyncUndo();
-		_personalSyncEditingProfile.Mode = PersonalSyncMode.Offset;
-		_personalSyncEditingProfile.OffsetSeconds = Math.Clamp(GetBasePlaybackPosition().TotalSeconds - _lyrics.Lines[_personalSyncSelectedLineIndex].Time.TotalSeconds, -120.0, 120.0);
-		_personalSyncEditingProfile.Anchors.Clear();
-		_personalSyncEditingProfile.Segments.Clear();
+		PersonalSyncTimeline.ShiftWholeTrack(_personalSyncEditingProfile, GetBasePlaybackPosition().TotalSeconds - current.Value);
 		ApplyPersonalSyncEdit();
 	}
 
@@ -1267,9 +1263,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			if (_personalSyncOffsetText != null)
 			{
-				_personalSyncOffsetText.Text = _personalSyncEditingProfile.Mode == PersonalSyncMode.Advanced
-					? T("Changes during the track")
-					: _personalSyncEditingProfile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s";
+				_personalSyncOffsetText.Text = _personalSyncEditingProfile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s";
 			}
 			if (_personalSyncHintText != null)
 			{
@@ -3147,10 +3141,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		PersonalSyncProfile profile = _personalSyncActiveProfile?.Clone() ?? CreateCurrentPersonalSyncProfile();
-		profile.Mode = PersonalSyncMode.Offset;
-		profile.OffsetSeconds = Math.Clamp(Math.Round((profile.OffsetSeconds - deltaMilliseconds / 1000.0) * 10.0) / 10.0, -120.0, 120.0);
-		profile.Anchors.Clear();
-		profile.Segments.Clear();
+		PersonalSyncTimeline.ShiftWholeTrack(profile, -deltaMilliseconds / 1000.0);
 		try
 		{
 			profile = await _personalSyncStore.UpsertAsync(profile);
