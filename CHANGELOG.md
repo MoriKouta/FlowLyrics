@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Keep Personal Sync rows fixed while showing hover actions, replace inline expansion with contextual menus, and add a proportional vertical seek rail with draggable sync points and lyric-hold ranges. First alignment sets the global offset; later points preserve earlier timing. Add a responsive inspector, visible correction values, temporary follow suspension, and one-step drag undo.
+
 - Preserve the selected media session through transient metadata, confirm consecutive reads after a short event-driven debounce, and hide previous lyrics without an idle-player flash. Speculate exact cache reads during stabilization, reuse up to 64 parsed lyric results, resolve Personal Sync before first paint, and record first-render timings.
 
 - Prioritize evidenced search identities before weak hints, preserve safe early exit, and log query stages, candidate counts and first-safe/total latency. Log actual volume/mute writes and UIA scan costs without changing audio control logic; reuse successful visible Spotify credits for 30 seconds.

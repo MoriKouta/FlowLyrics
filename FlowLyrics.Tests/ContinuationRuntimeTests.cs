@@ -74,17 +74,17 @@ public sealed class ContinuationRuntimeTests
 					Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
 					var valid = Drop(Read<string>(window, "_dragToken")); valid.RoutedEvent = DragDrop.DropEvent; target.RaiseEvent(valid);
 					var profile = Read<PersonalSyncProfile>(window, "_profile");
-					Assert.Equal(35, Assert.Single(profile.Anchors).PlaybackSeconds);
-					Assert.Equal(20, profile.Anchors[0].LyricsSeconds);
+					Assert.Empty(profile.Anchors);
+					Assert.Equal(15, profile.OffsetSeconds);
 					Assert.Equal(TimeSpan.FromSeconds(20), lines[1].Time);
 					TimeSpan? seek = null; window.SeekRequested += (_, time) => seek = time;
 					Invoke(window, "SeekToLyric", 2); Assert.Equal(TimeSpan.FromSeconds(45), seek);
 					Assert.True(ApplicationCommands.Undo.CanExecute(null, window));
 					ApplicationCommands.Undo.Execute(null, window); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
-					ApplicationCommands.Redo.Execute(null, window); Assert.Single(Read<PersonalSyncProfile>(window, "_profile").Anchors);
-					Invoke(window, "AlignDraggedLyric", -1, 20.0); Assert.Single(Read<PersonalSyncProfile>(window, "_profile").Anchors);
-					Read<Button>(window, "_holdButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					Invoke(window, "AlignDraggedLyric", 2, 36.0); Assert.Single(Read<PersonalSyncProfile>(window, "_profile").Anchors);
+					ApplicationCommands.Redo.Execute(null, window); Assert.Equal(15, Read<PersonalSyncProfile>(window, "_profile").OffsetSeconds);
+					Invoke(window, "AlignDraggedLyric", -1, 20.0); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
+					Invoke(window, "Hold_Click", window, new RoutedEventArgs());
+					Invoke(window, "AlignDraggedLyric", 2, 36.0); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});

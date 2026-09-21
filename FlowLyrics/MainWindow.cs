@@ -1388,12 +1388,14 @@ public class MainWindow : Window, IComponentConnector
 				return index >= 0 && index < _lyrics.Lines.Count ? index : (int?)null;
 			},
 			GetBasePlaybackPosition,
-			_settings.Language)
+			_settings.Language, () => _snapshot?.CanSeek == true && !_metadataPending)
 		{
 			Owner = this
 		};
 		_personalSyncAdvancedWindow.SeekRequested += async (_, destination) =>
 			await RunPlaybackCommandAsync((service, token) => service.TrySeekAsync(destination, token));
+		_personalSyncAdvancedWindow.PlayPauseRequested += async (_, _) =>
+			await RunPlaybackCommandAsync((service, token) => service.TryTogglePlayPauseAsync(token));
 		_personalSyncAdvancedWindow.PreviewChanged += delegate(object? _, PersonalSyncProfile? profile)
 		{
 			if (profile == null)

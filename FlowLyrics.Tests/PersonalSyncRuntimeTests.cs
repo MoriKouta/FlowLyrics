@@ -36,7 +36,7 @@ public sealed class PersonalSyncRuntimeTests
 				try
 				{
 					Button hold = Read<Button>(window, "_holdButton");
-					hold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Invoke(window, "Hold_Click", window, new RoutedEventArgs());
 					Assert.Equal(12, Read<double?>(window, "_pendingHoldStart"));
 					Read<ListBox>(window, "_lyricsList").SelectedIndex = 1;
 					position = TimeSpan.FromSeconds(32);

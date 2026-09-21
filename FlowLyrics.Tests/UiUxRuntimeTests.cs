@@ -18,59 +18,6 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class UiUxRuntimeTests
 {
-	[Theory]
-	[InlineData("ja-JP", 900, 640)]
-	[InlineData("en-US", 1120, 780)]
-	public void UnifiedRows_AlignFromHereOrWholeTrackAndResumeBesideSelectedLyric(string language, int width, int height)
-	{
-		string directory = Temp();
-		try
-		{
-			Sta(() =>
-			{
-				var track = new TrackInfo("Timing study", "Artist A, Artist B, Artist C", "Album", TimeSpan.FromSeconds(80));
-				var context = PersonalSyncIdentity.Create(new(track, TimeSpan.Zero, true, DateTimeOffset.UtcNow), new() { LrclibRecord = new() { Id = 123 } });
-				LyricLine[] lines = Enumerable.Range(1, 12).Select(i => new LyricLine(TimeSpan.FromSeconds(i * 5), "Lyric line " + i)).ToArray();
-				TimeSpan position = TimeSpan.FromSeconds(12);
-				PersonalSyncWindow window = new(new(directory), context, null, lines, () => 0, () => position, language)
-				{ Width = width, Height = height, ShowActivated = false };
-				try
-				{
-					window.Show(); Pump();
-					Button align = Read<Button>(window, "_matchButton"), hold = Read<Button>(window, "_holdButton");
-					var list = Read<ListBox>(window, "_lyricsList");
-					Assert.True(align.TranslatePoint(new Point(), window).X < width * .35);
-					Assert.True(align.TranslatePoint(new Point(0, align.ActualHeight), window).Y < window.ActualHeight);
-					Assert.False(hold.IsVisible);
-					Assert.Same(Read<Border>(window, "_actionCard").Parent, ((StackPanel)((ListBoxItem)list.SelectedItem).Content).Children.OfType<StackPanel>().Last());
-					Capture(window, "sync-" + language + "-initial");
-					list.SelectedIndex = 1;
-					align.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					var profile = Read<PersonalSyncProfile>(window, "_profile");
-					Assert.Equal(0, profile.OffsetSeconds);
-					Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(12, profile));
-					Assert.Equal(8, PersonalSyncMapper.MapPlaybackToLyrics(8, profile));
-					Read<CheckBox>(window, "_wholeTrackBox").IsChecked = true;
-					list.SelectedIndex = 0;
-					align.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					Assert.Equal(5, PersonalSyncMapper.MapPlaybackToLyrics(12, profile));
-					Assert.Equal(3, PersonalSyncMapper.MapPlaybackToLyrics(8, profile));
-					Read<CheckBox>(window, "_wholeTrackBox").IsChecked = false;
-					hold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					position = TimeSpan.FromSeconds(22); list.SelectedIndex = 2;
-					Invoke(window, "RefreshLiveUi"); Pump();
-					Assert.False(hold.IsVisible); Assert.True(align.IsEnabled);
-					Capture(window, "sync-" + language + "-held");
-					align.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					Assert.Equal(15, PersonalSyncMapper.MapPlaybackToLyrics(22, profile));
-					Assert.Single(profile.Segments);
-					Pump(); Capture(window, "sync-" + language + "-resumed");
-				}
-				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
-			});
-		}
-		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
-	}
 
 	[Fact]
 	public void Settings_CurrentTrackKeepsDetailsVisibleAndLocalRowCompactWithSingleSyncRoute()

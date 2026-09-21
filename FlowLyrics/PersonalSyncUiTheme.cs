@@ -145,8 +145,8 @@ internal static class PersonalSyncUiTheme
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#FF302C31" /></Trigger>
             <Trigger Property="IsSelected" Value="True">
-              <Setter TargetName="ItemSurface" Property="Background" Value="#3FFF6B2C" />
-              <Setter TargetName="ItemSurface" Property="BorderBrush" Value="{StaticResource SyncAccent}" />
+              <Setter TargetName="ItemSurface" Property="Background" Value="#FF36343A" />
+              <Setter TargetName="ItemSurface" Property="BorderBrush" Value="#FF66616B" />
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
