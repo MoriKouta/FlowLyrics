@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Preserve the selected media session through transient metadata, confirm consecutive reads after a short event-driven debounce, and hide previous lyrics without an idle-player flash. Speculate exact cache reads during stabilization, reuse up to 64 parsed lyric results, resolve Personal Sync before first paint, and record first-render timings.
+
 - Prioritize evidenced search identities before weak hints, preserve safe early exit, and log query stages, candidate counts and first-safe/total latency. Log actual volume/mute writes and UIA scan costs without changing audio control logic; reuse successful visible Spotify credits for 30 seconds.
 
 - Integrate Personal Sync lyric rows and playback coordinates in one editing surface, with row-local align/resume, drag-to-current alignment, click-to-seek, Ctrl+Z/Ctrl+Y, and optional hold/point controls. Keep non-destructive save-on-close and untouched-profile behavior.

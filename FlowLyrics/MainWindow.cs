@@ -40,6 +40,15 @@ public class MainWindow : Window, IComponentConnector
 	private readonly System.Windows.Media.FontFamily _englishDotFont;
 
 	private readonly DispatcherTimer _mediaTimer;
+	private readonly DispatcherTimer _metadataRefreshTimer;
+	private readonly AppLogger _performanceLogger;
+	private LyricsPerformanceTrace? _lyricsPerformance;
+	private bool _metadataPending;
+	private bool _lyricsReady = true;
+	private string? _speculativeIdentity;
+	private long _speculativeRevision;
+	private Task<LyricsLookupResult?>? _speculativeLyrics;
+	private CancellationTokenSource? _speculativeCancellation;
 
 	private readonly DispatcherTimer _renderTimer;
 
@@ -335,6 +344,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		_settingsService = settingsService;
 		AppLogger audioLogger = new(settingsService.AppDataDirectory);
+		_performanceLogger = audioLogger;
 		_systemVolumeService = new(message => { _ = audioLogger.WriteAsync(message); });
 		_mediaSessionService = mediaSessionService;
 		InitializeComponent();
@@ -356,6 +366,7 @@ public class MainWindow : Window, IComponentConnector
 		LocalizationService.SetCurrentLanguage(_settings.Language);
 		_lyricsService = new LyricsService(_settingsService.AppDataDirectory);
 		_personalSyncStore = new PersonalSyncStore(_settingsService.AppDataDirectory);
+		_ = _personalSyncStore.ListAsync(); // Load profiles while the first metadata read is pending.
 		_personalSyncStore.ProfilesChanged += delegate { base.Dispatcher.BeginInvoke((Action)(() => RefreshPersonalSyncResolution(force: true))); };
 		InitializePersonalSyncUi();
 		_mediaTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -365,6 +376,16 @@ public class MainWindow : Window, IComponentConnector
 		_mediaTimer.Tick += async delegate
 		{
 			await PollMediaAsync();
+		};
+		_metadataRefreshTimer = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(20) };
+		_metadataRefreshTimer.Tick += async (_, _) => { _metadataRefreshTimer.Stop(); await PollMediaAsync(); };
+		_mediaSessionService.SessionsChanged += MediaSession_Changed;
+		Closed += (_, _) =>
+		{
+			_mediaSessionService.SessionsChanged -= MediaSession_Changed;
+			_metadataRefreshTimer.Stop();
+			_speculativeCancellation?.Cancel();
+			_lyricsCancellation?.Cancel();
 		};
 		_renderTimer = new DispatcherTimer(DispatcherPriority.Render)
 		{
@@ -566,18 +587,90 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 
+	private void MediaSession_Changed(object? sender, EventArgs e)
+	{
+		if (Dispatcher.HasShutdownStarted) return;
+		Dispatcher.BeginInvoke(DispatcherPriority.Normal, (Action)(() =>
+		{
+			if (_allowClose) return;
+			if (e is FlowLyrics.Core.MediaMetadataChangedEventArgs)
+			{
+				_lyricsPerformance = new();
+				EnterPendingMetadata();
+			}
+			ScheduleMetadataRefresh(20);
+		}));
+	}
+
+	private void ScheduleMetadataRefresh(int milliseconds)
+	{
+		if (_metadataRefreshTimer.IsEnabled) return;
+		_metadataRefreshTimer.Interval = TimeSpan.FromMilliseconds(milliseconds);
+		_metadataRefreshTimer.Start();
+	}
+
+	private void EnterPendingMetadata()
+	{
+		if (_metadataPending) return;
+		_metadataPending = true;
+		_lyricsPerformance ??= new();
+		_lyricsCancellation?.Cancel();
+		_activeTrackKey = null;
+		_lyrics = null;
+		_lyricsLookup = null;
+		ResetLyricsPresentationState();
+		// Keep the selected player and controls; only the old lyric surface is hidden.
+		TrackStatusText.Text = (_snapshot == null ? "MEDIA SESSION" : GetPlaybackSourceLabel(_snapshot)) + " / UPDATING";
+		if (_snapshot == null) UpdateCurrentTrackHeader(null, string.Empty);
+		SetStatus(string.Empty, string.Empty, animate: false);
+	}
+
+	private void PrepareCachedLyrics(TrackInfo track)
+	{
+		string identity = LyricsService.LookupIdentity(track);
+		if (identity == _speculativeIdentity) return;
+		_speculativeCancellation?.Cancel();
+		_speculativeCancellation?.Dispose();
+		_speculativeCancellation = new();
+		CancellationToken token = _speculativeCancellation.Token;
+		_speculativeIdentity = identity;
+		_speculativeRevision = _lyricsService.CacheRevision;
+		var trace = _lyricsPerformance;
+		_speculativeLyrics = Task.Run(async () =>
+		{
+			try { return await _lyricsService.TryGetCachedLyricsAsync(track, token, trace); }
+			catch (OperationCanceledException) { return null; }
+			catch (Exception ex) { Debug.WriteLine("Speculative cache unavailable: " + ex.GetType().Name); return null; }
+		});
+	}
+
 	private async Task PollMediaAsync()
 	{
 		if (_mediaPollRunning)
 		{
+			ScheduleMetadataRefresh(20);
 			return;
 		}
 		_mediaPollRunning = true;
 		try
 		{
-			PlaybackSnapshot? playbackSnapshot = await _mediaSessionService.GetSnapshotAsync();
+			_lyricsPerformance?.Mark("METADATA_READ_START");
+			MediaSessionUpdate update = await _mediaSessionService.GetUpdateAsync();
+			_lyricsPerformance?.Mark("METADATA_READ_COMPLETE");
+			if (update.State == FlowLyrics.Core.MediaMetadataState.PendingMetadata)
+			{
+				EnterPendingMetadata();
+				if (update.Snapshot != null) PrepareCachedLyrics(update.Snapshot.Track);
+				ScheduleMetadataRefresh(115);
+				return;
+			}
+			_metadataPending = false;
+			PlaybackSnapshot? playbackSnapshot = update.Snapshot;
 			if ((object)playbackSnapshot == null)
 			{
+				_speculativeCancellation?.Cancel();
+				_speculativeIdentity = null;
+				_lyricsPerformance = null;
 				ClosePersonalSyncEditor(save: true);
 				_snapshot = null;
 				_personalSyncActiveProfile = null;
@@ -612,11 +705,12 @@ public class MainWindow : Window, IComponentConnector
 			}
 			else
 			{
+				if (_activeTrackKey != playbackSnapshot.Track.CacheKey) _lyricsPerformance?.Mark("METADATA_STABLE");
 				bool trackDisplayChanged = _snapshot?.Track.CacheKey != playbackSnapshot.Track.CacheKey
 					|| _snapshot?.Track.DisplayArtist != playbackSnapshot.Track.DisplayArtist;
 				_snapshot = playbackSnapshot;
 				if (trackDisplayChanged) _settingsWindow?.RefreshCurrentTrack();
-				RefreshPersonalSyncResolution();
+				if (_activeTrackKey == playbackSnapshot.Track.CacheKey) RefreshPersonalSyncResolution();
 				_pauseHidden = _settings.HideWhenPaused && !playbackSnapshot.IsPlaying;
 				UpdatePlaybackChrome();
 				RefreshWindowVisibility();
@@ -638,15 +732,15 @@ public class MainWindow : Window, IComponentConnector
 					UpdateCurrentTrackHeader(playbackSnapshot.Track);
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 					StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
-					SetStatus(T("Checking saved lyrics…"), playbackSnapshot.Track.DisplayName, animate: false);
-					LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
+					SetStatus(string.Empty, string.Empty, animate: false);
+					_ = LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
 				}
 				else if (!string.IsNullOrWhiteSpace(playbackSnapshot.Track.EnrichedArtistCredit)
 					&& !string.Equals(_activeEnrichedArtistCredit, playbackSnapshot.Track.EnrichedArtistCredit, StringComparison.Ordinal))
 				{
 					// A delayed UIA result adds search evidence without changing cache or Personal Sync identity.
 					_activeEnrichedArtistCredit = playbackSnapshot.Track.EnrichedArtistCredit;
-					_ = LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
+					if (_lyrics == null) _ = LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
 				}
 			}
 		}
@@ -662,16 +756,27 @@ public class MainWindow : Window, IComponentConnector
 		_lyricsCancellation?.Dispose();
 		_lyricsCancellation = new CancellationTokenSource();
 		CancellationToken token = _lyricsCancellation.Token;
+		LyricsPerformanceTrace? trace = _lyricsPerformance;
 		try
 		{
-			LyricsLookupResult lyricsLookupResult = await _lyricsService.GetLyricsAsync(track, forceRefresh, token, delegate
+			LyricsLookupResult? cached = null;
+			if (!forceRefresh && _speculativeIdentity == LyricsService.LookupIdentity(track) && _speculativeLyrics != null)
+			{
+				var speculative = _speculativeLyrics;
+				long revision = _speculativeRevision;
+				_speculativeLyrics = null;
+				_speculativeIdentity = null;
+				cached = await speculative.WaitAsync(token);
+				if (revision != _lyricsService.CacheRevision) cached = null;
+			}
+			LyricsLookupResult lyricsLookupResult = cached ?? await _lyricsService.GetLyricsAsync(track, forceRefresh, token, delegate
 			{
 				if (!token.IsCancellationRequested && string.Equals(_activeTrackKey, track.CacheKey, StringComparison.Ordinal))
 				{
 					SetTrackStatus("SEARCHING LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					SetStatus(T("Searching lyrics…"), T("The first lookup may take a moment. Saved results load faster next time."), animate: true);
 				}
-			});
+			}, trace);
 			if (!token.IsCancellationRequested && string.Equals(_activeTrackKey, track.CacheKey, StringComparison.Ordinal))
 			{
 				_lyricsRetryTrackKey = track.CacheKey;
@@ -679,6 +784,13 @@ public class MainWindow : Window, IComponentConnector
 				_lyricsRetryScheduled = false;
 				_lyricsLookup = lyricsLookupResult;
 				LyricsResult lyrics = lyricsLookupResult.Lyrics;
+				_lyricsReady = false;
+				_lyrics = lyrics;
+				trace?.Mark("PERSONAL_SYNC_START");
+				await ResolvePersonalSyncAsync(force: true);
+				trace?.Mark("PERSONAL_SYNC_COMPLETE");
+				if (token.IsCancellationRequested || _metadataPending || _activeTrackKey != track.CacheKey) return;
+				_lyricsReady = true;
 				ResetLyricsPresentationState();
 				if (lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				{
@@ -716,6 +828,7 @@ public class MainWindow : Window, IComponentConnector
 					string status = text;
 					SetTrackStatus(status, (lyricsLookupResult.Status == LyricsLookupStatus.LocalLrc) ? System.Windows.Media.Color.FromRgb(167, 149, byte.MaxValue) : System.Windows.Media.Color.FromRgb(102, 229, 174));
 					RenderLyrics();
+					RecordFirstLyricsRender(trace);
 				}
 				else if (_settings.EnablePlainLyricsFallback && lyrics.HasPlainLyrics)
 				{
@@ -724,6 +837,7 @@ public class MainWindow : Window, IComponentConnector
 					_plainLyricsScrollMode = true;
 					SetTrackStatus("PLAIN LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					RenderLyrics();
+					RecordFirstLyricsRender(trace);
 				}
 				else
 				{
@@ -999,7 +1113,9 @@ public class MainWindow : Window, IComponentConnector
 		};
 	}
 
-	private async void RefreshPersonalSyncResolution(bool force = false)
+	private async void RefreshPersonalSyncResolution(bool force = false) => await ResolvePersonalSyncAsync(force);
+
+	private async Task ResolvePersonalSyncAsync(bool force = false)
 	{
 		if (_personalSyncEditingProfile != null || _snapshot == null || _lyricsLookup == null || _lyrics?.HasSyncedLyrics != true)
 		{
@@ -1326,6 +1442,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void RenderLyrics()
 	{
+		if (_metadataPending || !_lyricsReady) return;
 		UpdatePlaybackProgress();
 		if (_showAllLyrics && _lyrics != null && (_lyrics.HasSyncedLyrics || _lyrics.HasPlainLyrics))
 		{
@@ -1351,6 +1468,19 @@ public class MainWindow : Window, IComponentConnector
 				DisplayLyricContext(lines, num2, animate: true);
 			}
 		}
+	}
+
+	private void RecordFirstLyricsRender(LyricsPerformanceTrace? trace)
+	{
+		if (trace == null) return;
+		// Loaded priority runs after WPF's render pass; do not count lookup completion as paint.
+		Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)(() =>
+		{
+			if (trace != _lyricsPerformance || _metadataPending) return;
+			trace.FirstRender(_performanceLogger);
+			_settingsWindow?.RefreshCurrentTrack();
+			trace.FullUiUpdated(_performanceLogger);
+		}));
 	}
 
 	private void ResetLyricsPresentationState()

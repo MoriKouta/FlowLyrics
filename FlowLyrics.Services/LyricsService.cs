@@ -53,7 +53,28 @@ public sealed class LyricsService : IDisposable
 
 	private readonly ConcurrentDictionary<string, SemaphoreSlim> _requestGates = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.Ordinal);
 
-	private readonly ConcurrentDictionary<string, LyricsCacheEntry> _positiveMemoryCache = new ConcurrentDictionary<string, LyricsCacheEntry>(StringComparer.Ordinal);
+	private readonly object _hotGate = new();
+	private readonly Dictionary<string, LyricsLookupResult> _hotCache = new(StringComparer.Ordinal);
+	private readonly LinkedList<string> _hotOrder = new();
+	private long _cacheGeneration;
+	public long CacheRevision { get { lock (_hotGate) return _cacheGeneration; } }
+
+	// Exact provider identity, including source duration and evidenced aliases.
+	// Persistent keys remain unchanged; these keys exist only for this process.
+	public static string LookupIdentity(TrackInfo track) => JsonSerializer.Serialize(new
+	{
+		track.Title, track.Artist, track.Album, Duration = track.Duration.Ticks,
+		track.RawTitle, track.RawArtist, track.RawAlbum, track.SourceAppUserModelId,
+		track.EnrichedArtistCredit, track.SearchAlternates
+	});
+
+	private void InvalidateHotCache()
+	{
+		lock (_hotGate) { _cacheGeneration++; _hotCache.Clear(); _hotOrder.Clear(); }
+	}
+
+	public async Task<LyricsLookupResult?> TryGetCachedLyricsAsync(TrackInfo track, CancellationToken cancellationToken = default, LyricsPerformanceTrace? trace = null)
+		=> await LookupAsync(track, false, cancellationToken, null, cacheOnly: true, trace);
 
 	private readonly object _serverBackoffLock = new object();
 
@@ -170,15 +191,61 @@ public sealed class LyricsService : IDisposable
 		await _logger.WriteAsync($"cache promoted source={cache.SourceName} target={BuildInfo.CacheNamespace} cacheKey={track.CacheKey}");
 	}
 
-	public async Task<LyricsLookupResult> GetLyricsAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting = null)
+	public async Task<LyricsLookupResult> GetLyricsAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting = null, LyricsPerformanceTrace? trace = null)
+		=> (await LookupAsync(track, forceRefresh, cancellationToken, networkSearchStarting, cacheOnly: false, trace))!;
+
+	private async Task<LyricsLookupResult?> LookupAsync(TrackInfo track, bool forceRefresh, CancellationToken token, Action? networkSearchStarting, bool cacheOnly, LyricsPerformanceTrace? trace)
 	{
+		token.ThrowIfCancellationRequested();
+		if (forceRefresh) InvalidateHotCache();
+		string key = LookupIdentity(track);
+		long generation;
+		trace?.Mark("HOT_CACHE_LOOKUP_START");
+		lock (_hotGate)
+		{
+			generation = _cacheGeneration;
+			if (!forceRefresh && _hotCache.TryGetValue(key, out var hot))
+			{
+				_hotOrder.Remove(key); _hotOrder.AddLast(key);
+				trace?.Mark("HOT_CACHE_HIT");
+				return hot;
+			}
+		}
+		trace?.Mark("HOT_CACHE_MISS");
+		trace?.Mark("DISK_CACHE_START");
 		Stopwatch elapsed = Stopwatch.StartNew();
 		await _logger.WriteAsync($"lookup start identity={track.StableIdentityKey} refresh={forceRefresh}");
-		try { return await GetLyricsCoreAsync(track, forceRefresh, cancellationToken, networkSearchStarting); }
+		try
+		{
+			bool network = false;
+			var result = await GetLyricsCoreAsync(track, forceRefresh, token, () =>
+			{
+				network = true; trace?.Mark("DISK_CACHE_MISS"); trace?.Mark("LRCLIB_REQUEST_START"); networkSearchStarting?.Invoke();
+			}, cacheOnly);
+			token.ThrowIfCancellationRequested();
+			if (!network) trace?.Mark(result == null ? "DISK_CACHE_MISS" : "DISK_CACHE_HIT");
+			if (result?.Lyrics != null)
+			{
+				trace?.Mark(network ? "SAFE_CANDIDATE_FOUND" : "CACHED_LYRICS_VALIDATED");
+				trace?.Mark("LYRICS_PARSED");
+				lock (_hotGate)
+				{
+					if (generation == _cacheGeneration)
+					{
+						_hotCache[key] = new LyricsLookupResult { Lyrics = result.Lyrics, Status = result.Status,
+							LrclibRecord = result.LrclibRecord, LoadedFromCache = true, SelectedManually = result.SelectedManually,
+							LocalLrcPath = result.LocalLrcPath, Candidates = result.Candidates };
+						_hotOrder.Remove(key); _hotOrder.AddLast(key);
+						while (_hotOrder.Count > 64) { _hotCache.Remove(_hotOrder.First!.Value); _hotOrder.RemoveFirst(); }
+					}
+				}
+			}
+			return result;
+		}
 		finally { await _logger.WriteAsync($"lookup complete identity={track.StableIdentityKey} totalMs={elapsed.ElapsedMilliseconds}"); }
 	}
 
-	private async Task<LyricsLookupResult> GetLyricsCoreAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting)
+	private async Task<LyricsLookupResult?> GetLyricsCoreAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting, bool cacheOnly)
 	{
 		Stopwatch stageTimer = Stopwatch.StartNew();
 		await LogTrackAsync(track, forceRefresh ? "lookup:force" : "lookup:auto");
@@ -211,11 +278,12 @@ public sealed class LyricsService : IDisposable
 				if (manualCache?.CacheKind == "Positive" && manualCache.LrclibId == manual.LrclibId && string.Equals(manualCache.SelectionMode, "Manual", StringComparison.OrdinalIgnoreCase))
 				{
 					await PromoteCacheAsync(track, manualCacheRead!, cancellationToken);
-					_positiveMemoryCache[track.StableIdentityKey] = manualCache;
 					await _logger.WriteAsync($"manual-cache accepted id={manual.LrclibId} cacheKey={track.CacheKey}");
 					return FromCache(manualCache, selectedManually: true);
 				}
 			}
+			if (cacheOnly) return null;
+			networkSearchStarting?.Invoke();
 			LrclibRecord manualRecord = await GetRecordByIdAsync(manual.LrclibId, cancellationToken, bypassRequestCache: forceRefresh);
 			AssociateRequest(track, $"api/get/{manual.LrclibId}");
 			if (manualRecord == null)
@@ -226,12 +294,6 @@ public sealed class LyricsService : IDisposable
 			return await CacheAndCreateResultAsync(track, manualRecord, "Manual", cancellationToken);
 		}
 
-		if (!forceRefresh && _positiveMemoryCache.TryGetValue(track.StableIdentityKey, out LyricsCacheEntry memoryCache)
-			&& (localEnabled || !memoryCache.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase)) && IsValidPositiveCache(track, memoryCache))
-		{
-			await _logger.WriteAsync($"memory-cache accepted id={memoryCache.LrclibId} cacheKey={track.CacheKey}");
-			return FromCache(memoryCache, selectedManually: false);
-		}
 		if (!forceRefresh)
 		{
 			CacheReadResult? cacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken);
@@ -269,7 +331,6 @@ public sealed class LyricsService : IDisposable
 				if (manualCache != null && IsValidPositiveCache(track, manualCache))
 				{
 					await PromoteCacheAsync(track, cacheRead!, cancellationToken);
-					_positiveMemoryCache[track.StableIdentityKey] = manualCache;
 					await _logger.WriteAsync($"positive-cache accepted id={manualCache.LrclibId} cacheKey={track.CacheKey}");
 					return FromCache(manualCache, selectedManually: false);
 				}
@@ -280,6 +341,7 @@ public sealed class LyricsService : IDisposable
 				}
 			}
 		}
+		if (cacheOnly) return null;
 		await _logger.WriteAsync($"lookup stage=local-and-cache elapsedMs={stageTimer.ElapsedMilliseconds} hit=false");
 		networkSearchStarting?.Invoke();
 		stageTimer.Restart();
@@ -381,10 +443,10 @@ public sealed class LyricsService : IDisposable
 
 	public async Task ClearTrackCacheAsync(TrackInfo track, CancellationToken cancellationToken = default(CancellationToken))
 	{
+		InvalidateHotCache();
 		_ = 1;
 		try
 		{
-			_positiveMemoryCache.TryRemove(track.StableIdentityKey, out LyricsCacheEntry _);
 			foreach (var response in _requestCache)
 				if (response.Value.TrackKeys.ContainsKey(track.StableIdentityKey)) _requestCache.TryRemove(response.Key, out _);
 			await _cacheStore.DeleteAsync(track, cancellationToken);
@@ -424,7 +486,7 @@ public sealed class LyricsService : IDisposable
 				await _localLrcPreferences.SaveLyricsAsync(track, cached.SyncedLyrics, cancellationToken);
 		}
 		await _localLrcPreferences.SetAsync(track, enabled, cancellationToken);
-		_positiveMemoryCache.TryRemove(track.StableIdentityKey, out _);
+		InvalidateHotCache();
 	}
 
 	public async Task<string> ImportLocalLrcFileAsync(TrackInfo track, string sourcePath, CancellationToken cancellationToken = default(CancellationToken))
@@ -892,7 +954,6 @@ public sealed class LyricsService : IDisposable
 			MatcherVersion = CurrentMatcherVersion
 		};
 		await _cacheStore.WriteAsync(track, entry, cancellationToken);
-		_positiveMemoryCache[track.StableIdentityKey] = entry;
 		return new LyricsLookupResult
 		{
 			Lyrics = ToLyricsResult(entry),
@@ -1201,6 +1262,7 @@ public sealed class LyricsService : IDisposable
 
 	private void LocalLrcWatcher_Changed(object sender, FileSystemEventArgs e)
 	{
+		InvalidateHotCache();
 		this.LocalLrcFilesChanged?.Invoke();
 	}
 }

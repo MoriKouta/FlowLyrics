@@ -37,6 +37,14 @@ public sealed record MediaTrackMetadata(
 	public string DisplayArtist => EnrichedArtistCredit ?? ArtistRaw;
 }
 
+public enum MediaMetadataState { NoSession, PendingMetadata, Stable }
+
+// Separate metadata changes from frequent position/playback notifications.
+public sealed class MediaMetadataChangedEventArgs(string sessionId) : EventArgs
+{
+	public string SessionId { get; } = sessionId;
+}
+
 public sealed record MediaPlaybackCapabilities(
 	bool CanPlay,
 	bool CanPause,

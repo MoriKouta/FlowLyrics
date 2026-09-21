@@ -15,7 +15,10 @@ public sealed class MediaSessionService : IDisposable
 {
 	private static readonly TimeSpan PreferredReturnStability = TimeSpan.FromMilliseconds(850);
 
-	private static readonly TimeSpan MetadataStability = TimeSpan.FromMilliseconds(650);
+	private static readonly TimeSpan MetadataStability = TimeSpan.FromMilliseconds(110);
+	private DateTimeOffset? _missingSessionSince;
+	private long _metadataRevision;
+	private readonly Func<DateTimeOffset> _utcNow;
 
 	private readonly object _gate = new();
 
@@ -60,8 +63,9 @@ public sealed class MediaSessionService : IDisposable
 	{
 	}
 
-	public MediaSessionService(IMediaSessionProvider provider)
+	public MediaSessionService(IMediaSessionProvider provider, Func<DateTimeOffset>? utcNow = null)
 	{
+		_utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
 		_provider = provider ?? throw new ArgumentNullException(nameof(provider));
 		_provider.SessionsChanged += Provider_SessionsChanged;
 	}
@@ -95,7 +99,7 @@ public sealed class MediaSessionService : IDisposable
 	public async Task<IReadOnlyList<MediaSessionInfo>> GetSessionsAsync(CancellationToken cancellationToken = default)
 	{
 		IReadOnlyList<MediaSessionInfo> rawSessions = await _provider.GetSessionsAsync(cancellationToken);
-		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+		DateTimeOffset nowUtc = _utcNow();
 		string selectedId;
 		HashSet<string> ignored;
 		lock (_gate)
@@ -113,9 +117,23 @@ public sealed class MediaSessionService : IDisposable
 
 	public async Task<PlaybackSnapshot?> GetSnapshotAsync(CancellationToken cancellationToken = default)
 	{
+		MediaSessionUpdate update = await GetUpdateAsync(cancellationToken);
+		return update.State == MediaMetadataState.Stable ? update.Snapshot : null;
+	}
+
+	public async Task<MediaSessionUpdate> GetUpdateAsync(CancellationToken cancellationToken = default)
+	{
+		long revision;
+		lock (_gate) revision = _metadataRevision;
 		IReadOnlyList<MediaSessionInfo> sessions = await GetSessionsAsync(cancellationToken);
 		MediaSessionInfo? selected = sessions.FirstOrDefault(session => session.IsSelectedByFlowLyrics);
-		if (selected == null || !selected.Metadata.HasTitle) return null;
+		if (selected == null)
+			return new(GetSelectedSessionId().Length == 0 ? MediaMetadataState.NoSession : MediaMetadataState.PendingMetadata);
+		if (!selected.Metadata.HasTitle || selected.PlaybackState == MediaPlaybackState.Changing)
+		{
+			lock (_gate) ResetMetadataStabilityLocked();
+			return new(MediaMetadataState.PendingMetadata);
+		}
 
 		TrackInfo track = new(
 			selected.Metadata.TitleRaw,
@@ -129,12 +147,17 @@ public sealed class MediaSessionService : IDisposable
 			SourceAppUserModelId: selected.SourceAppUserModelId,
 			EnrichedArtistCredit: selected.Metadata.EnrichedArtistCredit,
 			EnrichmentSource: selected.Metadata.EnrichmentSource);
-		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-		if (!IsMetadataStable(track, selected.SessionId, nowUtc)) return null;
+		DateTimeOffset nowUtc = _utcNow();
+		bool stable;
+		lock (_gate)
+		{
+			if (revision != _metadataRevision) return new(MediaMetadataState.PendingMetadata);
+			stable = IsMetadataStable(track, selected.SessionId, nowUtc);
+		}
 
 		MediaPlaybackCapabilities capabilities = selected.Capabilities;
 		(TimeSpan stablePosition, DateTimeOffset stableCapturedAtUtc) = StabilizeTimeline(selected, track, nowUtc);
-		return new PlaybackSnapshot(
+		PlaybackSnapshot snapshot = new(
 			track,
 			stablePosition,
 			selected.IsPlaying,
@@ -148,6 +171,7 @@ public sealed class MediaSessionService : IDisposable
 			selected.SessionId,
 			selected.SourceAppUserModelId,
 			selected.DisplaySourceName);
+		return new(stable ? MediaMetadataState.Stable : MediaMetadataState.PendingMetadata, snapshot);
 	}
 
 	public async Task<bool> TryTogglePlayPauseAsync(CancellationToken cancellationToken = default)
@@ -229,11 +253,18 @@ public sealed class MediaSessionService : IDisposable
 
 		if (desired == null)
 		{
+			if (_selectedSessionId.Length > 0)
+			{
+				_missingSessionSince ??= nowUtc;
+				ResetMetadataStabilityLocked();
+				if (nowUtc - _missingSessionSince.Value < TimeSpan.FromMilliseconds(400)) return _selectedSessionId;
+			}
 			_selectedSessionId = string.Empty;
 			_candidateSessionId = string.Empty;
 			ResetMetadataStabilityLocked();
 			return string.Empty;
 		}
+		_missingSessionSince = null;
 
 		if (string.Equals(desired.SessionId, _selectedSessionId, StringComparison.Ordinal))
 		{
@@ -264,12 +295,14 @@ public sealed class MediaSessionService : IDisposable
 
 	private bool IsMetadataStable(TrackInfo track, string sessionId, DateTimeOffset nowUtc)
 	{
-		string identity = sessionId + "|" + track.CacheKey;
+		// Late enrichment adds evidence; it is not a new raw recording transition.
+		string identity = sessionId + "|" + LyricsService.LookupIdentity(track with { EnrichedArtistCredit = null, SearchAlternates = null });
 		lock (_gate)
 		{
 			if (string.Equals(identity, _stableMetadataIdentity, StringComparison.Ordinal)) return true;
 			if (!string.Equals(identity, _pendingMetadataIdentity, StringComparison.Ordinal))
 			{
+				_stableMetadataIdentity = string.Empty;
 				_pendingMetadataIdentity = identity;
 				_pendingMetadataSinceUtc = nowUtc;
 				return false;
@@ -418,7 +451,7 @@ public sealed class MediaSessionService : IDisposable
 			.FirstOrDefault();
 	}
 
-	private static bool IsHealthy(MediaSessionInfo? session) => session != null && session.Metadata.HasTitle;
+	private static bool IsHealthy(MediaSessionInfo? session) => session != null;
 
 	private void CommitSelectionLocked(string sessionId)
 	{
@@ -454,6 +487,15 @@ public sealed class MediaSessionService : IDisposable
 
 	private void Provider_SessionsChanged(object? sender, EventArgs e)
 	{
-		SessionsChanged?.Invoke(this, EventArgs.Empty);
+		if (e is MediaMetadataChangedEventArgs change)
+		{
+			lock (_gate)
+			{
+				if (_selectedSessionId.Length > 0 && change.SessionId != _selectedSessionId) return;
+				_metadataRevision++;
+				_pendingMetadataIdentity = _stableMetadataIdentity = string.Empty;
+			}
+		}
+		SessionsChanged?.Invoke(this, e);
 	}
 }

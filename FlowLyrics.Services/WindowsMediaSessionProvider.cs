@@ -33,6 +33,9 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 	private bool _disposed;
 
 	private readonly IArtistCreditEnricher _artistEnricher;
+	private Task<MediaTrackMetadata>? _enrichmentTask;
+	private string? _enrichmentIdentity;
+	private MediaTrackMetadata? _enrichedMetadata;
 
 	public WindowsMediaSessionProvider(IArtistCreditEnricher? artistEnricher = null)
 	{
@@ -301,13 +304,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				metadata.SearchAlternates, properties?.Title ?? string.Empty, properties?.Artist ?? string.Empty,
 				properties?.AlbumTitle ?? string.Empty, properties?.AlbumArtist ?? string.Empty,
 				properties?.Subtitle ?? string.Empty, properties?.Genres?.ToArray() ?? Array.Empty<string>(), properties?.TrackNumber);
-			try
-			{
-				trackMetadata = SpotifyArtistCredit.Apply(trackMetadata, _artistEnricher.TryGet(sourceId, trackMetadata));
-				if (MediaSourceClassifier.IsSpotify(sourceId))
-					trackMetadata = trackMetadata with { SpotifyWindowState = _artistEnricher.WindowState };
-			}
-			catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Artist enrichment unavailable: " + ex.GetType().Name); }
+			trackMetadata = GetEnrichmentWithoutWaiting(sourceId, trackMetadata);
 			string sessionId = CreateSessionId(session, sourceId);
 			DateTimeOffset lastActivity;
 			lock (_gate)
@@ -349,7 +346,40 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		catch (Exception ex)
 		{
 			System.Diagnostics.Debug.WriteLine("Media Session metadata read failed for " + (session.SourceAppUserModelId ?? "unknown") + ": " + ex.GetType().Name + ": " + ex.Message);
-			return null;
+			// The session still exists even when its changing properties cannot be read.
+			string source = session.SourceAppUserModelId ?? string.Empty;
+			return new MediaSessionInfo { SessionId = CreateSessionId(session, source), SourceAppUserModelId = source,
+				DisplaySourceName = MediaSourceClassifier.GetDisplayName(source), CapturedAtUtc = DateTimeOffset.UtcNow };
+		}
+	}
+
+	private MediaTrackMetadata GetEnrichmentWithoutWaiting(string sourceId, MediaTrackMetadata raw)
+	{
+		if (!MediaSourceClassifier.IsSpotify(sourceId)) return raw;
+		string identity = System.Text.Json.JsonSerializer.Serialize(new { sourceId, raw.TitleRaw, raw.ArtistRaw, raw.AlbumRaw, raw.Duration });
+		lock (_gate)
+		{
+			if (_enrichmentTask?.IsCompleted == true)
+			{
+				_enrichedMetadata = _enrichmentTask.GetAwaiter().GetResult();
+				_enrichmentTask = null;
+			}
+			MediaTrackMetadata result = _enrichmentIdentity == identity && _enrichedMetadata != null ? raw with
+			{
+				EnrichedArtistCredit = _enrichedMetadata.EnrichedArtistCredit, EnrichmentSource = _enrichedMetadata.EnrichmentSource,
+				SearchAlternates = _enrichedMetadata.SearchAlternates, SpotifyWindowState = _enrichedMetadata.SpotifyWindowState
+			} : raw;
+			if (!_disposed && _enrichmentTask == null)
+			{
+				_enrichmentIdentity = identity;
+				_enrichedMetadata = null;
+				_enrichmentTask = Task.Run(() =>
+				{
+					try { return SpotifyArtistCredit.Apply(raw, _artistEnricher.TryGet(sourceId, raw)) with { SpotifyWindowState = _artistEnricher.WindowState }; }
+					catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Artist enrichment unavailable: " + ex.GetType().Name); return raw; }
+				});
+			}
+			return result;
 		}
 	}
 
@@ -425,7 +455,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 
 	private void Session_MediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
 	{
-		OnProviderChanged(sender);
+		OnProviderChanged(sender, metadataChanged: true);
 	}
 
 	private void Session_PlaybackInfoChanged(GlobalSystemMediaTransportControlsSession sender, PlaybackInfoChangedEventArgs args)
@@ -438,14 +468,16 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		OnProviderChanged(sender);
 	}
 
-	private void OnProviderChanged(GlobalSystemMediaTransportControlsSession? sender)
+	private void OnProviderChanged(GlobalSystemMediaTransportControlsSession? sender, bool metadataChanged = false)
 	{
 		if (sender != null)
 		{
 			string id = CreateSessionId(sender, sender.SourceAppUserModelId ?? string.Empty);
 			lock (_gate) _lastActivityById[id] = DateTimeOffset.UtcNow;
 		}
-		SessionsChanged?.Invoke(this, EventArgs.Empty);
+		SessionsChanged?.Invoke(this, metadataChanged && sender != null
+			? new MediaMetadataChangedEventArgs(CreateSessionId(sender, sender.SourceAppUserModelId ?? string.Empty))
+			: EventArgs.Empty);
 	}
 
 	private void ResetManager()

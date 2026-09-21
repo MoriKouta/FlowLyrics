@@ -49,6 +49,10 @@ Spotify UI Automation is optional and read-only. Confirmed credits are cached on
 
 ## dev.11 timing UI and diagnostics
 
+Track changes are driven by GSMTC metadata events with a short debounce and two consistent reads (at least 110 ms apart); 550 ms polling remains reconciliation. Pending metadata keeps the selected player while hiding old lyrics. A missing session has a 400 ms grace period. Exact provisional metadata starts a cache-only lookup; only a matching stable identity can consume it. Parsed positive lyrics use a 64-track LRU, invalidated by source/manual/cache changes and local-LRC watcher events. Source and exact duration are part of the in-process key; persistent keys and matcher safety are unchanged.
+
+`lyrics-performance` logs buffer stage timestamps until first render, including `TrackChangeToFirstLyricsMs`, metadata/cache/network/profile stages, and full-UI completion. Profile data is preloaded and resolved before lyrics render. UI Automation runs outside the metadata/cache critical path. `FLOWLYRICS_PERF_REPORT` optionally writes the cached-track WPF benchmark report; this uses synthetic GSMTC inputs and is not a live-player latency guarantee.
+
 Personal Sync uses one time/lyric editing surface. The selected row owns its align/resume action; drag a lyric handle onto the current-position marker to create a reversible alignment. Clicking a lyric time requests a source seek. More exposes lyric hold and whole-track alignment; Adjustment points exposes detailed edits. Ctrl+Z/Ctrl+Y remain available. Close saves edits atomically; opening and closing without edits creates no profile. Current Track keeps source details visible and has no duplicate Timing action.
 
 Glow is a retained blurred visual behind sharp glyphs, excluded from text measurement and fit. Its radius never changes layout padding or viewport margins. Parent viewport/window boundaries still limit effect bleed.
