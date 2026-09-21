@@ -30,7 +30,7 @@ public sealed class LyricsOverrideStore
 		_path = System.IO.Path.Combine(appDataDirectory, "manual-selections.json");
 	}
 
-	public async Task<ManualLyricsSelection?> GetAsync(TrackInfo track, CancellationToken cancellationToken = default(CancellationToken))
+	public async Task<ManualLyricsSelection?> GetAsync(TrackInfo track, CancellationToken cancellationToken = default(CancellationToken), bool readOnly = false)
 	{
 		await _lock.WaitAsync(cancellationToken);
 		try
@@ -39,7 +39,7 @@ public sealed class LyricsOverrideStore
 			foreach (string identityKey in GetIdentityKeys(track))
 			{
 				if (!_selections.TryGetValue(identityKey, out ManualLyricsSelection? value)) continue;
-				if (!string.Equals(identityKey, track.StableIdentityKey, StringComparison.Ordinal))
+				if (!readOnly && !string.Equals(identityKey, track.StableIdentityKey, StringComparison.Ordinal))
 				{
 					_selections[track.StableIdentityKey] = value;
 					await SaveAsync(cancellationToken);

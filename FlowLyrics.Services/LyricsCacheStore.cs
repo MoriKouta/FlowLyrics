@@ -36,7 +36,7 @@ public sealed class LyricsCacheStore
 		return GetPath(track.StableIdentityKey);
 	}
 
-	public async Task<LyricsCacheEntry?> ReadAsync(TrackInfo track, CancellationToken cancellationToken)
+	public async Task<LyricsCacheEntry?> ReadAsync(TrackInfo track, CancellationToken cancellationToken, bool readOnly = false)
 	{
 		string[] identityKeys = GetIdentityKeys(track).ToArray();
 		string? matchedIdentity = identityKeys.FirstOrDefault(key => File.Exists(GetPath(key)));
@@ -58,10 +58,10 @@ public sealed class LyricsCacheStore
 			}
 			if (entry.ExpiresAtUtc.HasValue && entry.ExpiresAtUtc.Value <= DateTimeOffset.UtcNow)
 			{
-				await DeleteAsync(track, cancellationToken);
+				if (!readOnly) await DeleteAsync(track, cancellationToken);
 				return null;
 			}
-			if (!string.Equals(matchedIdentity, track.StableIdentityKey, StringComparison.Ordinal))
+			if (!readOnly && !string.Equals(matchedIdentity, track.StableIdentityKey, StringComparison.Ordinal))
 			{
 				await WriteAsync(track, entry, cancellationToken);
 			}
@@ -69,7 +69,7 @@ public sealed class LyricsCacheStore
 		}
 		catch (JsonException)
 		{
-			await DeleteAsync(track, cancellationToken);
+			if (!readOnly) await DeleteAsync(track, cancellationToken);
 			return null;
 		}
 		catch (IOException)

@@ -18,6 +18,59 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class TransitionPerformanceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaleSpeculativeResult_IsRejectedBeforeRendering(bool cacheInvalidated)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-stale-read-" + Guid.NewGuid().ToString("N"));
+        TrackInfo track = new("Correct", "Artist", "Album", TimeSpan.FromSeconds(200));
+        try
+        {
+            using var seed = new LyricsService(directory);
+            await Read<LyricsCacheStore>(seed, "_cacheStore").WriteAsync(track, new()
+            {
+                MatcherVersion = 8, CacheKind = "Positive", LrclibId = 100, LrclibTrackName = track.Title,
+                LrclibArtistName = track.Artist, LrclibDuration = 200, SyncedLyrics = "[00:00.00]Correct",
+                Source = "LRCLIB", SavedAtUtc = DateTimeOffset.UtcNow
+            }, default);
+            Sta(() =>
+            {
+                using MediaSessionService media = new(new TransitionProvider());
+                MainWindow window = new(new SettingsService(directory), media);
+                void Set(string field, object? value) => typeof(MainWindow).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, value);
+                try
+                {
+                    var service = Read<LyricsService>(window, "_lyricsService");
+                    Set("_activeTrackKey", track.CacheKey);
+                    Set("_snapshot", new PlaybackSnapshot(track, TimeSpan.Zero, false, DateTimeOffset.UtcNow));
+                    Set("_metadataPending", false);
+                    Set("_speculativeIdentity", LyricsService.LookupIdentity(cacheInvalidated ? track : track with { Artist = "Stale artist" }));
+                    Set("_speculativeRevision", service.CacheRevision - (cacheInvalidated ? 1 : 0));
+                    Set("_speculativeLyrics", Task.FromResult<LyricsLookupResult?>(new()
+                    {
+                        Lyrics = new LyricsResult([new LyricLine(TimeSpan.Zero, "Wrong previous lyrics")], null, "LRCLIB"),
+                        LoadedFromCache = true
+                    }));
+                    Task loading = (Task)typeof(MainWindow).GetMethod("LoadLyricsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, [track, false])!;
+                    Stopwatch timeout = Stopwatch.StartNew();
+                    while (!loading.IsCompleted && timeout.Elapsed < TimeSpan.FromSeconds(5)) { Pump(); Thread.Sleep(5); }
+                    Assert.True(loading.IsCompleted);
+                    loading.GetAwaiter().GetResult();
+                    Assert.Equal("Correct", Read<LyricsResult>(window, "_lyrics").Lines.Single().Text);
+                    Assert.DoesNotContain("SEARCHING", Read<System.Windows.Controls.TextBlock>(window, "TrackStatusText").Text);
+                }
+                finally
+                {
+                    foreach (FieldInfo field in typeof(MainWindow).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
+                        if (field.GetValue(window) is DispatcherTimer timer) timer.Stop();
+                    Read<LyricsService>(window, "_lyricsService").Dispose(); Set("_allowClose", true); window.Close();
+                }
+            });
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public async Task CachedTrackAlternation_RendersTheCorrectLyrics()
     {
@@ -77,7 +130,7 @@ public sealed class TransitionPerformanceTests
             string? report = Environment.GetEnvironmentVariable("FLOWLYRICS_PERF_REPORT");
             if (!string.IsNullOrEmpty(report)) await File.WriteAllTextAsync(report,
                 "Synthetic GSMTC + real WPF dispatch; not a live-player measurement.\n" + string.Join(", ", samples.Select(v => v.ToString("F1")))
-                + $"\nDisk first two: {string.Join(", ", samples.Take(2).Select(v => v.ToString("F1")))} ms\nHot median: {samples.Skip(2).Order().ElementAt(3):F1} ms; worst: {samples.Skip(2).Max():F1} ms\n");
+                + $"\nDisk first two: {string.Join(", ", samples.Take(2).Select(v => v.ToString("F1")))} ms\nHot median: {samples.Skip(2).Order().Skip(2).Take(2).Average():F1} ms; worst: {samples.Skip(2).Max():F1} ms\n");
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }

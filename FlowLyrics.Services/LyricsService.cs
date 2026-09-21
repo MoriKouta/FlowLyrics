@@ -162,16 +162,16 @@ public sealed class LyricsService : IDisposable
 		return directories.Select((string directory) => new LyricsCacheStore(directory)).ToArray();
 	}
 
-	private async Task<CacheReadResult?> ReadCacheAcrossBuildsAsync(TrackInfo track, CancellationToken cancellationToken)
+	private async Task<CacheReadResult?> ReadCacheAcrossBuildsAsync(TrackInfo track, CancellationToken cancellationToken, bool readOnly = false)
 	{
-		LyricsCacheEntry? current = await _cacheStore.ReadAsync(track, cancellationToken);
+		LyricsCacheEntry? current = await _cacheStore.ReadAsync(track, cancellationToken, readOnly);
 		if (current != null)
 		{
 			return new CacheReadResult(current, true, BuildInfo.CacheNamespace);
 		}
 		foreach (LyricsCacheStore fallback in _fallbackCacheStores)
 		{
-			LyricsCacheEntry? cached = await fallback.ReadAsync(track, cancellationToken);
+			LyricsCacheEntry? cached = await fallback.ReadAsync(track, cancellationToken, readOnly);
 			if (cached?.CacheKind == "Positive")
 			{
 				string sourceName = Directory.GetParent(fallback.DirectoryPath)?.Name ?? "legacy";
@@ -249,7 +249,7 @@ public sealed class LyricsService : IDisposable
 	{
 		Stopwatch stageTimer = Stopwatch.StartNew();
 		await LogTrackAsync(track, forceRefresh ? "lookup:force" : "lookup:auto");
-		ManualLyricsSelection manual = await _overrideStore.GetAsync(track, cancellationToken);
+		ManualLyricsSelection manual = await _overrideStore.GetAsync(track, cancellationToken, readOnly: cacheOnly);
 		// Keep legacy precedence until the user explicitly chooses a source.
 		bool localEnabled = await _localLrcPreferences.GetAsync(track, cancellationToken) ?? manual == null;
 		LyricsLookupResult? local = localEnabled ? await TryReadLocalLrcAsync(track, cancellationToken) : null;
@@ -273,11 +273,11 @@ public sealed class LyricsService : IDisposable
 		{
 			if (!forceRefresh)
 			{
-				CacheReadResult? manualCacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken);
+				CacheReadResult? manualCacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken, readOnly: cacheOnly);
 				LyricsCacheEntry? manualCache = manualCacheRead?.Entry;
 				if (manualCache?.CacheKind == "Positive" && manualCache.LrclibId == manual.LrclibId && string.Equals(manualCache.SelectionMode, "Manual", StringComparison.OrdinalIgnoreCase))
 				{
-					await PromoteCacheAsync(track, manualCacheRead!, cancellationToken);
+					if (!cacheOnly) await PromoteCacheAsync(track, manualCacheRead!, cancellationToken);
 					await _logger.WriteAsync($"manual-cache accepted id={manual.LrclibId} cacheKey={track.CacheKey}");
 					return FromCache(manualCache, selectedManually: true);
 				}
@@ -296,7 +296,7 @@ public sealed class LyricsService : IDisposable
 
 		if (!forceRefresh)
 		{
-			CacheReadResult? cacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken);
+			CacheReadResult? cacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken, readOnly: cacheOnly);
 			LyricsCacheEntry? manualCache = cacheRead?.Entry;
 			if (!localEnabled && manualCache?.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase) == true)
 				manualCache = null; // An OFF toggle must not delete a cached local import.
@@ -304,7 +304,7 @@ public sealed class LyricsService : IDisposable
 				&& manualCache.MatcherVersion < CurrentMatcherVersion)
 			{
 				await _logger.WriteAsync($"cache rejected reason=matcher-upgrade oldVersion={manualCache.MatcherVersion} cacheKey={track.CacheKey}");
-				if (cacheRead!.IsCurrentBuild)
+				if (!cacheOnly && cacheRead!.IsCurrentBuild)
 				{
 					await _cacheStore.DeleteAsync(track, cancellationToken);
 				}
@@ -325,19 +325,19 @@ public sealed class LyricsService : IDisposable
 				if (manualCache.CacheKind == "Candidates")
 				{
 					await _logger.WriteAsync("candidate-cache discarded reason=best-match-enabled ids=" + string.Join(',', manualCache.CandidateIds) + " cacheKey=" + track.CacheKey);
-					if (cacheRead!.IsCurrentBuild) await _cacheStore.DeleteAsync(track, cancellationToken);
+					if (!cacheOnly && cacheRead!.IsCurrentBuild) await _cacheStore.DeleteAsync(track, cancellationToken);
 					manualCache = null;
 				}
 				if (manualCache != null && IsValidPositiveCache(track, manualCache))
 				{
-					await PromoteCacheAsync(track, cacheRead!, cancellationToken);
+					if (!cacheOnly) await PromoteCacheAsync(track, cacheRead!, cancellationToken);
 					await _logger.WriteAsync($"positive-cache accepted id={manualCache.LrclibId} cacheKey={track.CacheKey}");
 					return FromCache(manualCache, selectedManually: false);
 				}
 				if (manualCache != null)
 				{
 					await _logger.WriteAsync($"positive-cache rejected reason=metadata-conflict id={manualCache.LrclibId} cacheKey={track.CacheKey}");
-					await _cacheStore.DeleteAsync(track, cancellationToken);
+					if (!cacheOnly) await _cacheStore.DeleteAsync(track, cancellationToken);
 				}
 			}
 		}
