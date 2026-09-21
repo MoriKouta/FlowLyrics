@@ -102,7 +102,7 @@ public sealed class PersonalSyncRail : FrameworkElement
 		{
 			BeginEdit(handle); CaptureMouse();
 		}
-		else if (p.X is >= 6 and <= 36 && _profile.Segments.FirstOrDefault(h => p.Y >= Y(h.PlaybackStartSeconds) && p.Y <= Y(h.PlaybackEndSeconds)) is { } range)
+		else if (p.X is >= 16 and <= 36 && _profile.Segments.FirstOrDefault(h => p.Y >= Y(h.PlaybackStartSeconds) && p.Y <= Y(h.PlaybackEndSeconds)) is { } range)
 		{ SelectedId = range.Id; PointSelected?.Invoke(range.Id); InvalidateVisual(); }
 		else if (DurationSeconds > 0 && CanSeek) { BeginSeek(TimeAt(p.Y, ActualHeight, DurationSeconds)); CaptureMouse(); }
 		e.Handled = true;

@@ -113,6 +113,9 @@ public sealed class PersonalSyncEditorV2Tests
 					Invoke(window, "DeleteSelectedPoint_Click", window, new RoutedEventArgs());
 					Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Segments); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
 					Invoke(window, "Undo"); Pump(); UiUxRuntimeTests.Capture(window, "sync-v2-range");
+					profile = Read<PersonalSyncProfile>(window, "_profile"); hold = profile.Segments.Single();
+					rail.BeginEdit(new(hold.Id, SyncRailField.HoldEnd, hold.PlaybackEndSeconds)); rail.MoveInteraction(50);
+					Assert.Equal(50, hold.PlaybackEndSeconds); // Closing must discard this uncommitted preview.
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});

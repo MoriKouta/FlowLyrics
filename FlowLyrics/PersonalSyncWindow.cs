@@ -752,6 +752,8 @@ public sealed class PersonalSyncWindow : Window
 	{
 		if (_closeAfterSave) return;
 		_previewTimer.Stop();
+		// An unfinished pointer gesture is only a preview, including during close.
+		_rail.EndInteraction(cancel: true);
 		if (_pendingHoldStart.HasValue)
 		{
 			_pendingHoldStart = null;
