@@ -71,6 +71,10 @@ public sealed class PersonalSyncWindow : Window
 	private readonly TimeEditorRow _pointB;
 	private readonly TimeEditorRow _pointLyrics;
 	private readonly Button _deletePointButton;
+	private readonly Button _resyncButton;
+	private readonly Button _resumeButton;
+	private readonly TextBlock _backToLyric;
+	private bool _showInspector;
 
 	public event EventHandler<PersonalSyncProfile?>? PreviewChanged;
 	public event EventHandler<TimeSpan>? SeekRequested;
@@ -172,8 +176,18 @@ public sealed class PersonalSyncWindow : Window
 		timelinePanel.Children.Add(_selectionText); timelinePanel.Children.Add(_inspectorSummary);
 		_pointsList = new ListBox(); // Selection model only; the rail replaces the duplicate visible point list.
 		_pointsList.SelectionChanged += delegate { RefreshPointEditor(); };
-		SizeChanged += (_, _) => { bool wide = ActualWidth >= 1080; _inspector.Visibility = wide ? Visibility.Visible : Visibility.Collapsed;
-			_inspectorColumn.Width = new GridLength(wide ? 260 : 0); };
+		SizeChanged += (_, _) => UpdateInspectorLayout();
+		_resyncButton = Button(L("ここから再同期", "Re-sync from here"));
+		_resyncButton.Name = "ResyncFromHereButton";
+		_resyncButton.Click += (_, _) => { if (ValidSelectedLine(out int line)) AlignLineAt(line, Math.Max(0, _playbackPositionProvider().TotalSeconds)); };
+		timelinePanel.Children.Add(_resyncButton);
+		_resumeButton = Button(T("Resume here")); _resumeButton.Name = "ResumeSelectedHoldButton";
+		_resumeButton.Click += (_, _) => ResumeSelectedHold();
+		timelinePanel.Children.Add(_resumeButton);
+		_backToLyric = new TextBlock { Margin = new Thickness(3, 3, 3, 8) };
+		var back = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(L("歌詞の選択へ戻る", "Back to selected lyric"))) { Foreground = Muted() };
+		back.Click += (_, _) => { _pointsList.SelectedItem = null; _rail.SelectedId = null; RefreshPointEditor(); };
+		_backToLyric.Inlines.Add(back); timelinePanel.Children.Add(_backToLyric);
 
 		Border editCard = new()
 		{
@@ -210,6 +224,11 @@ public sealed class PersonalSyncWindow : Window
 		_followNowBox = new CheckBox { Content = L("再生中の行を追う", "Follow current line"), IsChecked = true };
 		DockPanel.SetDock(_followNowBox, Dock.Right);
 		lyricsHeader.Children.Add(_followNowBox);
+		Button details = Button(L("詳細を編集", "Edit details")); details.Name = "TimingDetailsButton";
+		details.MinHeight = 28; details.Padding = new Thickness(7, 4, 7, 4);
+		details.Click += (_, _) => { _showInspector = !_showInspector; UpdateInspectorLayout(); };
+		SizeChanged += (_, _) => details.Visibility = ActualWidth >= 1080 ? Visibility.Collapsed : Visibility.Visible;
+		DockPanel.SetDock(details, Dock.Right); lyricsHeader.Children.Add(details);
 		lyricsHeader.Children.Add(SectionTitle(T("Timing editor")));
 		lyricsPanel.Children.Add(lyricsHeader);
 		_lyricsList = new ListBox { Name = "SyncLyricsList", BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
@@ -228,7 +247,6 @@ public sealed class PersonalSyncWindow : Window
 		_rail.EditFinished += FinishRailEdit;
 		_rail.DragOver += (_, e) => { e.Effects = IsOwnLyricDrag(e) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
 		_rail.Drop += (_, e) => { if (IsOwnLyricDrag(e)) AlignDraggedLyric(_dragLine, _playbackPositionProvider().TotalSeconds); e.Handled = true; };
-		_rail.ContextMenu = PointContextMenu();
 		editingSurface.Children.Add(_rail);
 		Grid.SetColumn(_lyricsList, 1); editingSurface.Children.Add(_lyricsList);
 		Grid.SetRow(editingSurface, 1); lyricsPanel.Children.Add(editingSurface);
@@ -237,7 +255,7 @@ public sealed class PersonalSyncWindow : Window
 		_matchButton.MinHeight = 28; _matchButton.Padding = new Thickness(8, 4, 8, 4);
 		_matchButton.Name = "AlignSelectedLyricButton";
 		_matchButton.Click += MatchSelectedLine_Click;
-		timelinePanel.Children.Insert(2, _matchButton);
+		// Primary alignment belongs to the lyric row; retained as the keyboard/hold command target.
 		_holdButton = Button(L("+ 歌詞停止区間", "+ Lyric hold"));
 		_holdButton.Name = "AddLyricHoldButton";
 		_holdButton.Click += AddHoldRange_Click;
@@ -330,14 +348,10 @@ public sealed class PersonalSyncWindow : Window
 			StackPanel actions = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Hidden };
 			Button align = Button(T("Align to now")); align.Name = "AlignLyricButton"; align.MinHeight = 26; align.Padding = new Thickness(7, 3, 7, 3); align.FontSize = 11;
 			align.Click += (_, e) => { _lyricsList.SelectedIndex = i; MatchSelectedLine_Click(align, e); };
-			Button more = Button("⋯"); more.MinHeight = 26; more.MinWidth = 28; more.Padding = new Thickness(5, 3, 5, 3);
-			more.ContextMenu = LyricContextMenu(i);
-			more.Click += (_, _) => { _lyricsList.SelectedIndex = i; more.ContextMenu.PlacementTarget = more; more.ContextMenu.IsOpen = true; };
-			actions.Children.Add(align); actions.Children.Add(more);
+			actions.Children.Add(align);
 			Grid.SetColumn(time, 1); Grid.SetColumn(lyricCell, 2); Grid.SetColumn(actions, 3);
 			row.Children.Add(marker); row.Children.Add(time); row.Children.Add(lyricCell); row.Children.Add(actions);
 			ListBoxItem item = new() { Content = row, Tag = i, Padding = new Thickness(2, 0, 2, 0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
-			item.ContextMenu = LyricContextMenu(i);
 			item.MouseEnter += (_, _) => ShowRowActions(i, true);
 			item.MouseLeave += (_, _) => ShowRowActions(i, item.IsSelected || item.IsKeyboardFocusWithin);
 			item.IsKeyboardFocusWithinChanged += (_, _) => ShowRowActions(i, item.IsSelected || item.IsMouseOver || item.IsKeyboardFocusWithin);
@@ -538,7 +552,7 @@ public sealed class PersonalSyncWindow : Window
 		if (_refreshing) return;
 		_selectedLineIndex = _lyricsList.SelectedItem is ListBoxItem { Tag: int index } ? index : -1;
 		if (_activeLineIndex >= 0) SuspendFollow();
-		_pointsList.SelectedItem = null;
+		// A selected point/range remains the edit target while choosing its lyric.
 		RefreshLyricRowVisuals();
 		DrawTimeline();
 		RefreshSelectionText();
@@ -585,6 +599,12 @@ public sealed class PersonalSyncWindow : Window
 		_deletePointButton.IsEnabled = has;
 		_deletePointButton.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
 		_matchButton.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
+		_resyncButton.Visibility = !has && ValidSelectedLine(out _) ? Visibility.Visible : Visibility.Collapsed;
+		_resumeButton.Visibility = _pointsList.SelectedItem is SyncPointListItem { IsAnchor: false } ? Visibility.Visible : Visibility.Collapsed;
+		_resumeButton.IsEnabled = ValidSelectedLine(out _);
+		_resumeButton.ToolTip = ValidSelectedLine(out int selectedLyric) ? _lines[selectedLyric].Text : T("Select a lyric");
+		_backToLyric.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+		UpdateInspectorLayout();
 		if (_pointsList.SelectedItem is not SyncPointListItem item)
 		{
 			_pointTypeText.Text = L("左レールの点・区間を選ぶと詳細を調整できます", "Select a point or range on the rail to refine it");
@@ -908,6 +928,31 @@ public sealed class PersonalSyncWindow : Window
 
 	private void SuspendFollow() { _followSuspendedUntil = DateTimeOffset.UtcNow.AddSeconds(5); _lastFollowedLine = -1; }
 
+	private void UpdateInspectorLayout()
+	{
+		bool wide = ActualWidth >= 1080;
+		bool visible = wide || _showInspector || _pointsList.SelectedItem != null;
+		_inspector.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+		_inspectorColumn.Width = new GridLength(wide ? 260 : 0);
+		Grid.SetRow(_inspector, wide ? 1 : 2); Grid.SetColumn(_inspector, wide ? 1 : 0); Grid.SetColumnSpan(_inspector, wide ? 1 : 2);
+		_inspector.MaxHeight = wide ? double.PositiveInfinity : 220;
+		_inspector.Margin = wide ? new Thickness(12, 0, 0, 0) : new Thickness(0, 10, 0, 0);
+	}
+
+	private void ResumeSelectedHold()
+	{
+		if (_pointsList.SelectedItem is not SyncPointListItem { IsAnchor: false } point || !ValidSelectedLine(out int index)) return;
+		var hold = _profile.Segments.FirstOrDefault(h => h.Id == point.Id);
+		if (hold == null) return;
+		Change(profile =>
+		{
+			var resume = FindResumeAnchor(profile, hold, hold.PlaybackEndSeconds);
+			if (resume == null) { resume = new() { PlaybackSeconds = hold.PlaybackEndSeconds }; profile.Anchors.Add(resume); }
+			resume.LyricsSeconds = _lines[index].Time.TotalSeconds; hold.ResumeAnchorId = resume.Id;
+		});
+		SelectPoint(hold.Id);
+	}
+
 	private void RefreshInspectorSummary()
 	{
 		if (_pointsList.SelectedItem is SyncPointListItem point)
@@ -934,49 +979,6 @@ public sealed class PersonalSyncWindow : Window
 			_inspectorSummary.Text = Format(_playbackPositionProvider().TotalSeconds) + " / " + Format(_context.Track.DurationSeconds)
 				+ "\n" + T("Global offset") + " " + _profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s";
 		}
-	}
-
-	private ContextMenu LyricContextMenu(int index)
-	{
-		ContextMenu menu = new() { Background = Brush(35, 32, 36), Foreground = Brushes.White, BorderBrush = Muted() };
-		void Add(string name, Action action) { MenuItem item = new() { Header = name }; item.Click += (_, _) => { _lyricsList.SelectedIndex = index; action(); }; menu.Items.Add(item); }
-		Add(L("ここから先を合わせる", "Align from here"), () => AlignLineAt(index, Math.Max(0, _playbackPositionProvider().TotalSeconds)));
-		Add(L("曲全体をこの位置に合わせる", "Align the whole track here"), () => Change(profile => ShiftWholeTrack(profile,
-			PersonalSyncMapper.MapPlaybackToLyrics(_playbackPositionProvider().TotalSeconds, profile) - _lines[index].Time.TotalSeconds)));
-		Add(L("歌詞停止区間を追加", "Add lyric hold"), () => AddHoldRange_Click(this, new RoutedEventArgs()));
-		Add(L("選択した停止区間からこの歌詞で再開", "Resume the selected hold with this lyric"), () =>
-		{
-			var hold = _profile.Segments.FirstOrDefault(h => h.Id == _selectedHoldId);
-			if (hold == null) return;
-			Change(profile =>
-			{
-				var resume = FindResumeAnchor(profile, hold, hold.PlaybackEndSeconds);
-				if (resume != null) resume.LyricsSeconds = _lines[index].Time.TotalSeconds;
-			});
-			SelectPoint(hold.Id);
-		});
-		Add(L("この行の同期点を削除", "Remove this line's sync point"), () =>
-		{
-			var anchor = _profile.Anchors.FirstOrDefault(a => Math.Abs(a.LyricsSeconds - _lines[index].Time.TotalSeconds) < .05);
-			if (anchor != null) { SelectPoint(anchor.Id); DeleteSelectedPoint_Click(this, new RoutedEventArgs()); }
-		});
-		return menu;
-	}
-
-	private ContextMenu PointContextMenu()
-	{
-		ContextMenu menu = new() { Background = Brush(35, 32, 36), Foreground = Brushes.White, BorderBrush = Muted() };
-		void Add(string name, Action action) { MenuItem item = new() { Header = name }; item.Click += (_, _) => action(); menu.Items.Add(item); }
-		Add(L("開始を現在位置に", "Set start to now"), () => SetSelectedPointField(TimeField.A));
-		Add(L("終了を現在位置に", "Set end to now"), () => { if (_pointsList.SelectedItem is SyncPointListItem { IsAnchor: false }) SetSelectedPointField(TimeField.B); });
-		Add(L("選択した補正を削除", "Delete selected change"), () => DeleteSelectedPoint_Click(this, new RoutedEventArgs()));
-		menu.Opened += (_, _) =>
-		{
-			bool selected = _pointsList.SelectedItem is SyncPointListItem;
-			foreach (MenuItem item in menu.Items) item.IsEnabled = selected;
-			((MenuItem)menu.Items[1]).IsEnabled = _pointsList.SelectedItem is SyncPointListItem { IsAnchor: false };
-		};
-		return menu;
 	}
 
 	private void AddHoldRange_Click(object sender, RoutedEventArgs e)

@@ -90,11 +90,17 @@ public sealed class GlowOverlayTests
 		string? directory = Environment.GetEnvironmentVariable("FLOWLYRICS_NATIVE_CAPTURE_DIR");
 		if (string.IsNullOrEmpty(directory)) return;
 		Directory.CreateDirectory(directory);
-		Thread.Sleep(70); Pump();
-		Point origin = window.PointToScreen(new Point()); DpiScale dpi = VisualTreeHelper.GetDpi(window);
-		using System.Drawing.Bitmap bitmap = new((int)(window.ActualWidth * dpi.DpiScaleX), (int)(window.ActualHeight * dpi.DpiScaleY));
-		using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bitmap))
-			graphics.CopyFromScreen((int)origin.X, (int)origin.Y, 0, 0, bitmap.Size);
-		bitmap.Save(Path.Combine(directory, name + ".png"));
+		bool topmost = window.Topmost;
+		try
+		{
+			window.Topmost = true; Thread.Sleep(70); Pump();
+			FrameworkElement surface = window.WindowStyle == WindowStyle.None ? window : (FrameworkElement)window.Content;
+			Point origin = surface.PointToScreen(new Point()); DpiScale dpi = VisualTreeHelper.GetDpi(surface);
+			using System.Drawing.Bitmap bitmap = new((int)(surface.ActualWidth * dpi.DpiScaleX), (int)(surface.ActualHeight * dpi.DpiScaleY));
+			using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bitmap))
+				graphics.CopyFromScreen((int)origin.X, (int)origin.Y, 0, 0, bitmap.Size);
+			bitmap.Save(Path.Combine(directory, name + ".png"));
+		}
+		finally { window.Topmost = topmost; }
 	}
 }

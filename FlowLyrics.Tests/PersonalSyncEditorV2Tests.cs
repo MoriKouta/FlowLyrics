@@ -39,6 +39,8 @@ public sealed class PersonalSyncEditorV2Tests
 					double height = first.ActualHeight, nextY = second.TranslatePoint(new Point(), list).Y;
 					Assert.InRange(height, 32, 46);
 					var actions = Logical<StackPanel>(second).Single(panel => panel.Children.OfType<Button>().Any());
+					Assert.Single(actions.Children.OfType<Button>());
+					Assert.Null(second.ContextMenu);
 					second.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent }); Pump();
 					Assert.Equal(Visibility.Visible, actions.Visibility);
 					Assert.Equal(height, first.ActualHeight); Assert.Equal(nextY, second.TranslatePoint(new Point(), list).Y);
@@ -168,6 +170,52 @@ public sealed class PersonalSyncEditorV2Tests
 					Assert.Equal(changed.Anchors[0].Id, changed.Segments[0].ResumeAnchorId);
 					Assert.Equal(5, PersonalSyncMapper.MapPlaybackToLyrics(25, changed));
 					Assert.Equal(20, PersonalSyncMapper.MapPlaybackToLyrics(35, changed));
+				}
+				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
+			});
+		}
+		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+	}
+
+	[Theory]
+	[InlineData(760)]
+	[InlineData(1120)]
+	public void ContextActions_KeepRowsSimple_ResyncAndResumeOnlyOnSelectedTarget(int width)
+	{
+		string directory = Temp();
+		try
+		{
+			Sta(() =>
+			{
+				double now = 36;
+				LyricLine[] lines = [new(TimeSpan.FromSeconds(20), "A"), new(TimeSpan.FromSeconds(24), "B"), new(TimeSpan.FromSeconds(28), "C")];
+				var window = new PersonalSyncWindow(new(directory), Context(), null, lines, () => 0, () => TimeSpan.FromSeconds(now), "ja-JP") { Width = width, ShowActivated = false };
+				try
+				{
+					window.Show(); Pump();
+					var list = Read<ListBox>(window, "_lyricsList");
+					Assert.All(list.Items.Cast<ListBoxItem>(), row => { Assert.Null(row.ContextMenu); Assert.Single(Logical<Button>(row)); });
+					Assert.DoesNotContain(Logical<Button>(window), b => Equals(b.Content, "⋯"));
+					Assert.False(Read<Button>(window, "_resumeButton").IsVisible);
+					Assert.False(Read<Button>(window, "_deletePointButton").IsVisible);
+					if (width < 1080) Logical<Button>(window).Single(b => b.Name == "TimingDetailsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.True(Read<Border>(window, "_inspector").IsVisible);
+					Assert.Equal(width < 1080 ? 2 : 1, Grid.GetRow(Read<Border>(window, "_inspector")));
+					Read<Button>(window, "_resyncButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					var profile = Read<PersonalSyncProfile>(window, "_profile");
+					Assert.Single(profile.Anchors); Assert.Equal(0, profile.OffsetSeconds);
+					Assert.False(Read<Button>(window, "_resyncButton").IsVisible);
+					Assert.True(Read<Button>(window, "_deletePointButton").IsVisible);
+					now = 40;
+					Read<Button>(window, "_holdButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.True(Read<Button>(window, "_resumeButton").IsVisible);
+					list.SelectedIndex = 2;
+					Assert.True(Read<Button>(window, "_resumeButton").IsVisible);
+					Read<Button>(window, "_resumeButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					var hold = profile.Segments.Single();
+					Assert.Equal(28, profile.Anchors.Single(a => a.Id == hold.ResumeAnchorId).LyricsSeconds);
+					Pump(); UiUxRuntimeTests.Capture(window, "sync-context-" + width);
+					GlowOverlayTests.CaptureNative(window, "sync-context-" + width);
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});

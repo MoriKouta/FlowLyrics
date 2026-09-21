@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Remove Personal Sync lyric-row overflow menus. Keep one primary action per row and put re-sync, resume and deletion on the selected object's inspector, with a compact lower inspector on narrow windows.
+
 - Make Personal Sync's primary alignment translate the entire existing timeline without adding rewind anchors; preserve hold durations and negative shifted edit coordinates across saves.
 
 - Render lyric glow in a separate sibling layer outside the scrolling text viewport, keeping glyph layout unchanged at every strength and reserving a fixed outer window bleed without reducing logical content size.
