@@ -205,7 +205,7 @@
             <TextBlock Name="TrackArtistText" Margin="0,2,16,0" Foreground="#F2FFFFFF" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" LineHeight="16" LineStackingStrategy="BlockLineHeight" MaxHeight="32" Visibility="Collapsed" />
           </StackPanel>
         </Grid>
-        <Grid Name="LyricsPanel" Row="1" ClipToBounds="True">
+        <Grid Name="LyricsPanel" Row="1" ClipToBounds="False">
           <ScrollViewer Name="LyricsScrollViewer" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="VerticalOnly" Focusable="False" ClipToBounds="True">
             <StackPanel Name="LyricsStackPanel" />
           </ScrollViewer>

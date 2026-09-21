@@ -72,14 +72,17 @@ public sealed class UiUxRuntimeTests
 		{
 			OutlinedText lyric = new() { Text = "Soft glow", FontSize = 48, Fill = Brushes.White, StrokeThickness = 0, ShadowDepth = 0,
 				GlowColor = Colors.OrangeRed, GlowOpacity = 1, GlowRadius = 40 };
-			Border viewport = new() { Width = 340, Height = 180, ClipToBounds = true, Child = lyric, Background = Brushes.Transparent };
-			Window window = new() { Width = 380, Height = 240, Background = Brushes.Black, Content = viewport, ShowActivated = false };
+			ScrollViewer viewport = new() { Content = lyric, ClipToBounds = true, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+			LyricGlowOverlay overlay = new(viewport, () => [lyric]);
+			Grid host = new() { Margin = new Thickness(48) }; host.Children.Add(overlay); host.Children.Add(viewport);
+			Window window = new() { Width = 480, Height = 300, Background = Brushes.Black, Content = host, ShowActivated = false };
 			try
 			{
 				window.Show(); Pump();
 				Assert.Null(lyric.Effect);
-				var rear = (DrawingVisual)VisualTreeHelper.GetChild(lyric, 0);
-				var front = (DrawingVisual)VisualTreeHelper.GetChild(lyric, 1);
+				overlay.Refresh();
+				var rear = (DrawingVisual)VisualTreeHelper.GetChild(overlay, 0);
+				var front = (DrawingVisual)VisualTreeHelper.GetChild(lyric, 0);
 				Assert.Equal(KernelType.Gaussian, Assert.IsType<BlurEffect>(rear.Effect).KernelType);
 				Assert.Null(front.Effect);
 				Assert.True(front.ContentBounds.Left < 15);
@@ -87,7 +90,7 @@ public sealed class UiUxRuntimeTests
 				Assert.Null(rear.Clip);
 				Capture(window, "glow-strong");
 				lyric.GlowOpacity = 0; Pump();
-				Assert.Null(rear.Effect); Assert.True(rear.ContentBounds.IsEmpty);
+				overlay.Refresh(); Assert.Equal(0, VisualTreeHelper.GetChildrenCount(overlay));
 			}
 			finally { window.Close(); }
 		});

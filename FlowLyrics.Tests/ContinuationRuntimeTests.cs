@@ -33,10 +33,10 @@ public sealed class ContinuationRuntimeTests
 			{
 				window.Show(); Pump();
 				string? geometry = null; Size? desired = null; Rect? bounds = null; Point? position = null;
-				foreach (double radius in new[] { 0.0, 10, 20, 40 })
+				foreach (double radius in new[] { 0.0, 10, 20, 30, 40 })
 				{
 					text.GlowRadius = radius; window.UpdateLayout(); Pump();
-					DrawingVisual front = (DrawingVisual)VisualTreeHelper.GetChild(text, 1);
+					DrawingVisual front = (DrawingVisual)VisualTreeHelper.GetChild(text, 0);
 					string actual = string.Join("|", front.Drawing.Children.OfType<GeometryDrawing>().Select(g => g.Geometry.ToString(CultureInfo.InvariantCulture)));
 					Assert.NotEmpty(actual);
 					geometry ??= actual; desired ??= text.DesiredSize; bounds ??= front.ContentBounds; position ??= text.TranslatePoint(new Point(), window);

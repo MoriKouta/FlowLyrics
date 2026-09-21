@@ -337,6 +337,10 @@ public class MainWindow : Window, IComponentConnector
 	internal Thumb ResizeBottomRight;
 
 	private bool _contentLoaded;
+	private LyricGlowOverlay _glowOverlay;
+	private const double WindowBleed = LyricGlowOverlay.WindowBleed;
+	private double LogicalWindowWidth => Math.Max(1, ActualWidth - 2 * WindowBleed);
+	private double LogicalWindowHeight => Math.Max(1, ActualHeight - 2 * WindowBleed);
 
 	public MainWindow() : this(new SettingsService(), new MediaSessionService()) { }
 
@@ -348,6 +352,19 @@ public class MainWindow : Window, IComponentConnector
 		_systemVolumeService = new(message => { _ = audioLogger.WriteAsync(message); });
 		_mediaSessionService = mediaSessionService;
 		InitializeComponent();
+		// Enlarge the native surface, not the logical lyric viewport. This fixed
+		// transparent perimeter is independent of glow strength, including zero.
+		FrameworkElement logicalRoot = (FrameworkElement)Content;
+		Content = null;
+		Content = new Border { Padding = new Thickness(WindowBleed), Child = logicalRoot, ClipToBounds = false };
+		MinWidth += 2 * WindowBleed;
+		MinHeight += 2 * WindowBleed;
+		if (!double.IsInfinity(MaxWidth)) MaxWidth += 2 * WindowBleed;
+		if (!double.IsInfinity(MaxHeight)) MaxHeight += 2 * WindowBleed;
+		Grid lyricHost = (Grid)LyricsScrollViewer.Parent;
+		lyricHost.ClipToBounds = false;
+		_glowOverlay = new(LyricsScrollViewer, () => _lineControls);
+		lyricHost.Children.Insert(0, _glowOverlay);
 		_trackArtistText = CurrentTrackHeader.Attach(TrackInfoPanel, TrackTitleText);
 		ApplyCompactUtilityControlSizing();
 		VolumePopup.PlacementTarget = VolumeButton;
@@ -496,8 +513,8 @@ public class MainWindow : Window, IComponentConnector
 		LyricsScrollViewer.PreviewMouseWheel += LyricsScrollViewer_PreviewMouseWheel;
 		LyricsScrollViewer.PreviewTouchMove += LyricsScrollViewer_PreviewTouchMove;
 		base.MouseLeftButtonDown += MainWindow_MouseLeftButtonDown;
-		base.Width = _settings.WindowWidth;
-		base.Height = _settings.WindowHeight;
+		base.Width = _settings.WindowWidth + 2 * WindowBleed;
+		base.Height = _settings.WindowHeight + 2 * WindowBleed;
 		ApplyVisualSettings();
 	}
 
@@ -1505,7 +1522,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		string layoutKey = string.Join("|", _activeTrackKey, _settings.FontFamily, _settings.FontSize, _settings.MinimumFontSize,
-			_settings.TextAlignment, _settings.LineSpacing, GlowViewportInset, _settings.MaximumWrapLines, _settings.WrapLongLines, _settings.AutoFitText,
+			_settings.TextAlignment, _settings.LineSpacing, LyricsViewportInset, _settings.MaximumWrapLines, _settings.WrapLongLines, _settings.AutoFitText,
 			LyricsScrollViewer.ViewportWidth);
 		if (string.Equals(_plainLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
 		{
@@ -1519,8 +1536,8 @@ public class MainWindow : Window, IComponentConnector
 		}
 
 		RebuildLineControls(lines.Count, lines, 0);
-		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(GlowViewportInset, LyricsScrollViewer.ViewportHeight * 0.07), 0.0,
-			Math.Max(GlowViewportInset, LyricsScrollViewer.ViewportHeight * 0.14));
+		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(LyricsViewportInset, LyricsScrollViewer.ViewportHeight * 0.07), 0.0,
+			Math.Max(LyricsViewportInset, LyricsScrollViewer.ViewportHeight * 0.14));
 		_activeLineIndex = -1;
 		_lastLineIndex = int.MinValue;
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -1621,11 +1638,11 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		string layoutKey = string.Join("|", _activeTrackKey, lines.Count, _settings.FontFamily, _settings.FontSize,
-			_settings.MinimumFontSize, _settings.TextAlignment, _settings.LineSpacing, GlowViewportInset, LyricsScrollViewer.ViewportWidth, LyricsScrollViewer.ViewportHeight);
+			_settings.MinimumFontSize, _settings.TextAlignment, _settings.LineSpacing, LyricsViewportInset, LyricsScrollViewer.ViewportWidth, LyricsScrollViewer.ViewportHeight);
 		if (!string.Equals(_fullLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
 		{
 			RebuildLineControls(lines.Count, lines, 0);
-			LyricsStackPanel.Margin = new Thickness(2.0, GlowViewportInset, 2.0, GlowViewportInset);
+			LyricsStackPanel.Margin = new Thickness(2.0, LyricsViewportInset, 2.0, LyricsViewportInset);
 			for (int i = 0; i < _lineControls.Count; i++)
 			{
 				OutlinedText line = _lineControls[i];
@@ -1802,7 +1819,7 @@ public class MainWindow : Window, IComponentConnector
 		_visibleFirstLineIndex = Math.Max(0, firstLineIndex);
 		if (!_plainLyricsScrollMode)
 		{
-			LyricsStackPanel.Margin = new Thickness(0.0, GlowViewportInset, 0.0, GlowViewportInset);
+			LyricsStackPanel.Margin = new Thickness(0.0, LyricsViewportInset, 0.0, LyricsViewportInset);
 		}
 		LyricsStackPanel.Children.Clear();
 		_lineControls.Clear();
@@ -1823,8 +1840,8 @@ public class MainWindow : Window, IComponentConnector
 		LyricsStackPanel.UpdateLayout();
 	}
 
-	// Fixed viewport bleed, independent of whether glow is enabled or its radius.
-	private const double GlowViewportInset = 4;
+	// Existing lyric spacing only. Glow bleed is owned by the outer overlay.
+	private const double LyricsViewportInset = 4;
 
 	private void ApplyTextSettingsToControls()
 	{
@@ -1835,7 +1852,7 @@ public class MainWindow : Window, IComponentConnector
 		if (_settings.ReverseColors) glowColor = ApplyReverseColor(glowColor);
 		double glowOpacity = Math.Clamp(_settings.GlowOpacity * glowColor.A / 255.0, 0.0, 1.0);
 		if (!_plainLyricsScrollMode && !_showAllLyrics)
-			LyricsStackPanel.Margin = new Thickness(0, GlowViewportInset, 0, GlowViewportInset);
+			LyricsStackPanel.Margin = new Thickness(0, LyricsViewportInset, 0, LyricsViewportInset);
 		string textAlignment = _settings.TextAlignment;
 		TextAlignment textAlignment2 = ((textAlignment == "Center") ? TextAlignment.Center : ((textAlignment == "Right") ? TextAlignment.Right : TextAlignment.Left));
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -2126,8 +2143,8 @@ public class MainWindow : Window, IComponentConnector
 
 	private void UpdateChromeVisibility()
 	{
-		double num = ((base.ActualHeight > 0.0) ? base.ActualHeight : base.Height);
-		double num2 = ((base.ActualWidth > 0.0) ? base.ActualWidth : base.Width);
+		double num = ((base.ActualHeight > 0.0) ? LogicalWindowHeight : base.Height - 2 * WindowBleed);
+		double num2 = ((base.ActualWidth > 0.0) ? LogicalWindowWidth : base.Width - 2 * WindowBleed);
 		bool flag = num >= 210.0 && num2 >= 260.0;
 		bool flag2 = num >= 40.0 && num2 >= 76.0;
 		bool flag3 = num >= 58.0 && num2 >= 210.0;
@@ -2823,13 +2840,17 @@ public class MainWindow : Window, IComponentConnector
 			QueueResizeRefresh();
 			return IntPtr.Zero;
 		}
-		if (message != 132 || !_isLocked)
+		if (message != 132)
 		{
 			return IntPtr.Zero;
 		}
 		nint num = lParam;
 		long num2 = ((IntPtr)num).ToInt64();
 		System.Windows.Point screenPoint = new System.Windows.Point((short)(num2 & 0xFFFF), (short)((num2 >> 16) & 0xFFFF));
+		// The extra native glow perimeter must not capture clicks from other apps.
+		System.Windows.Point logicalPoint = HitTestRoot.PointFromScreen(screenPoint);
+		if (!new Rect(HitTestRoot.RenderSize).Contains(logicalPoint)) { handled = true; return new IntPtr(-1); }
+		if (!_isLocked) return IntPtr.Zero;
 		if (IsPointOverPlaybackButton(screenPoint))
 		{
 			return IntPtr.Zero;
@@ -2986,10 +3007,10 @@ public class MainWindow : Window, IComponentConnector
 		void PreviewSettings(AppSettings preview)
 		{
 			preview.IsLocked = _isLocked;
-			preview.WindowLeft = base.Left;
-			preview.WindowTop = base.Top;
-			preview.WindowWidth = base.Width;
-			preview.WindowHeight = base.Height;
+			preview.WindowLeft = base.Left + WindowBleed;
+			preview.WindowTop = base.Top + WindowBleed;
+			preview.WindowWidth = LogicalWindowWidth;
+			preview.WindowHeight = LogicalWindowHeight;
 			bool num3 = _settings.ShortcutsEnabled != preview.ShortcutsEnabled;
 			bool autoScrollResumed = !_settings.PlainLyricsAutoScroll && preview.PlainLyricsAutoScroll;
 			_settings = preview;
@@ -3022,10 +3043,10 @@ public class MainWindow : Window, IComponentConnector
 		{
 			AppSettings resultSettings = settingsWindow.ResultSettings;
 			resultSettings.IsLocked = _isLocked;
-			resultSettings.WindowLeft = base.Left;
-			resultSettings.WindowTop = base.Top;
-			resultSettings.WindowWidth = base.Width;
-			resultSettings.WindowHeight = base.Height;
+			resultSettings.WindowLeft = base.Left + WindowBleed;
+			resultSettings.WindowTop = base.Top + WindowBleed;
+			resultSettings.WindowWidth = LogicalWindowWidth;
+			resultSettings.WindowHeight = LogicalWindowHeight;
 			if (resultSettings.StartWithWindows != original.StartWithWindows && !StartupService.TrySetEnabled(resultSettings.StartWithWindows, out string error))
 			{
 				resultSettings.StartWithWindows = original.StartWithWindows;
@@ -3058,10 +3079,10 @@ public class MainWindow : Window, IComponentConnector
 	{
 		if (_isInitialized && base.WindowState == WindowState.Normal)
 		{
-			_settings.WindowLeft = base.Left;
-			_settings.WindowTop = base.Top;
-			_settings.WindowWidth = base.ActualWidth;
-			_settings.WindowHeight = base.ActualHeight;
+			_settings.WindowLeft = base.Left + WindowBleed;
+			_settings.WindowTop = base.Top + WindowBleed;
+			_settings.WindowWidth = LogicalWindowWidth;
+			_settings.WindowHeight = LogicalWindowHeight;
 			if (!_isInteractiveResize)
 			{
 				ScheduleSettingsSave();
@@ -3071,18 +3092,18 @@ public class MainWindow : Window, IComponentConnector
 
 	private void RestoreWindowPosition()
 	{
-		base.Width = _settings.WindowWidth;
-		base.Height = _settings.WindowHeight;
+		base.Width = _settings.WindowWidth + 2 * WindowBleed;
+		base.Height = _settings.WindowHeight + 2 * WindowBleed;
 		double virtualScreenLeft = SystemParameters.VirtualScreenLeft;
 		double virtualScreenTop = SystemParameters.VirtualScreenTop;
 		double num = virtualScreenLeft + SystemParameters.VirtualScreenWidth;
 		double num2 = virtualScreenTop + SystemParameters.VirtualScreenHeight;
-		double num3 = SystemParameters.WorkArea.Left + Math.Max(0.0, (SystemParameters.WorkArea.Width - base.Width) / 2.0);
-		double num4 = SystemParameters.WorkArea.Bottom - base.Height - 36.0;
+		double num3 = SystemParameters.WorkArea.Left + Math.Max(0.0, (SystemParameters.WorkArea.Width - _settings.WindowWidth) / 2.0);
+		double num4 = SystemParameters.WorkArea.Bottom - _settings.WindowHeight - 36.0;
 		double value = _settings.WindowLeft ?? num3;
 		double value2 = _settings.WindowTop ?? num4;
-		base.Left = Math.Clamp(value, virtualScreenLeft - base.Width + 80.0, num - 80.0);
-		base.Top = Math.Clamp(value2, virtualScreenTop, num2 - 50.0);
+		base.Left = Math.Clamp(value, virtualScreenLeft - _settings.WindowWidth + 80.0, num - 80.0) - WindowBleed;
+		base.Top = Math.Clamp(value2, virtualScreenTop, num2 - 50.0) - WindowBleed;
 	}
 
 	private void ScheduleSettingsSave()

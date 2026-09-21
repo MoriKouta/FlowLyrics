@@ -34,6 +34,9 @@ public sealed class MainWindowRuntimeTests
 						Assert.NotNull(Read<Button>(window, field).Parent);
 					Assert.NotNull(Read<Grid>(window, "_playbackTimeline").Parent);
 					AppSettings settings = Read<AppSettings>(window, "_settings");
+					Assert.Equal(settings.WindowWidth, Read<Grid>(window, "HitTestRoot").ActualWidth, 5);
+					Assert.Equal(settings.WindowHeight, Read<Grid>(window, "HitTestRoot").ActualHeight, 5);
+					Assert.False(Read<LyricGlowOverlay>(window, "_glowOverlay").IsDescendantOf(Read<ScrollViewer>(window, "LyricsScrollViewer")));
 					settings.GlowColor = "#FFFF8000"; settings.GlowStrength = 12; settings.GlowOpacity = 0.7;
 					var controls = Read<List<OutlinedText>>(window, "_lineControls");
 					controls.Add(new OutlinedText { Text = "Sharp lyric" });
@@ -57,6 +60,9 @@ public sealed class MainWindowRuntimeTests
 					Invoke(window, "DisplayLyricContext", lines, 1, false);
 					Invoke(window, "UpdateCurrentTrackHeader", track, "FlowLyrics"); Pump();
 					UiUxRuntimeTests.Capture(window, "overlay-strong-glow");
+					window.Background = System.Windows.Media.Brushes.Black; Pump();
+					GlowOverlayTests.CaptureNative(window, "main-window-glow-40");
+					window.Background = System.Windows.Media.Brushes.Transparent;
 					Thickness strongMargin = Read<StackPanel>(window, "LyricsStackPanel").Margin;
 					settings.GlowStrength = 0; Invoke(window, "ApplyTextSettingsToControls");
 					Assert.Equal(strongMargin, Read<StackPanel>(window, "LyricsStackPanel").Margin);

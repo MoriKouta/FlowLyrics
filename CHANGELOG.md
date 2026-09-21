@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Render lyric glow in a separate sibling layer outside the scrolling text viewport, keeping glyph layout unchanged at every strength and reserving a fixed outer window bleed without reducing logical content size.
+
 - Keep Personal Sync rows fixed while showing hover actions, replace inline expansion with contextual menus, and add a proportional vertical seek rail with draggable sync points and lyric-hold ranges. First alignment sets the global offset; later points preserve earlier timing. Add a responsive inspector, visible correction values, temporary follow suspension, and one-step drag undo.
 
 - Preserve the selected media session through transient metadata, confirm consecutive reads after a short event-driven debounce, and hide previous lyrics without an idle-player flash. Speculate exact cache reads during stabilization, reuse up to 64 parsed lyric results, resolve Personal Sync before first paint, and record first-render timings.

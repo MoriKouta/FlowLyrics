@@ -3,13 +3,11 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 
 namespace FlowLyrics.Controls;
 
 public sealed class OutlinedText : FrameworkElement
 {
-	private readonly DrawingVisual _glowVisual = new();
 	private readonly DrawingVisual _textVisual = new();
 	private readonly VisualCollection _layers;
 	public static readonly DependencyProperty GlowColorProperty = Register("GlowColor", typeof(Color), Colors.White, false);
@@ -20,7 +18,10 @@ public sealed class OutlinedText : FrameworkElement
 	public double GlowOpacity { get => (double)GetValue(GlowOpacityProperty); set => SetValue(GlowOpacityProperty, value); }
 	public bool HasGlow => GlowRadius > .05 && GlowOpacity > .001 && GlowColor.A > 0;
 
-	public OutlinedText() => _layers = new VisualCollection(this) { _glowVisual, _textVisual };
+	// Layout owns the sharp glyph geometry. Only LyricGlowOverlay draws its halo.
+	public Geometry? GlyphGeometry { get; private set; }
+	public double RenderedFontSize { get; private set; }
+	public OutlinedText() => _layers = new VisualCollection(this) { _textVisual };
 	protected override int VisualChildrenCount => _layers.Count;
 	protected override Visual GetVisualChild(int index) => _layers[index];
 
@@ -239,28 +240,14 @@ public sealed class OutlinedText : FrameworkElement
 		return finalSize;
 	}
 
-	// FrameworkElement can otherwise create an implicit layout clip even when
-	// ClipToBounds is false. Let the rear effect bleed; the viewport owns clipping.
+	// The scroll viewport clips the foreground; glow lives outside that subtree.
 	protected override Geometry GetLayoutClip(Size layoutSlotSize) => ClipToBounds ? base.GetLayoutClip(layoutSlotSize) : null;
 
 	protected override void OnRender(DrawingContext context)
 	{
 		base.OnRender(context);
-		// Retained layers: only the rear silhouette is blurred. Never rasterize the sharp foreground.
-		using DrawingContext glow = _glowVisual.RenderOpen();
+		GlyphGeometry = null;
 		using DrawingContext drawingContext = _textVisual.RenderOpen();
-		if (HasGlow)
-		{
-			double radius = Math.Clamp(GlowRadius, 0, 40);
-			if (_glowVisual.Effect is not BlurEffect blur || blur.Radius != radius)
-			{
-				BlurEffect effect = new() { Radius = radius, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Quality };
-				effect.Freeze();
-				_glowVisual.Effect = effect;
-			}
-			_glowVisual.Opacity = Math.Clamp(GlowOpacity, 0, 1) * .8;
-		}
-		else _glowVisual.Effect = null;
 		if (!string.IsNullOrEmpty(Text) && !(base.ActualWidth <= 2.0) && !(base.ActualHeight <= 2.0))
 		{
 			double drawingPadding = GetDrawingPadding();
@@ -268,16 +255,13 @@ public sealed class OutlinedText : FrameworkElement
 			double num = Math.Max(1.0, base.ActualWidth - horizontalPadding * 2.0);
 			double num2 = Math.Max(1.0, base.ActualHeight - drawingPadding * 2.0);
 			double fontSize = SelectFontSize(num, num2);
+			RenderedFontSize = fontSize;
 			FormattedText formattedText = CreateFormattedText(num, fontSize);
 			double x = horizontalPadding;
 			double y = drawingPadding + Math.Max(0.0, (num2 - formattedText.Height) / 2.0);
 			Geometry geometry = formattedText.BuildGeometry(new Point(x, y));
-			if (HasGlow)
-			{
-				SolidColorBrush glowBrush = new(GlowColor);
-				glowBrush.Freeze();
-				glow.DrawGeometry(glowBrush, null, geometry);
-			}
+			geometry.Freeze();
+			GlyphGeometry = geometry;
 			if (ShadowBrush != null && ShadowDepth > 0.0)
 			{
 				drawingContext.PushTransform(new TranslateTransform(ShadowDepth, ShadowDepth));
@@ -354,8 +338,7 @@ public sealed class OutlinedText : FrameworkElement
 
 	private double GetDrawingPadding(bool horizontal = false)
 	{
-		// Glow is a retained rear visual and may bleed outside this element. Its
-		// radius must never change measuring, fitting, wrapping or glyph positions.
+		// Foreground-only spacing; independent of the external glow overlay.
 		return Math.Max(1.0, StrokeThickness * 1.5 + ShadowDepth + 2.0);
 	}
 
