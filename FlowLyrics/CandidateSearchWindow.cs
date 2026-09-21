@@ -87,7 +87,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	public CandidateSearchWindow(TrackInfo track, LyricsService lyricsService, string language, bool plainFallbackEnabled, string accentColor, bool reverseColors)
 	{
 		InitializeComponent();
-		_englishDotFont = (FontFamily)base.Resources["DotFont"];
+		_englishDotFont = LocalizedUiFont.EnglishDotFont;
 		_track = track;
 		_lyricsService = lyricsService;
 		_language = LocalizationService.NormalizeLanguage(language);
@@ -241,12 +241,12 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 
 	private void ApplyLanguage()
 	{
-		base.Resources["DotFont"] = LocalizedUiFont.Resolve(_language, _englishDotFont);
-		base.Title = "Choose from LRCLIB";
-		TitleLabel.Text = "Title";
-		ArtistLabel.Text = "Artist";
-		AlbumLabel.Text = "Album";
-		KeywordLabel.Text = "Keyword";
+		LocalizedUiFont.Apply(this, _language, _englishDotFont);
+		base.Title = T("Choose from LRCLIB");
+		TitleLabel.Text = T("Title");
+		ArtistLabel.Text = T("Artist");
+		AlbumLabel.Text = T("Album");
+		KeywordLabel.Text = T("Keyword");
 		SearchButton.Content = T("Search LRCLIB");
 		CloseButton.Content = T("Close");
 	}
@@ -266,10 +266,10 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal };
 		_titleOnlyButton = new Button
 		{
-			Content = "TITLE ONLY",
-			FontFamily = _englishDotFont,
+			Content = T("Title only"),
+			FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont),
 			FontSize = 9.0,
-			ToolTip = "Search by title only"
+			ToolTip = T("Search by title only")
 		};
 		_titleOnlyButton.Click += async delegate { await SearchAsync(titleOnly: true); };
 		buttons.Children.Add(_titleOnlyButton);
@@ -350,12 +350,12 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		};
 		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
 		message.Inlines.Add(new Run(T("No good match? Try creating synchronized lyrics yourself and share them with the next listener.") + "  "));
-		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
+		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont), FontSize = 9.0, TextDecorations = null };
 		lrclib.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
 		message.Inlines.Add(lrclib);
 		message.Inlines.Add(new Run("  ·  "));
-		Hyperlink lrcget = new Hyperlink(new Run("LRCGET")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
+		Hyperlink lrcget = new Hyperlink(new Run("LRCGET")) { FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont), FontSize = 9.0, TextDecorations = null };
 		lrcget.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrcget.Click += delegate { OpenUrl(new Uri("https://github.com/tranxuanthang/lrcget")); };
 		message.Inlines.Add(lrcget);
@@ -497,7 +497,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		LrclibRecord record = candidate.Record;
 		bool usable = record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || !string.IsNullOrWhiteSpace(record.PlainLyrics);
 		bool flag = usable && (record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || _plainFallbackEnabled);
-		string value = (record.Instrumental ? T("Instrumental") : ((!string.IsNullOrWhiteSpace(record.SyncedLyrics)) ? T("Synced") : T("Plain")));
+		string value = (record.Instrumental ? T("Instrumental") : ((!string.IsNullOrWhiteSpace(record.SyncedLyrics)) ? T("Synced") : T("Plain lyrics")));
 		string value2 = (candidate.DurationDifferenceSeconds.HasValue ? string.Format(T("difference {0:+0.0;-0.0;0.0} s"), candidate.DurationDifferenceSeconds.Value) : T("duration unavailable"));
 		return new CandidateCardViewModel
 		{

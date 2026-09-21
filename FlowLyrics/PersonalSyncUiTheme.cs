@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Markup;
+using FlowLyrics.Services;
 
 namespace FlowLyrics;
 
@@ -7,8 +8,10 @@ internal static class PersonalSyncUiTheme
 {
 	private const string AppliedKey = "PersonalSyncUiThemeApplied";
 
-	public static void Apply(Window window)
+	public static void Apply(Window window, string language)
 	{
+		window.FontFamily = LocalizedUiFont.Resolve(language, LocalizedUiFont.EnglishDotFont);
+		window.Resources["DotFont"] = window.FontFamily;
 		if (window.Resources.Contains(AppliedKey)) return;
 		const string xaml = """
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -21,6 +24,9 @@ internal static class PersonalSyncUiTheme
   <SolidColorBrush x:Key="SyncMuted" Color="#FFB5B0B5" />
 
   <Style TargetType="{x:Type Button}">
+    <Setter Property="ContentTemplate"><Setter.Value><DataTemplate>
+      <TextBlock Text="{Binding}" TextWrapping="Wrap" TextTrimming="None" TextAlignment="Center" />
+    </DataTemplate></Setter.Value></Setter>
     <Setter Property="Foreground" Value="{StaticResource SyncText}" />
     <Setter Property="Background" Value="{StaticResource SyncControl}" />
     <Setter Property="BorderBrush" Value="{StaticResource SyncBorder}" />
@@ -91,6 +97,9 @@ internal static class PersonalSyncUiTheme
   </Style>
 
   <Style TargetType="{x:Type CheckBox}">
+    <Setter Property="ContentTemplate"><Setter.Value><DataTemplate>
+      <TextBlock Text="{Binding}" TextWrapping="Wrap" TextTrimming="None" />
+    </DataTemplate></Setter.Value></Setter>
     <Setter Property="Foreground" Value="{StaticResource SyncText}" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Cursor" Value="Hand" />

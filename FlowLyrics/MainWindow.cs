@@ -373,7 +373,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)AlignVolumePopupToButton);
 		};
-		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
+		_englishDotFont = LocalizedUiFont.EnglishDotFont;
 		InitializeVolumeIcon();
 		InitializePlaybackTimeline();
 		EnsureReverseColorsButton();
@@ -637,7 +637,7 @@ public class MainWindow : Window, IComponentConnector
 		_lyricsLookup = null;
 		ResetLyricsPresentationState();
 		// Keep the selected player and controls; only the old lyric surface is hidden.
-		TrackStatusText.Text = (_snapshot == null ? "MEDIA SESSION" : GetPlaybackSourceLabel(_snapshot)) + " / UPDATING";
+		TrackStatusText.Text = (_snapshot == null ? "MEDIA SESSION" : GetPlaybackSourceLabel(_snapshot)) + " / " + T("Updating");
 		if (_snapshot == null) UpdateCurrentTrackHeader(null, string.Empty);
 		SetStatus(string.Empty, string.Empty, animate: false);
 	}
@@ -707,7 +707,7 @@ public class MainWindow : Window, IComponentConnector
 					ResetLyricsPresentationState();
 					_lyricsCancellation?.Cancel();
 				}
-				TrackStatusText.Text = "MEDIA SESSION / WAITING";
+				TrackStatusText.Text = "MEDIA SESSION / " + T("Waiting");
 				UpdateCurrentTrackHeader(null, T("Play something in a media player"));
 				_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 				StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
@@ -745,7 +745,7 @@ public class MainWindow : Window, IComponentConnector
 					_lyrics = null;
 					_lyricsLookup = null;
 					ResetLyricsPresentationState();
-					TrackStatusText.Text = GetPlaybackSourceLabel(playbackSnapshot) + " / CHECKING CACHE";
+					TrackStatusText.Text = GetPlaybackSourceLabel(playbackSnapshot) + " / " + T("Checking cache");
 					UpdateCurrentTrackHeader(playbackSnapshot.Track);
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 					StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
@@ -990,7 +990,7 @@ public class MainWindow : Window, IComponentConnector
 		titleRow.Children.Add(closeButton);
 		titleRow.Children.Add(new TextBlock
 		{
-			Text = PersonalSyncText("LYRICS TIMING", "歌詞タイミング"),
+			Text = T("Lyrics timing"),
 			FontFamily = _englishDotFont,
 			FontSize = 11.0,
 			FontWeight = FontWeights.Bold,
@@ -1021,35 +1021,35 @@ public class MainWindow : Window, IComponentConnector
 		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition());
 		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(7.0) });
 		offsetButtons.ColumnDefinitions.Add(new ColumnDefinition());
-		System.Windows.Controls.Button earlier = CreatePersonalSyncButton(PersonalSyncText("◀ EARLIER", "◀ 歌詞を早く"));
+		System.Windows.Controls.Button earlier = CreatePersonalSyncButton(T("0.1 s earlier"));
 		earlier.Click += delegate { AdjustPersonalSyncOffset(-0.1); };
 		offsetButtons.Children.Add(earlier);
-		System.Windows.Controls.Button later = CreatePersonalSyncButton(PersonalSyncText("LATER ▶", "歌詞を遅く ▶"));
+		System.Windows.Controls.Button later = CreatePersonalSyncButton(T("0.1 s later"));
 		later.Click += delegate { AdjustPersonalSyncOffset(0.1); };
 		Grid.SetColumn(later, 2);
 		offsetButtons.Children.Add(later);
 		content.Children.Add(offsetButtons);
 
-		_personalSyncAlignButton = CreatePersonalSyncButton(PersonalSyncText("ALIGN SELECTED LINE TO NOW", "選択した行を今ここに合わせる"));
+		_personalSyncAlignButton = CreatePersonalSyncButton(T("Align to now"));
 		_personalSyncAlignButton.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
 		_personalSyncAlignButton.Click += PersonalSyncAlign_Click;
 		content.Children.Add(_personalSyncAlignButton);
 
 		WrapPanel history = new() { Margin = new Thickness(-3.0, 7.0, 0.0, 0.0) };
-		_personalSyncUndoButton = CreatePersonalSyncButton("↶ " + PersonalSyncText("UNDO", "戻す"), compact: true);
+		_personalSyncUndoButton = CreatePersonalSyncButton("↶ " + T("Undo"), compact: true);
 		_personalSyncUndoButton.Click += delegate { UndoPersonalSync(); };
 		history.Children.Add(_personalSyncUndoButton);
-		_personalSyncRedoButton = CreatePersonalSyncButton("↷ " + PersonalSyncText("REDO", "やり直す"), compact: true);
+		_personalSyncRedoButton = CreatePersonalSyncButton("↷ " + T("Redo"), compact: true);
 		_personalSyncRedoButton.Click += delegate { RedoPersonalSync(); };
 		history.Children.Add(_personalSyncRedoButton);
-		System.Windows.Controls.Button reset = CreatePersonalSyncButton(PersonalSyncText("RESET", "リセット"), compact: true);
+		System.Windows.Controls.Button reset = CreatePersonalSyncButton(T("Reset timing"), compact: true);
 		reset.Click += delegate { ResetPersonalSync(); };
 		history.Children.Add(reset);
 		content.Children.Add(history);
 
 		_personalSyncAllSourcesBox = new System.Windows.Controls.CheckBox
 		{
-			Content = PersonalSyncText("USE FOR THIS TRACK ON ALL PLAYERS", "この曲をすべての再生元で使う"),
+			Content = T("Use for this track on every source"),
 			Margin = new Thickness(0.0, 9.0, 0.0, 0.0),
 			Foreground = System.Windows.Media.Brushes.White,
 			FontSize = 10.5
@@ -1058,7 +1058,7 @@ public class MainWindow : Window, IComponentConnector
 		_personalSyncAllSourcesBox.Unchecked += PersonalSyncScopeChanged;
 		content.Children.Add(_personalSyncAllSourcesBox);
 
-		System.Windows.Controls.Button advanced = CreatePersonalSyncButton(PersonalSyncText("ADVANCED TIMELINE…", "詳細タイムライン…"));
+		System.Windows.Controls.Button advanced = CreatePersonalSyncButton(T("Timing editor"));
 		advanced.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
 		advanced.Click += OpenAdvancedPersonalSync_Click;
 		content.Children.Add(advanced);
@@ -1102,10 +1102,6 @@ public class MainWindow : Window, IComponentConnector
 		};
 	}
 
-	private string PersonalSyncText(string english, string japanese)
-	{
-		return string.Equals(LocalizationService.NormalizeLanguage(_settings.Language), "ja-JP", StringComparison.OrdinalIgnoreCase) ? japanese : english;
-	}
 
 	private void PersonalSyncButton_Click(object sender, RoutedEventArgs e)
 	{
@@ -1272,7 +1268,7 @@ public class MainWindow : Window, IComponentConnector
 			if (_personalSyncOffsetText != null)
 			{
 				_personalSyncOffsetText.Text = _personalSyncEditingProfile.Mode == PersonalSyncMode.Advanced
-					? PersonalSyncText("ADVANCED", "詳細調整")
+					? T("Changes during the track")
 					: _personalSyncEditingProfile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s";
 			}
 			if (_personalSyncHintText != null)
@@ -1280,8 +1276,8 @@ public class MainWindow : Window, IComponentConnector
 				_personalSyncHintText.Text = _personalSyncSelectedLineIndex >= 0 && _lyrics != null
 					? "♪ " + _lyrics.Lines[_personalSyncSelectedLineIndex].Text
 					: (_personalSyncResolution.HasProfileForDifferentLyrics
-						? PersonalSyncText("Saved timing belongs to different lyrics and was not applied.", "別の歌詞用の調整は適用していません。")
-						: PersonalSyncText("Select a synced lyric line, or nudge by 0.1 s.", "同期歌詞の行を選ぶか、0.1秒ずつ調整します。"));
+						? T("Timing saved for different lyrics · not applied")
+						: T("Select a synced lyric line, or nudge by 0.1 s."));
 			}
 			if (_personalSyncAlignButton != null) _personalSyncAlignButton.IsEnabled = _personalSyncSelectedLineIndex >= 0 && _lyrics?.HasSyncedLyrics == true;
 			if (_personalSyncUndoButton != null) _personalSyncUndoButton.IsEnabled = _personalSyncUndo.Count > 0;
@@ -1310,11 +1306,11 @@ public class MainWindow : Window, IComponentConnector
 			_personalSyncButton.Opacity = 1.0;
 		}
 		_personalSyncButton.ToolTip = _personalSyncResolution.HasProfileForDifferentLyrics
-			? PersonalSyncText("A profile for different lyrics was not applied.", "別の歌詞用の調整は適用されていません。")
+			? T("Timing saved for different lyrics · not applied")
 			: profile == null || profile.Mode == PersonalSyncMode.None
-				? PersonalSyncText("Personal lyric timing", "個人用の歌詞タイミング")
-				: PersonalSyncText("Personal Sync: ", "Personal Sync: ") + (profile.Mode == PersonalSyncMode.Advanced
-					? PersonalSyncText("timeline edits", "途中変更あり")
+				? T("Adjust lyric timing")
+				: T("Personal Sync") + ": " + (profile.Mode == PersonalSyncMode.Advanced
+					? T("Changes during the track")
 					: profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s");
 	}
 
@@ -2042,7 +2038,7 @@ public class MainWindow : Window, IComponentConnector
 		RenderLyrics();
 		if (_snapshot == null)
 		{
-			TrackStatusText.Text = "MEDIA SESSION / WAITING";
+			TrackStatusText.Text = "MEDIA SESSION / " + T("Waiting");
 			UpdateCurrentTrackHeader(null, T("Play something in a media player"));
 			if (_settings.ShowStatusWhenIdle)
 			{
@@ -2113,7 +2109,7 @@ public class MainWindow : Window, IComponentConnector
 	private void ApplyUiLanguage()
 	{
 		LocalizationService.SetCurrentLanguage(_settings.Language);
-		base.Resources["DotFont"] = _englishDotFont;
+		LocalizedUiFont.Apply(this, _settings.Language, _englishDotFont);
 		SettingsMenuItem.Header = T("Settings...");
 		LockMenuItem.Header = T(_isLocked ? "Unlock" : "Lock");
 		HideMenuItem.Header = T("Hide overlay") + "  (Ctrl+Alt+K)";
@@ -2660,7 +2656,23 @@ public class MainWindow : Window, IComponentConnector
 
 	private void SetTrackStatus(string status, System.Windows.Media.Color color)
 	{
-		TrackStatusText.Text = GetPlaybackSourceLabel(_snapshot) + " / " + status;
+		string label = status == "LRCLIB — BEST MATCH" ? "LRCLIB — " + T("Best match") : T(status switch
+		{
+			"SEARCHING LYRICS" or "SEARCHING" => "Searching",
+			"LRCLIB CANDIDATES FOUND" => "LRCLIB candidates found",
+			"NO LYRICS" => "No lyrics",
+			"INSTRUMENTAL" => "Instrumental",
+			"PLAIN LYRICS" => "Plain lyrics",
+			"NO SYNCED LYRICS" => "No synced lyrics",
+			"CONNECTING" => "Connecting",
+			"ERROR" => "Error",
+			"RECONNECTING" => "Reconnecting",
+			"CACHE" => "Loaded from cache",
+			"LRCLIB — AUTO SELECTED" => "LRCLIB — Auto selected",
+			"LRCLIB — MANUALLY SELECTED" => "LRCLIB — Manually selected",
+			_ => status
+		});
+		TrackStatusText.Text = GetPlaybackSourceLabel(_snapshot) + " / " + label;
 		UpdateCurrentTrackHeader(_snapshot?.Track);
 		_trackStatusColor = color;
 		StatusDot.Fill = new SolidColorBrush(_trackStatusColor);

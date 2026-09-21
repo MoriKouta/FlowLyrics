@@ -36,9 +36,9 @@ public class LyricsPreviewWindow : Window, IComponentConnector
 		ApplyAccentColor(accentColor);
 		_language = language;
 		FontFamily englishDotFont = (FontFamily)base.Resources["DotFont"];
-		base.Resources["DotFont"] = LocalizedUiFont.Resolve(_language, englishDotFont);
+		LocalizedUiFont.Apply(this, _language, englishDotFont);
 		LrclibRecord record = candidate.Record;
-		base.Title = "Lyrics preview";
+		base.Title = T("Lyrics preview");
 		CloseButton.Content = T("Close");
 		CloseButton.Template = CandidateSearchWindow.CreateRoundedActionButtonTemplate();
 		CloseButton.MinHeight = 38;

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Unify technical UI fonts across all windows, load the bundled Flow Dots through a valid resource URI, and localize Personal Sync, search, settings headings and status labels in all ten languages. Keep provider values separate from UI labels and let longer actions wrap.
+
 - Remove Personal Sync lyric-row overflow menus. Keep one primary action per row and put re-sync, resume and deletion on the selected object's inspector, with a compact lower inspector on narrow windows.
 
 - Make Personal Sync's primary alignment translate the entire existing timeline without adding rewind anchors; preserve hold durations and negative shifted edit coordinates across saves.

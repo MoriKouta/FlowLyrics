@@ -51,6 +51,7 @@ public class SettingsWindow : Window, IComponentConnector
 	private readonly System.Windows.Media.FontFamily _englishDotFont;
 
 	private readonly Dictionary<TextBlock, string> _localizedText = new Dictionary<TextBlock, string>();
+	private readonly Dictionary<FrameworkElement, string> _localizedTooltips = new();
 
 	private readonly Dictionary<ContentControl, string> _localizedContent = new Dictionary<ContentControl, string>();
 
@@ -302,7 +303,7 @@ public class SettingsWindow : Window, IComponentConnector
 		_uiColorPickButton = FindLogicalChildren<System.Windows.Controls.Button>(this)
 			.FirstOrDefault(button => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
 		CurrentTrackHeader.ConfigureArtist(CurrentTrackArtistText, 22);
-		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
+		_englishDotFont = LocalizedUiFont.EnglishDotFont;
 		InitializeLyricsOnlyControl();
 		SettingsTabs.Items.Remove(LyricsTab);
 		SettingsTabs.Items.Insert(0, LyricsTab);
@@ -419,7 +420,7 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		if (_lyricsOnlyButton != null)
 		{
-			_lyricsOnlyButton.Content = _lyricsOnlyMode ? "●  LYRICS ONLY" : "LYRICS ONLY";
+			_lyricsOnlyButton.Content = (_lyricsOnlyMode ? "●  " : "") + T("Lyrics Only");
 			_lyricsOnlyButton.BorderThickness = new Thickness(1.0);
 			if (_lyricsOnlyMode)
 			{
@@ -1181,7 +1182,7 @@ public class SettingsWindow : Window, IComponentConnector
 		string name = _paletteNameBox?.Text.Trim() ?? string.Empty;
 		if (string.IsNullOrWhiteSpace(name))
 		{
-			System.Windows.MessageBox.Show(this, "Enter a palette name.", "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Information);
+			System.Windows.MessageBox.Show(this, T("Enter a palette name."), "FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Information);
 			return;
 		}
 		try
@@ -1242,7 +1243,7 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void DeleteSavedPalette_Click(object sender, RoutedEventArgs e)
 	{
-		if (SelectedSavedPalette() is not SavedColorPalette palette || System.Windows.MessageBox.Show(this, $"Delete ‘{palette.Name}’?", "FlowLyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+		if (SelectedSavedPalette() is not SavedColorPalette palette || System.Windows.MessageBox.Show(this, string.Format(T("Delete palette ‘{0}’?"), palette.Name), "FlowLyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
 		{
 			return;
 		}
@@ -1550,7 +1551,6 @@ public class SettingsWindow : Window, IComponentConnector
 			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
 				Text = T("Load timestamped lyrics to adjust timing."),
-				FontFamily = _englishDotFont,
 				FontSize = 9.0,
 				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
 				Tag = "NoTranslate"
@@ -1570,7 +1570,6 @@ public class SettingsWindow : Window, IComponentConnector
 			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
 				Text = T(resolution.HasProfileForDifferentLyrics ? "Timing saved for different lyrics · not applied" : "No timing adjustments for these lyrics"),
-				FontFamily = _englishDotFont,
 				FontSize = 9.0,
 				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
 				Tag = "NoTranslate"
@@ -1593,11 +1592,10 @@ public class SettingsWindow : Window, IComponentConnector
 		});
 		body.Children.Add(new TextBlock
 		{
-			Text = (profile.Scope == PersonalSyncScope.Track ? "ALL PLAYERS" : profile.Source.Source.ToUpperInvariant()) + " · "
+			Text = (profile.Scope == PersonalSyncScope.Track ? T("All sources") : profile.Source.Source.ToUpperInvariant()) + " · "
 				+ (profile.Mode == PersonalSyncMode.Advanced
-					? profile.Anchors.Count + " POINT / " + profile.Segments.Count + " HOLD"
+					? profile.Anchors.Count + " " + T("Sync point") + " / " + profile.Segments.Count + " " + T("Lyric hold")
 					: profile.OffsetSeconds.ToString("+0.0;-0.0;0.0") + " s"),
-			FontFamily = _englishDotFont,
 			FontSize = 8.5,
 			Margin = new Thickness(0.0, 3.0, 0.0, 0.0),
 			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(byte.MaxValue, 138, 61)),
@@ -1689,7 +1687,7 @@ public class SettingsWindow : Window, IComponentConnector
 		try
 		{
 			_playbackSourceBox.Items.Clear();
-			_playbackSourceBox.Items.Add(CreateSourceComboItem("AUTO", string.Empty, "Automatically follow a stable active session."));
+			_playbackSourceBox.Items.Add(CreateSourceComboItem(T("AUTO"), string.Empty, T("Automatically follow a stable active session.")));
 			foreach (MediaSessionInfo source in sources)
 			{
 				_playbackSourceBox.Items.Add(CreateSourceComboItem(source.DisplaySourceName, source.SourceAppUserModelId, source.SourceAppUserModelId));
@@ -1743,7 +1741,7 @@ public class SettingsWindow : Window, IComponentConnector
 			string mode = string.IsNullOrWhiteSpace(preferred)
 				? "AUTO"
 				: preferredPresent ? "FIXED" : "FALLBACK";
-			_mediaSessionStatusText.Text = mode + " · " + selectedLabel + " · " + _detectedMediaSessions.Count;
+			_mediaSessionStatusText.Text = T(mode) + " · " + selectedLabel + " · " + _detectedMediaSessions.Count;
 		}
 		UpdateIgnoredMediaSourcesToggle();
 	}
@@ -1752,7 +1750,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (_ignoredMediaSourcesToggle == null) return;
 		int count = _ignoredMediaSourceBoxes.Count(box => box.IsChecked == true);
-		if (_ignoredMediaSourcesLabel != null) _ignoredMediaSourcesLabel.Text = "EXCLUDE " + count;
+		if (_ignoredMediaSourcesLabel != null) _ignoredMediaSourcesLabel.Text = T("Excluded") + " " + count;
 		UpdateIgnoredMediaSourcesGlyph(_ignoredMediaSourcesToggle.IsChecked == true);
 	}
 
@@ -2325,7 +2323,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			return;
 		}
-		_reverseColorsSettingsButton.Content = _reverseColors ? "ON" : "OFF";
+		_reverseColorsSettingsButton.Content = T(_reverseColors ? "On" : "Off");
 		if (_reverseColors)
 		{
 			_reverseColorsSettingsButton.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Orange");
@@ -2508,6 +2506,24 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void CaptureLocalizableContent(DependencyObject element)
 	{
+		// These values are already rendered from provider data or translated by their
+		// refresh methods. A track named "Title" must never become the UI label.
+		if (ReferenceEquals(element, _personalSyncProfilesPanel)) return;
+		if (element is TextBlock data && new[] { CurrentTrackTitleText, CurrentTrackArtistText, CurrentTrackAlbumText, CurrentTrackDurationText,
+			SpotifyTrackIdText, LyricsSourceText, LrclibIdText, LrclibTitleText, LrclibArtistText, LrclibAlbumText, LrclibDurationText,
+			SelectionModeText, LoadedFromCacheText, LocalLrcStateText, LyricsGuidanceText, LyricsActionStatusText }.Contains(data)) return;
+		// The shipped BAML marked whole heading/label styles as NoTranslate.
+		// Lift that flag for UI labels only; raw track values and user data remain data.
+		if (element is TabItem tab) tab.Tag = null;
+		if (element is TextBlock heading && (ReferenceEquals(heading.Style, TryFindResource("SectionTitle"))
+			|| ReferenceEquals(heading.Style, TryFindResource("LyricsFieldLabel")))) heading.Tag = null;
+		if (element is FrameworkElement tip && tip.ToolTip is string text && !string.IsNullOrWhiteSpace(text))
+			_localizedTooltips.TryAdd(tip, text);
+		if (element is FrameworkElement staticLabel && staticLabel.ReadLocalValue(FrameworkElement.TagProperty) is string marker && marker == "NoTranslate")
+		{
+			string? label = element is TextBlock block ? block.Text : (element as ContentControl)?.Content as string;
+			if (label is "REVERSE COLORS" or "MY PALETTES" or "PLAYER" or "Not used by AUTO · Browser = all sessions" or "DIAGNOSTICS" or "PERSONAL SYNC" or "RESET SETTINGS" or "RESET" or "SAVE CURRENT" or "APPLY" or "DELETE" or "EXPORT" or "IMPORT") staticLabel.Tag = null;
+		}
 		int num;
 		if (element is FrameworkElement { Tag: string tag })
 		{
@@ -2547,8 +2563,11 @@ public class SettingsWindow : Window, IComponentConnector
 	private void ApplyLanguage(string? language)
 	{
 		_currentLanguage = LocalizationService.NormalizeLanguage(language);
-		base.Resources["DotFont"] = LocalizedUiFont.Resolve(_currentLanguage, _englishDotFont);
-		base.Title = "FlowLyrics Settings";
+		LocalizedUiFont.Apply(this, _currentLanguage, _englishDotFont);
+		base.Title = T("FlowLyrics Settings");
+		foreach (var tooltip in _localizedTooltips) tooltip.Key.ToolTip = T(tooltip.Value);
+		RefreshLyricsOnlyControl();
+		RefreshReverseColorsButton();
 		string value;
 		foreach (KeyValuePair<TextBlock, string> item in _localizedText)
 		{
@@ -2623,10 +2642,10 @@ public class SettingsWindow : Window, IComponentConnector
 			SelectionModeText.Text = ((lyricsLookupResult == null || lyricsLookupResult.Status == LyricsLookupStatus.NoLyrics || lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				? "—"
 				: lyricsLookupResult.Status == LyricsLookupStatus.LrclibBestMatch
-					? "Best match"
-					: lyricsLookupResult.SelectedManually ? "Manually selected" : "Auto selected");
-			LoadedFromCacheText.Text = ((lyricsLookupResult != null && lyricsLookupResult.LoadedFromCache) ? "Yes" : "No");
-			LocalLrcStateText.Text = ((lyricsLookupResult != null && lyricsLookupResult.Status == LyricsLookupStatus.LocalLrc) ? ("Yes · " + ValueOrDash(lyricsLookupResult.LocalLrcPath)) : "No");
+					? T("Best match")
+					: T(lyricsLookupResult.SelectedManually ? "Manually selected" : "Auto selected"));
+			LoadedFromCacheText.Text = T((lyricsLookupResult != null && lyricsLookupResult.LoadedFromCache) ? "Yes" : "No");
+			LocalLrcStateText.Text = ((lyricsLookupResult != null && lyricsLookupResult.Status == LyricsLookupStatus.LocalLrc) ? (T("Yes") + " · " + ValueOrDash(lyricsLookupResult.LocalLrcPath)) : T("No"));
 			bool flag2 = lyricsLookupResult != null && lyricsLookupResult.Lyrics?.HasPlainLyrics == true && !lyricsLookupResult.Lyrics.HasSyncedLyrics;
 			TextBlock lyricsGuidanceText = LyricsGuidanceText;
 			string text;
@@ -2655,17 +2674,17 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (lookup == null)
 		{
-			return "No lyrics";
+			return T("No lyrics");
 		}
 		return lookup.Status switch
 		{
-			LyricsLookupStatus.LrclibAuto => "LRCLIB — Auto selected", 
-			LyricsLookupStatus.LrclibBestMatch => "LRCLIB — Best match",
-			LyricsLookupStatus.LrclibManual => "LRCLIB — Manually selected", 
+			LyricsLookupStatus.LrclibAuto => T("LRCLIB — Auto selected"),
+			LyricsLookupStatus.LrclibBestMatch => "LRCLIB — " + T("Best match"),
+			LyricsLookupStatus.LrclibManual => T("LRCLIB — Manually selected"),
 			LyricsLookupStatus.LocalLrc => "Local LRC", 
-			LyricsLookupStatus.Cache => "Cache" + (lookup.SelectedManually ? " · Manually selected" : string.Empty), 
-			LyricsLookupStatus.CandidatesFound => "LRCLIB candidates found", 
-			_ => "No lyrics", 
+			LyricsLookupStatus.Cache => T("Loaded from cache") + (lookup.SelectedManually ? " · " + T("Manually selected") : string.Empty),
+			LyricsLookupStatus.CandidatesFound => T("LRCLIB candidates found"),
+			_ => T("No lyrics"),
 		};
 	}
 

@@ -91,9 +91,20 @@ public sealed class GlowOverlayTests
 		if (string.IsNullOrEmpty(directory)) return;
 		Directory.CreateDirectory(directory);
 		bool topmost = window.Topmost;
+		Window? backdrop = null;
+		Window? owner = window.Owner;
 		try
 		{
-			window.Topmost = true; Thread.Sleep(70); Pump();
+			if (window.AllowsTransparency)
+			{
+				// Native capture must never include another application's content through
+				// the overlay or its outer bleed. Keep an opaque owned backdrop underneath.
+				backdrop = new Window { WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
+					Background = Brushes.Black, ShowInTaskbar = false, ShowActivated = false, Topmost = true,
+					Left = window.Left, Top = window.Top, Width = window.ActualWidth, Height = window.ActualHeight };
+				backdrop.Show(); window.Owner = backdrop;
+			}
+			window.Topmost = false; window.Topmost = true; window.Activate(); window.UpdateLayout(); Pump(); Thread.Sleep(100); Pump();
 			FrameworkElement surface = window.WindowStyle == WindowStyle.None ? window : (FrameworkElement)window.Content;
 			Point origin = surface.PointToScreen(new Point()); DpiScale dpi = VisualTreeHelper.GetDpi(surface);
 			using System.Drawing.Bitmap bitmap = new((int)(surface.ActualWidth * dpi.DpiScaleX), (int)(surface.ActualHeight * dpi.DpiScaleY));
@@ -101,6 +112,6 @@ public sealed class GlowOverlayTests
 				graphics.CopyFromScreen((int)origin.X, (int)origin.Y, 0, 0, bitmap.Size);
 			bitmap.Save(Path.Combine(directory, name + ".png"));
 		}
-		finally { window.Topmost = topmost; }
+		finally { window.Owner = owner; backdrop?.Close(); window.Topmost = topmost; }
 	}
 }

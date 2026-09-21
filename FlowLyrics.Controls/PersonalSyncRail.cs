@@ -74,8 +74,9 @@ public sealed class PersonalSyncRail : FrameworkElement
 		Label(dc, "0:00", 0);
 		Label(dc, TimeSpan.FromSeconds(DurationSeconds).ToString(@"m\:ss"), Math.Max(0, ActualHeight - 14));
 	}
+	public FontFamily LabelFont { get; set; } = new FontFamily("Segoe UI");
 	private void Label(DrawingContext dc, string text, double y) => dc.DrawText(new FormattedText(text,
-		CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Consolas"), 10, Brushes.Gray, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(3, y));
+		CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(LabelFont, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 10, Brushes.Gray, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(3, y));
 
 	private SyncRailEdit? HitHandle(Point point)
 	{

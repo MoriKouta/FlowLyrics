@@ -113,33 +113,49 @@ public static class LocalizationService
 
 	public static string Translate(string? language, string key)
 	{
+		return TryTranslate(language, key, out string value) ? value : key;
+	}
+
+	// Unlike a string-equality check, this detects a missing resource even when a
+	// valid translation happens to have the same spelling as the English label.
+	public static bool HasTranslation(string? language, string key) => TryTranslate(language, key, out _);
+
+	private static bool TryTranslate(string? language, string key, out string result)
+	{
 		string text = NormalizeLanguage(language);
+		result = key;
+		if (text == "en-US") return true;
+		key = key switch
+		{
+			"PERSONAL SYNC" => "Personal Sync", "PLAYER" => "Player", "RESET" => "Reset", "RESET SETTINGS" => "Reset settings",
+			"REVERSE COLORS" => "Reverse colors", "MY PALETTES" => "My palettes", "DIAGNOSTICS" => "Diagnostics",
+			"SAVE CURRENT" => "Save current palette", "APPLY" => "Apply palette", "DELETE" => "Delete palette", "EXPORT" => "Export", "IMPORT" => "Import",
+			"Lyrics Source" => "Lyrics source", "LRCLIB Title" => "LRCLIB title", "LRCLIB Artist" => "LRCLIB artist", "LRCLIB Album" => "LRCLIB album",
+			"LRCLIB Duration" => "LRCLIB duration", "Loaded from Cache" => "Loaded from cache",
+			_ => key
+		};
+		if (EditorUiTranslations.TryGet(text, key, out result)) return true;
 		if (Translations.TryGetValue(text, out IReadOnlyDictionary<string, string> value) && value.TryGetValue(key, out var value2))
 		{
-			return value2;
+			result = value2; return true;
 		}
 		if (OverlayTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
-			return value2;
+			result = value2; return true;
 		}
 		if (LyricsGuidanceTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
-			return value2;
+			result = value2; return true;
 		}
 		if (PlainLyricsTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
-			return value2;
+			result = value2; return true;
 		}
 		if (TextOptionTranslations.TryGetValue(text, out value) && value.TryGetValue(key, out value2))
 		{
-			return value2;
+			result = value2; return true;
 		}
-		if (MetadataUiTranslations.TryGet(text, key, out value2)) return value2;
-		if (!RuntimeTranslations.TryGet(text, key, out value2))
-		{
-			return key;
-		}
-		return value2;
+		return MetadataUiTranslations.TryGet(text, key, out result) || RuntimeTranslations.TryGet(text, key, out result);
 	}
 
 	private static IReadOnlyDictionary<string, string> D(params (string Key, string Value)[] entries)

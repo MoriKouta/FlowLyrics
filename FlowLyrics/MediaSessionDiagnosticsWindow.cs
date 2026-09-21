@@ -41,7 +41,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		_currentSnapshotProvider = currentSnapshotProvider;
 		_personalSyncDiagnosticsProvider = personalSyncDiagnosticsProvider;
 		_language = LocalizationService.NormalizeLanguage(language);
-		Title = "FlowLyrics · Media Session Diagnostics";
+		Title = "FlowLyrics · " + T("Media Session Diagnostics");
 		Width = 920.0;
 		Height = 620.0;
 		MinWidth = 700.0;
@@ -50,7 +50,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 23, 25));
 		Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(233, 231, 232));
 
-		PersonalSyncUiTheme.Apply(this);
+		PersonalSyncUiTheme.Apply(this, _language);
 		Grid root = new Grid { Margin = new Thickness(20.0) };
 		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.0, GridUnitType.Star) });
@@ -99,7 +99,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			TextWrapping = TextWrapping.Wrap,
 			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
 			HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-			FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+			FontFamily = FontFamily,
 			FontSize = 12.0,
 			Padding = new Thickness(12.0),
 			Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(31, 29, 32)),
@@ -143,10 +143,10 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			{
 				string flags = string.Join(" · ", new[]
 				{
-					session.PlaybackState.ToString(),
-					session.IsSelectedByFlowLyrics ? "SELECTED" : string.Empty,
-					session.IsCurrentSession ? "WINDOWS CURRENT" : string.Empty,
-					session.IsIgnored ? "IGNORED" : string.Empty
+					T(session.PlaybackState.ToString()),
+					session.IsSelectedByFlowLyrics ? T("Selected") : string.Empty,
+					session.IsCurrentSession ? T("Windows current session") : string.Empty,
+					session.IsIgnored ? T("Excluded") : string.Empty
 				}.Where(value => value.Length > 0));
 				ListBoxItem item = new ListBoxItem
 				{
