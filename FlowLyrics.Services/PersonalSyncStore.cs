@@ -200,12 +200,14 @@ public sealed class PersonalSyncStore
 		profile.OffsetSeconds = Math.Clamp(profile.OffsetSeconds, -3600.0, 3600.0);
 		profile.Anchors = profile.Anchors
 			.Where(anchor => double.IsFinite(anchor.PlaybackSeconds) && double.IsFinite(anchor.LyricsSeconds))
-			.Select(anchor => { anchor.PlaybackSeconds = Math.Max(0.0, anchor.PlaybackSeconds); anchor.LyricsSeconds = Math.Max(0.0, anchor.LyricsSeconds); return anchor; })
+			// A global shift can move edits before playback zero. Preserve those
+			// coordinates so reopening cannot change the mapping or hold duration.
+			.Select(anchor => { anchor.LyricsSeconds = Math.Max(0.0, anchor.LyricsSeconds); return anchor; })
 			.OrderBy(anchor => anchor.PlaybackSeconds).Take(200).ToList();
 		profile.Segments = profile.Segments
 			.Where(segment => double.IsFinite(segment.PlaybackStartSeconds) && double.IsFinite(segment.PlaybackEndSeconds)
 				&& segment.PlaybackEndSeconds > segment.PlaybackStartSeconds)
-			.Select(segment => { segment.PlaybackStartSeconds = Math.Max(0.0, segment.PlaybackStartSeconds); segment.PlaybackEndSeconds = Math.Max(segment.PlaybackStartSeconds, segment.PlaybackEndSeconds); segment.LyricsTimeSeconds = Math.Max(0.0, segment.LyricsTimeSeconds); return segment; })
+			.Select(segment => { segment.LyricsTimeSeconds = Math.Max(0.0, segment.LyricsTimeSeconds); return segment; })
 			.OrderBy(segment => segment.PlaybackStartSeconds).Take(100).ToList();
 		if (touchUpdatedAt || profile.UpdatedAtUtc == default) profile.UpdatedAtUtc = DateTimeOffset.UtcNow;
 		return profile;

@@ -65,7 +65,6 @@ public sealed class PersonalSyncWindow : Window
 	private Guid? _selectedHoldId;
 	private PersonalSyncProfile? _railEditBefore;
 	private bool _railEditChanged;
-	private bool _hasAligned;
 	private readonly ListBox _pointsList;
 	private readonly TextBlock _pointTypeText;
 	private readonly TimeEditorRow _pointA;
@@ -85,7 +84,6 @@ public sealed class PersonalSyncWindow : Window
 		IReadOnlyList<LyricLine> lines, Func<int?> selectedLineProvider, Func<TimeSpan> playbackPositionProvider, string language, Func<bool>? canSeek = null)
 	{
 		_canSeek = canSeek ?? (() => true);
-		_hasAligned = profile != null && (Math.Abs(profile.OffsetSeconds) > .0001 || profile.Anchors.Count > 0 || profile.Segments.Count > 0);
 		_store = store;
 		_context = context;
 		_lines = lines;
@@ -372,12 +370,17 @@ public sealed class PersonalSyncWindow : Window
 
 	private void AlignProgressively(int index, double playback)
 	{
-		if (!_hasAligned && _profile.Anchors.Count == 0 && _profile.Segments.Count == 0 && Math.Abs(_profile.OffsetSeconds) < .0001)
+		double lyric = _lines[index].Time.TotalSeconds;
+		double? current = _profile.Mode != PersonalSyncMode.Advanced
+			? lyric + (_profile.Mode == PersonalSyncMode.None ? 0 : _profile.OffsetSeconds)
+			: PersonalSyncTimeline.PlaybackForLyric(lyric, _profile);
+		if (!current.HasValue)
 		{
-			Change(profile => { profile.Mode = PersonalSyncMode.Offset; profile.OffsetSeconds = playback - _lines[index].Time.TotalSeconds; });
-			_hasAligned = true;
+			_workflowHint.Text = L("この行は現在の補正でスキップされています。局所再同期を使ってください。", "This line is skipped by the current edits. Use Re-sync from here.");
+			return;
 		}
-		else AlignLineAt(index, playback);
+		double delta = playback - current.Value;
+		if (Math.Abs(delta) > .0001) Change(profile => ShiftWholeTrack(profile, delta));
 	}
 
 	private void AlignLineAt(int index, double playback)
@@ -405,10 +408,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private static void ShiftWholeTrack(PersonalSyncProfile profile, double delta)
 	{
-		if (profile.Mode == PersonalSyncMode.None) profile.Mode = PersonalSyncMode.Offset;
-		profile.OffsetSeconds = Round(profile.OffsetSeconds + delta);
-		foreach (PersonalSyncAnchor anchor in profile.Anchors) anchor.LyricsSeconds = Math.Max(0, anchor.LyricsSeconds - delta);
-		foreach (PersonalSyncSegment hold in profile.Segments) hold.LyricsTimeSeconds = Math.Max(0, hold.LyricsTimeSeconds - delta);
+		PersonalSyncTimeline.ShiftWholeTrack(profile, delta);
 	}
 
 	private void Change(Action<PersonalSyncProfile> mutation)
@@ -784,7 +784,6 @@ public sealed class PersonalSyncWindow : Window
 
 	private void RefreshAll()
 	{
-		_hasAligned = Math.Abs(_profile.OffsetSeconds) > .0001 || _profile.Anchors.Count > 0 || _profile.Segments.Count > 0;
 		_timelineCoordinatesDirty = true;
 		_refreshing = true;
 		try

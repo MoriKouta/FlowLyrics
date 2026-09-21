@@ -7,6 +7,18 @@ namespace FlowLyrics.Core;
 /// <summary>Playback coordinates for lyric-side editing; never changes source timestamps.</summary>
 public static class PersonalSyncTimeline
 {
+	public static void ShiftWholeTrack(PersonalSyncProfile profile, double delta)
+	{
+		if (!double.IsFinite(delta)) return;
+		if (profile.Mode == PersonalSyncMode.None) profile.Mode = PersonalSyncMode.Offset;
+		double offset = Math.Clamp(profile.OffsetSeconds + delta, -3600, 3600);
+		double applied = offset - profile.OffsetSeconds;
+		profile.OffsetSeconds = offset;
+		foreach (var anchor in profile.Anchors) anchor.PlaybackSeconds += applied;
+		foreach (var hold in profile.Segments)
+		{ hold.PlaybackStartSeconds += applied; hold.PlaybackEndSeconds += applied; }
+	}
+
 	public static double? PlaybackForLyric(double lyric, PersonalSyncProfile profile)
 	{
 		// Each boundary starts a linear or held segment. A skipped lyric has no

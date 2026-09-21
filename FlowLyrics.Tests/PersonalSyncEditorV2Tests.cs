@@ -21,7 +21,7 @@ public sealed class PersonalSyncEditorV2Tests
 	[InlineData("ja-JP", 760)]
 	[InlineData("ja-JP", 900)]
 	[InlineData("en-US", 1120)]
-	public void FixedRows_HoverAndSelectionKeepGeometry_FirstAlignOffsetsThenLocal(string language, int width)
+	public void FixedRows_HoverAndSelectionKeepGeometry_RepeatedAlignmentShiftsGlobally(string language, int width)
 	{
 		string directory = Temp();
 		try
@@ -56,14 +56,14 @@ public sealed class PersonalSyncEditorV2Tests
 					double before = PersonalSyncMapper.MapPlaybackToLyrics(60, profile);
 					now = 75;
 					Align(second).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
-					Assert.Equal(2.9, profile.OffsetSeconds, 6);
+					Assert.Equal(5, profile.OffsetSeconds, 6);
 					Assert.Equal(70, PersonalSyncMapper.MapPlaybackToLyrics(75, profile), 6);
-					Assert.Equal(before, PersonalSyncMapper.MapPlaybackToLyrics(60, profile));
-					Assert.Single(profile.Anchors); Assert.True(previews >= 2);
+					Assert.Equal(before - 2.1, PersonalSyncMapper.MapPlaybackToLyrics(60, profile), 6);
+					Assert.Empty(profile.Anchors); Assert.True(previews >= 2);
 					Assert.Equal(height, first.ActualHeight); Assert.Equal(nextY, second.TranslatePoint(new Point(), list).Y);
 					UiUxRuntimeTests.Capture(window, "sync-v2-" + language + "-" + width);
 					Invoke(window, "Undo"); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
-					Invoke(window, "Redo"); Assert.Single(Read<PersonalSyncProfile>(window, "_profile").Anchors);
+					Invoke(window, "Redo"); Assert.Equal(5, Read<PersonalSyncProfile>(window, "_profile").OffsetSeconds);
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});
