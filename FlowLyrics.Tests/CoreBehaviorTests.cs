@@ -15,6 +15,7 @@ using Xunit;
 
 namespace FlowLyrics.Tests;
 
+[Collection("WPF UI")]
 public sealed class CoreBehaviorTests
 {
 	[Fact]
@@ -254,7 +255,7 @@ public sealed class CoreBehaviorTests
 	}
 
 	[Fact]
-	public void BestEffortLyrics_UsesTheHighestScoringUsableCandidate()
+	public void BestEffortLyrics_DoesNotPromoteIneligibleCandidatesByScore()
 	{
 		LyricsCandidate lower = new()
 		{
@@ -269,8 +270,7 @@ public sealed class CoreBehaviorTests
 
 		LyricsCandidate? selected = LyricsMatcher.SelectBestEffortCandidate(new[] { lower, higher });
 
-		Assert.NotNull(selected);
-		Assert.Equal(2, selected!.Record.Id);
+		Assert.Null(selected);
 	}
 
 	[Fact]

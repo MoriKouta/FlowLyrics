@@ -50,7 +50,8 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 23, 25));
 		Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(233, 231, 232));
 
-		Grid root = new Grid { Margin = new Thickness(16.0) };
+		PersonalSyncUiTheme.Apply(this);
+		Grid root = new Grid { Margin = new Thickness(20.0) };
 		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1.0, GridUnitType.Star) });
 		root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(310.0) });
@@ -188,7 +189,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		MediaSessionInfo? session = _sessions.FirstOrDefault(candidate => string.Equals(candidate.SessionId, id, StringComparison.Ordinal));
 		_detailBox.Text = session == null
 			? T("Select a Media Session to inspect it.") + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider())
-			: BuildSessionDiagnostics(session) + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider());
+			: LocalizeMetadataLabels(BuildSessionDiagnostics(session)) + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider());
 	}
 
 	private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
@@ -204,7 +205,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			text.AppendLine();
 			foreach (MediaSessionInfo session in _sessions)
 			{
-				text.AppendLine(BuildSessionDiagnostics(session));
+				text.AppendLine(LocalizeMetadataLabels(BuildSessionDiagnostics(session)));
 				text.AppendLine(new string('-', 72));
 			}
 			text.AppendLine(BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider()));
@@ -224,12 +225,12 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			session.Metadata.ArtistRaw,
 			session.Metadata.AlbumRaw);
 		StringBuilder text = new();
-		text.AppendLine("Display Source: " + session.DisplaySourceName);
+		text.AppendLine("SOURCE: " + session.DisplaySourceName);
 		text.AppendLine("SourceAppUserModelId: " + ValueOrDash(session.SourceAppUserModelId));
 		text.AppendLine("Session Identifier: " + session.SessionId);
 		text.AppendLine("Playback State: " + session.PlaybackState);
 		text.AppendLine("Position: " + FormatTime(session.Position));
-		text.AppendLine("Duration: " + FormatTime(session.Metadata.Duration));
+		text.AppendLine("DURATION: " + FormatTime(session.Metadata.Duration));
 		text.AppendLine("Timeline Updated UTC: " + FormatDate(session.TimelineUpdatedAtUtc));
 		text.AppendLine("Last Activity UTC: " + FormatDate(session.LastActivityUtc));
 		text.AppendLine("CurrentSession: " + YesNo(session.IsCurrentSession));
@@ -237,14 +238,37 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		text.AppendLine("Ignored: " + YesNo(session.IsIgnored));
 		text.AppendLine();
 		text.AppendLine("RAW METADATA");
+		text.AppendLine("RAW TITLE: " + ValueOrDash(session.Metadata.OriginalTitleRaw));
+		text.AppendLine("RAW ARTIST: " + ValueOrDash(session.Metadata.OriginalArtistRaw));
+		text.AppendLine("RAW ALBUM ARTIST: " + ValueOrDash(session.Metadata.OriginalAlbumArtistRaw));
+		text.AppendLine("RAW ALBUM: " + ValueOrDash(session.Metadata.OriginalAlbumRaw));
+		text.AppendLine("RAW SUBTITLE: " + ValueOrDash(session.Metadata.OriginalSubtitleRaw));
+		text.AppendLine("RAW GENRES: " + ValueOrDash(string.Join(", ", session.Metadata.OriginalGenresRaw ?? Array.Empty<string>())));
+		text.AppendLine("RAW TRACK NUMBER: " + (session.Metadata.OriginalTrackNumberRaw?.ToString() ?? "—"));
+		text.AppendLine();
+		text.AppendLine("REPAIRED / DISPLAY METADATA");
 		text.AppendLine("Title: " + ValueOrDash(session.Metadata.TitleRaw));
 		text.AppendLine("Artist: " + ValueOrDash(session.Metadata.ArtistRaw));
+		text.AppendLine("DISPLAY TITLE: " + ValueOrDash(MetadataNormalizer.TryReleaseTitle(session.Metadata.TitleRaw, out string displayTitle, out _) ? displayTitle : session.Metadata.TitleRaw));
+		text.AppendLine("DISPLAY ARTIST: " + ValueOrDash(session.Metadata.DisplayArtist));
+		text.AppendLine("ENRICHMENT SOURCE: " + (session.Metadata.EnrichmentSource ?? "None (GSMTC)"));
+		text.AppendLine("SPOTIFY WINDOW STATE: " + (session.Metadata.SpotifyWindowState ?? "N/A"));
 		text.AppendLine("Album: " + ValueOrDash(session.Metadata.AlbumRaw));
 		text.AppendLine();
 		text.AppendLine("NORMALIZED SEARCH METADATA");
-		text.AppendLine("Title: " + ValueOrDash(normalized.Title));
-		text.AppendLine("Artist: " + ValueOrDash(normalized.Artist));
+		text.AppendLine("NORMALIZED TITLE: " + ValueOrDash(normalized.Title));
+		text.AppendLine("NORMALIZED ARTIST: " + ValueOrDash(normalized.Artist));
 		text.AppendLine("Album: " + ValueOrDash(normalized.Album));
+		IReadOnlyList<SearchMetadataCandidate> searches = MetadataNormalizer.BuildCandidates(session.Metadata.TitleRaw, session.Metadata.ArtistRaw, session.Metadata.AlbumRaw)
+			.Concat(session.Metadata.SearchAlternates ?? Array.Empty<SearchMetadataCandidate>()).ToArray();
+		text.AppendLine("TITLE ALIASES: " + string.Join(" | ", searches.Select(candidate => candidate.Title).Distinct()));
+		text.AppendLine("ARTIST SEARCH CANDIDATES: " + string.Join(" | ", searches.Select(candidate => candidate.Artist).Distinct()));
+		var editions = RecordingEdition.Signature(session.Metadata.TitleRaw, session.Metadata.AlbumRaw);
+		editions.UnionWith(RecordingEdition.Signature(session.Metadata.OriginalTitleRaw));
+		text.AppendLine("EDITION SIGNATURE: " + (editions.Count == 0 ? "Standard" : string.Join(" | ", editions.Order())));
+		text.AppendLine("RELEASE CONTEXT: " + (MetadataNormalizer.TryReleaseTitle(session.Metadata.TitleRaw, out _, out string work) ? work : "—"));
+		foreach (SearchMetadataCandidate candidate in searches)
+			text.AppendLine($"METADATA INFERENCE: {candidate.Evidence} / {(candidate.CanEstablishIdentity ? "identity evidence" : "search hint only")} / {candidate.Title} / {candidate.Artist}");
 		text.AppendLine();
 		text.AppendLine("CAPABILITIES");
 		text.AppendLine("CanPlay: " + YesNo(session.Capabilities.CanPlay));
@@ -254,6 +278,14 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		text.AppendLine("CanNext: " + YesNo(session.Capabilities.CanNext));
 		text.AppendLine("CanSeek: " + YesNo(session.Capabilities.CanSeek));
 		return text.ToString().TrimEnd();
+	}
+
+	private string LocalizeMetadataLabels(string text)
+	{
+		foreach (string label in new[] { "DISPLAY TITLE", "TITLE ALIASES", "ARTIST SEARCH CANDIDATES",
+			"EDITION SIGNATURE", "RELEASE CONTEXT", "METADATA INFERENCE", "SPOTIFY WINDOW STATE" })
+			text = text.Replace(label + ":", T(label) + ":", StringComparison.Ordinal);
+		return text;
 	}
 
 	private static string BuildPersonalSyncDiagnostics(PersonalSyncDiagnosticSnapshot? snapshot)

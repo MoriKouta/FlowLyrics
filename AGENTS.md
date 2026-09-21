@@ -16,6 +16,12 @@ Inspect the relevant implementation and existing tests before modifying code.
 - Do not force-push, rewrite history, reset, clean, or discard existing user changes unless explicitly requested.
 - Check `git status` before making substantial changes.
 - Do not commit generated build output or local test assets.
+- Commit and push completed, validated change sets as focused, traceable checkpoints.
+- Push only to the currently checked-out development branch; never force-push.
+- Review the diff and run relevant tests/build before each checkpoint. Stage only
+  the intended changes, preserving unrelated user work and excluding `.local/`,
+  generated artifacts, diagnostics, secrets, and machine-specific paths.
+- After pushing, check status and verify that local HEAD matches the remote branch.
 
 ## Local test assets
 

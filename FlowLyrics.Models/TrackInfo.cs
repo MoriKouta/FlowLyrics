@@ -16,8 +16,27 @@ public sealed record TrackInfo(
 	string? LegacyProviderTrackId = null,
 	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null,
 	string? OriginalMediaTitle = null,
-	string? OriginalMediaArtist = null)
+	string? OriginalMediaArtist = null,
+	string? OriginalMediaAlbum = null,
+	string? SourceAppUserModelId = null,
+	string? EnrichedArtistCredit = null,
+	string? EnrichmentSource = null)
 {
+	public string RawTitle => OriginalMediaTitle ?? Title;
+	public string RawArtist => OriginalMediaArtist ?? Artist;
+	public string RawAlbum => OriginalMediaAlbum ?? Album;
+	public string CanonicalTitle => Title;
+	public string CanonicalArtist => Artist;
+	public string CanonicalAlbum => Album;
+	public string DisplayArtist => EnrichedArtistCredit ?? Artist;
+	public string DisplayTitle => MetadataNormalizer.TryReleaseTitle(Title, out string title, out _) ? title : Title;
+	public IReadOnlyList<string> TitleAliases => MetadataNormalizer.TitleAliases(Title);
+	public ArtistIdentity ArtistIdentities => ArtistIdentity.Parse(Artist);
+	public string ReleaseContext => MetadataNormalizer.TryReleaseTitle(Title, out _, out string work) ? work : string.Empty;
+	// Recording comparisons belong to LyricsMatcher (aliases, editions, source-aware
+	// duration). Persistent identities intentionally retain their historical format.
+	public string StableSourceMetadataKey => StableIdentityKey;
+
 	public string CacheKey
 	{
 		get
@@ -63,11 +82,11 @@ public sealed record TrackInfo(
 	{
 		get
 		{
-			if (!string.IsNullOrWhiteSpace(Artist))
+			if (!string.IsNullOrWhiteSpace(DisplayArtist))
 			{
-				return Title + " — " + Artist;
+				return DisplayTitle + " — " + DisplayArtist;
 			}
-			return Title;
+			return DisplayTitle;
 		}
 	}
 

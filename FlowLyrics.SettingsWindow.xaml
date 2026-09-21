@@ -534,7 +534,7 @@
                 <TextBlock Name="LyricsEmptyText" Margin="0,2,0,4" Foreground="{StaticResource Muted}" Text="Play a track in a media player." TextWrapping="Wrap" />
                 <StackPanel Name="CurrentTrackPanel" Visibility="Collapsed">
                   <TextBlock Name="CurrentTrackTitleText" FontSize="24" FontWeight="Bold" TextWrapping="Wrap" />
-                  <TextBlock Name="CurrentTrackArtistText" Margin="0,5,0,0" FontSize="16" TextWrapping="Wrap" />
+                  <TextBlock Name="CurrentTrackArtistText" Margin="0,5,0,0" FontSize="16" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" LineHeight="22" LineStackingStrategy="BlockLineHeight" MaxHeight="44" />
                   <TextBlock Name="CurrentTrackAlbumText" Margin="0,4,0,0" Foreground="{StaticResource Muted}" TextWrapping="Wrap" />
                   <TextBlock Name="CurrentTrackDurationText" Margin="0,4,0,14" FontFamily="{DynamicResource DotFont}" Foreground="{DynamicResource Orange}" />
                   <Grid>

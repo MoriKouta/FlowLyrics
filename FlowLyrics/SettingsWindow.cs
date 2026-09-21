@@ -139,6 +139,11 @@ public class SettingsWindow : Window, IComponentConnector
 	private StackPanel? _personalSyncProfilesPanel;
 
 	private PersonalSyncManagerWindow? _personalSyncManagerWindow;
+	private System.Windows.Controls.Button? _openSyncButton;
+	private System.Windows.Controls.Button? _localLrcUseButton;
+		private TextBlock? _localLrcHint;
+	private int _localLrcRefreshGeneration;
+	public event EventHandler? PersonalSyncRequested;
 
 	private bool _glowControlsInitialized;
 
@@ -291,6 +296,12 @@ public class SettingsWindow : Window, IComponentConnector
 	public SettingsWindow(AppSettings settings, string lrcDirectory, LyricsService lyricsService, MediaSessionService mediaSessionService, PersonalSyncStore personalSyncStore, Func<PlaybackSnapshot?> currentSnapshotProvider, Func<TrackInfo?> currentTrackProvider, Func<LyricsLookupResult?> lookupProvider, Func<PersonalSyncDiagnosticSnapshot?> personalSyncDiagnosticsProvider, Func<Task> reloadCurrentTrack)
 	{
 		InitializeComponent();
+		InitializeCurrentTrackActions();
+		// BAML connects event handlers before all properties (including Tag) are set.
+		// Resolve the completed logical tree, including tabs that are not visible yet.
+		_uiColorPickButton = FindLogicalChildren<System.Windows.Controls.Button>(this)
+			.FirstOrDefault(button => string.Equals(button.Tag?.ToString(), "UiColorBox", StringComparison.Ordinal));
+		CurrentTrackHeader.ConfigureArtist(CurrentTrackArtistText, 22);
 		_englishDotFont = (System.Windows.Media.FontFamily)base.Resources["DotFont"];
 		InitializeLyricsOnlyControl();
 		SettingsTabs.Items.Remove(LyricsTab);
@@ -445,7 +456,9 @@ public class SettingsWindow : Window, IComponentConnector
 				InitializeTextControls();
 				InitializeReverseColorsControl();
 				InitializePaletteManager();
+				InitializeGlowControls();
 				InitializeMediaSessionControls();
+				InitializePersonalSyncProfiles();
 				InitializeBehaviorReset();
 				InitializeCompactComboBoxes();
 				CaptureLocalizableContent(this);
@@ -583,18 +596,33 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private StackPanel? GetTabStack(string originalHeader)
 	{
-		TabItem? tab = SettingsTabs.Items.OfType<TabItem>().FirstOrDefault((TabItem item) =>
-			string.Equals(item.Header?.ToString(), originalHeader, StringComparison.Ordinal)
-			|| (_localizedHeaders.TryGetValue(item, out string? header) && string.Equals(header, originalHeader, StringComparison.Ordinal)));
-		tab ??= originalHeader switch
+		// Named BAML controls are stable anchors; translated headers and item order are not.
+		TabItem? tab = originalHeader switch
 		{
 			"Lyrics" => LyricsTab,
-			"Text" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(1),
-			"Color" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(2),
-			"Behavior" => SettingsTabs.Items.OfType<TabItem>().ElementAtOrDefault(3),
+			"Text" => FindAncestor<TabItem>(FontFamilyBox),
+			"Color" => FindAncestor<TabItem>(OutlineSlider),
+			"Behavior" => FindAncestor<TabItem>(LanguageBox),
 			_ => null
 		};
 		return tab?.Content is ScrollViewer scroll && scroll.Content is StackPanel stack ? stack : null;
+	}
+
+	private static T? FindAncestor<T>(FrameworkElement? element) where T : FrameworkElement
+	{
+		for (FrameworkElement? parent = element?.Parent as FrameworkElement; parent != null; parent = parent.Parent as FrameworkElement)
+			if (parent is T match) return match;
+		return null;
+	}
+
+	private static IEnumerable<T> FindLogicalChildren<T>(DependencyObject root) where T : DependencyObject
+	{
+		foreach (object child in LogicalTreeHelper.GetChildren(root))
+		{
+			if (child is T match) yield return match;
+			if (child is DependencyObject element)
+				foreach (T descendant in FindLogicalChildren<T>(element)) yield return descendant;
+		}
 	}
 
 	private void InitializeTextControls()
@@ -959,24 +987,37 @@ public class SettingsWindow : Window, IComponentConnector
 			Debug.WriteLine("Glow UI contract failed: Color tab structure was not found.");
 			return;
 		}
+		int cardIndex = colorStack.Children.IndexOf(originalEffectsCard);
+		if (cardIndex < 0 || new[] { ShadowSlider, BackgroundOpacitySlider, OverlayOpacitySlider, CornerRadiusSlider, PanelPaddingSlider }
+			.Any(slider => slider.Parent != effectsGrid))
+		{
+			Debug.WriteLine("Glow UI contract failed: Effects card was not in the Color tab.");
+			return;
+		}
 
 		_glowColorBox = new System.Windows.Controls.TextBox
 		{
+			Name = "GlowColorBox",
 			Text = ResultSettings.GlowColor,
 			Visibility = Visibility.Collapsed,
 			Tag = "NoTranslate"
 		};
-		_glowStrengthSlider = new Slider { Minimum = 0.0, Maximum = 40.0, TickFrequency = 0.5, Value = ResultSettings.GlowStrength };
-		_glowOpacitySlider = new Slider { Minimum = 0.0, Maximum = 1.0, TickFrequency = 0.05, Value = ResultSettings.GlowOpacity };
+		_glowStrengthSlider = new Slider { Name = "GlowStrengthSlider", Minimum = 0.0, Maximum = 40.0, TickFrequency = 0.5, Value = ResultSettings.GlowStrength };
+		_glowOpacitySlider = new Slider { Name = "GlowOpacitySlider", Minimum = 0.0, Maximum = 1.0, TickFrequency = 0.05, Value = ResultSettings.GlowOpacity };
 
-		int glowColorRow = colorGrid.RowDefinitions.Count;
-		colorGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		System.Windows.Controls.Button? shadowPick = colorGrid.Children.OfType<System.Windows.Controls.Button>()
+			.FirstOrDefault(button => button.Tag?.ToString() == "ShadowColorBox");
+		int glowColorRow = shadowPick == null ? colorGrid.RowDefinitions.Count : Grid.GetRow(shadowPick) + 1;
+		foreach (UIElement child in colorGrid.Children)
+			if (Grid.GetRow(child) >= glowColorRow) Grid.SetRow(child, Grid.GetRow(child) + 1);
+		colorGrid.RowDefinitions.Insert(glowColorRow, new RowDefinition { Height = GridLength.Auto });
 		TextBlock glowColorLabel = CreateFieldLabel("Glow");
 		Border glowSwatch = new() { Margin = new Thickness(4.0), CornerRadius = new CornerRadius(3.0) };
 		glowSwatch.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding(nameof(System.Windows.Controls.TextBox.Text)) { Source = _glowColorBox });
 		System.Windows.Controls.Button glowPick = new()
 		{
-			Content = "PICK",
+			Name = "GlowColorPicker",
+			Content = "Pick",
 			Tag = "GlowColorBox",
 			HorizontalAlignment = System.Windows.HorizontalAlignment.Left
 		};
@@ -992,24 +1033,18 @@ public class SettingsWindow : Window, IComponentConnector
 		colorGrid.Children.Add(_glowColorBox);
 
 		Grid textEffectsGrid = CreateThreeColumnGrid();
-		MoveSettingsRow(effectsGrid, 0, textEffectsGrid, 0);
-		MoveSettingsRow(effectsGrid, 1, textEffectsGrid, 1);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(OutlineSlider), textEffectsGrid, 0);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(ShadowSlider), textEffectsGrid, 1);
 		AddSettingsRow(textEffectsGrid, 2, "Glow Blur", _glowStrengthSlider, "{0:0.0}px");
 		AddSettingsRow(textEffectsGrid, 3, "Glow Opacity", _glowOpacitySlider, "{0:P0}");
 
 		Grid surfaceGrid = CreateThreeColumnGrid();
-		MoveSettingsRow(effectsGrid, 2, surfaceGrid, 0);
-		MoveSettingsRow(effectsGrid, 3, surfaceGrid, 1);
-		MoveSettingsRow(effectsGrid, 4, surfaceGrid, 2);
-		MoveSettingsRow(effectsGrid, 5, surfaceGrid, 3);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(BackgroundOpacitySlider), surfaceGrid, 0);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(OverlayOpacitySlider), surfaceGrid, 1);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(CornerRadiusSlider), surfaceGrid, 2);
+		MoveSettingsRow(effectsGrid, Grid.GetRow(PanelPaddingSlider), surfaceGrid, 3);
 		Border textEffectsCard = CreateSettingsCard("TEXT EFFECTS", textEffectsGrid, "TextEffectsCard");
 		Border surfaceCard = CreateSettingsCard("SURFACE", surfaceGrid, "SurfaceCard");
-		int cardIndex = colorStack.Children.IndexOf(originalEffectsCard);
-		if (cardIndex < 0)
-		{
-			Debug.WriteLine("Glow UI contract failed: Effects card was not in the Color tab.");
-			return;
-		}
 		colorStack.Children.Remove(originalEffectsCard);
 		colorStack.Children.Insert(cardIndex, textEffectsCard);
 		colorStack.Children.Insert(cardIndex + 1, surfaceCard);
@@ -1026,11 +1061,11 @@ public class SettingsWindow : Window, IComponentConnector
 	private Border CreateSettingsCard(string title, UIElement content, string name)
 	{
 		StackPanel panel = new() { Tag = name };
-		TextBlock heading = new() { Text = title, Tag = "NoTranslate" };
+		TextBlock heading = new() { Text = title };
 		heading.SetResourceReference(FrameworkElement.StyleProperty, "SectionTitle");
 		panel.Children.Add(heading);
 		panel.Children.Add(content);
-		Border card = new() { Child = panel, Tag = name };
+		Border card = new() { Child = panel, Tag = name, Name = name };
 		card.SetResourceReference(FrameworkElement.StyleProperty, "Card");
 		return card;
 	}
@@ -1046,7 +1081,7 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private static TextBlock CreateFieldLabel(string text)
 	{
-		TextBlock label = new() { Text = text, Tag = "NoTranslate" };
+		TextBlock label = new() { Text = text };
 		label.SetResourceReference(FrameworkElement.StyleProperty, "FieldLabel");
 		return label;
 	}
@@ -1398,6 +1433,66 @@ public class SettingsWindow : Window, IComponentConnector
 		PopulateMediaSessionControls();
 	}
 
+	private void InitializeCurrentTrackActions()
+	{
+		if (ChooseLocalLrcButton.Parent is not StackPanel localContent || localContent.Parent is not Border localCard
+			|| localCard.Parent is not StackPanel tab || CurrentTrackPanel.Parent is not StackPanel trackCard) return;
+		// Source/record details stay visible. Local files occupy one secondary row.
+		localCard.Child = null;
+		tab.Children.Remove(localCard);
+		localContent.Children.Remove(ChooseLocalLrcButton);
+		DockPanel local = new() { Name = "CurrentTrackLocalLrc", Margin = new Thickness(0, 10, 0, 0), LastChildFill = true };
+		StackPanel buttons = new() { Orientation = System.Windows.Controls.Orientation.Horizontal };
+		DockPanel.SetDock(buttons, Dock.Right);
+		ChooseLocalLrcButton.Content = "Choose";
+		ChooseLocalLrcButton.MinHeight = 28;
+		ChooseLocalLrcButton.Padding = new Thickness(9, 4, 9, 4);
+		buttons.Children.Add(ChooseLocalLrcButton);
+		_localLrcUseButton = new() { Name = "UseLocalLrcButton", MinHeight = 28, Padding = new Thickness(9, 4, 9, 4), Visibility = Visibility.Collapsed };
+		_localLrcUseButton.Click += LocalLrcUse_Click;
+		buttons.Children.Add(_localLrcUseButton);
+		System.Windows.Controls.Button folder = new() { Content = "…", MinHeight = 28, Padding = new Thickness(8, 4, 8, 4), ToolTip = "LRC Folder" };
+		folder.Click += OpenLrcFolder_Click;
+		buttons.Children.Add(folder);
+		local.Children.Add(buttons);
+		_localLrcHint = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Tag = "NoTranslate" };
+		_localLrcHint.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+		local.Children.Add(_localLrcHint);
+		trackCard.Children.Add(local);
+	}
+
+	private async void RefreshLocalLrcToggle(TrackInfo? track)
+	{
+		if (_localLrcUseButton == null) return;
+		int generation = ++_localLrcRefreshGeneration;
+		try
+		{
+			bool enabled = track != null && await _lyricsService.IsLocalLrcEnabledAsync(track);
+			string? path = track == null ? null : await _lyricsService.GetAvailableLocalLrcPathAsync(track);
+			if (generation != _localLrcRefreshGeneration || track?.StableIdentityKey != _currentTrackProvider()?.StableIdentityKey) return;
+			_localLrcUseButton.Tag = !enabled;
+			_localLrcUseButton.Content = T(enabled ? "Stop using" : "Use");
+			_localLrcUseButton.Visibility = path == null ? Visibility.Collapsed : Visibility.Visible;
+			_localLrcUseButton.IsEnabled = track != null;
+			_localLrcHint!.Text = "LOCAL LRC · " + (path == null ? T("Not set") : System.IO.Path.GetFileName(path));
+			_localLrcHint.ToolTip = _localLrcHint.Text;
+		}
+		catch (Exception ex) { LyricsActionStatusText.Text = ex.Message; }
+	}
+
+	private async void LocalLrcUse_Click(object sender, RoutedEventArgs e)
+	{
+		if (_currentTrackProvider() is not TrackInfo track) return;
+		bool enabled = _localLrcUseButton!.Tag is true;
+		_localLrcUseButton.IsEnabled = false;
+		await RunLyricsActionAsync(async () =>
+		{
+			await _lyricsService.SetLocalLrcEnabledAsync(track, enabled);
+			await _reloadCurrentTrack();
+		}, "Could not update the local lyrics preference.");
+		RefreshLocalLrcToggle(_currentTrackProvider());
+	}
+
 	private void InitializePersonalSyncProfiles()
 	{
 		if (_personalSyncProfilesInitialized || GetTabStack("Lyrics") is not StackPanel lyricsStack)
@@ -1418,22 +1513,25 @@ public class SettingsWindow : Window, IComponentConnector
 		});
 		content.Children.Add(new TextBlock
 		{
-			Text = "Current track timing and saved sync history.",
+			Text = "Adjust timing after choosing the right lyrics. Original lyrics stay unchanged.",
 			Margin = new Thickness(0.0, 4.0, 0.0, 9.0),
 			Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(192, 187, 192)),
-			TextWrapping = TextWrapping.Wrap,
-			Tag = "NoTranslate"
+			TextWrapping = TextWrapping.Wrap
 		});
+		_openSyncButton = new System.Windows.Controls.Button { Content = "Adjust lyric timing", MinHeight = 36,
+			HorizontalAlignment = System.Windows.HorizontalAlignment.Left, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 0, 8) };
+		_openSyncButton.Name = "OpenPersonalSyncButton";
+		_openSyncButton.Click += (_, _) => PersonalSyncRequested?.Invoke(this, EventArgs.Empty);
+		content.Children.Add(_openSyncButton);
 		_personalSyncProfilesPanel = new StackPanel();
 		content.Children.Add(_personalSyncProfilesPanel);
-		System.Windows.Controls.Button historyButton = CreateProfileButton("ALL SYNC HISTORY");
+		System.Windows.Controls.Button historyButton = new() { Content = "Sync history", MinHeight = 36, Padding = new Thickness(12, 8, 12, 8) };
 		historyButton.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
 		historyButton.Margin = new Thickness(0.0, 8.0, 0.0, 0.0);
 		historyButton.Click += delegate { OpenPersonalSyncHistory(); };
 		content.Children.Add(historyButton);
 		card.Child = content;
-		// The Local LRC card is the final static card in this tab.
-		lyricsStack.Children.Insert(Math.Max(0, lyricsStack.Children.Count - 1), card);
+		lyricsStack.Children.Add(card);
 		_personalSyncProfilesInitialized = true;
 		RefreshPersonalSyncProfiles();
 	}
@@ -1442,13 +1540,16 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		if (_personalSyncProfilesPanel == null) return;
 		_personalSyncProfilesPanel.Children.Clear();
+		bool canEdit = _lookupProvider()?.Lyrics?.HasSyncedLyrics == true && _currentSnapshotProvider() != null;
+		if (_openSyncButton != null) { _openSyncButton.IsEnabled = canEdit; _openSyncButton.Content = T("Adjust lyric timing");
+			_openSyncButton.ToolTip = T(canEdit ? "Adjust timing after choosing the right lyrics. Original lyrics stay unchanged." : "Load timestamped lyrics to adjust timing."); }
 		PlaybackSnapshot? snapshot = _currentSnapshotProvider();
 		LyricsLookupResult? lookup = _lookupProvider();
 		if (snapshot == null || lookup == null)
 		{
 			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
-				Text = "PLAY A TRACK TO VIEW ITS SYNC",
+				Text = T("Load timestamped lyrics to adjust timing."),
 				FontFamily = _englishDotFont,
 				FontSize = 9.0,
 				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
@@ -1468,7 +1569,7 @@ public class SettingsWindow : Window, IComponentConnector
 		{
 			_personalSyncProfilesPanel.Children.Add(new TextBlock
 			{
-				Text = resolution.HasProfileForDifferentLyrics ? "SYNC EXISTS FOR DIFFERENT LYRICS" : "CURRENT TRACK · NOT SYNCED",
+				Text = T(resolution.HasProfileForDifferentLyrics ? "Timing saved for different lyrics · not applied" : "No timing adjustments for these lyrics"),
 				FontFamily = _englishDotFont,
 				FontSize = 9.0,
 				Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 166, 171)),
@@ -2106,7 +2207,7 @@ public class SettingsWindow : Window, IComponentConnector
 		surface.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
 		surface.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
 		surface.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(5.0));
+		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(8.0));
 		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
 		presenter.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
 		presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
@@ -2476,6 +2577,8 @@ public class SettingsWindow : Window, IComponentConnector
 		PopulateMediaSessionControls();
 	}
 
+	public void RefreshCurrentTrack() => RefreshLyricsTab();
+
 	private void RefreshLyricsTab()
 	{
 		if (LyricsEmptyText == null || CurrentTrackPanel == null)
@@ -2496,8 +2599,9 @@ public class SettingsWindow : Window, IComponentConnector
 		if (flag && !(trackInfo == null))
 		{
 			LrclibRecord lrclibRecord = lyricsLookupResult?.LrclibRecord;
-			CurrentTrackTitleText.Text = trackInfo.Title;
-			CurrentTrackArtistText.Text = trackInfo.Artist;
+			CurrentTrackTitleText.Text = trackInfo.DisplayTitle;
+			CurrentTrackArtistText.Text = trackInfo.DisplayArtist;
+			CurrentTrackArtistText.ToolTip = trackInfo.DisplayArtist;
 			CurrentTrackAlbumText.Text = trackInfo.Album;
 			CurrentTrackDurationText.Text = FormatDuration(trackInfo.Duration.TotalSeconds);
 			PlaybackSnapshot? snapshot = _currentSnapshotProvider();
@@ -2543,6 +2647,7 @@ public class SettingsWindow : Window, IComponentConnector
 			OpenLrclibButton.IsEnabled = lrclibRecord != null;
 			ResetManualButton.IsEnabled = true;
 		}
+		RefreshLocalLrcToggle(trackInfo);
 		if (_personalSyncProfilesInitialized) RefreshPersonalSyncProfiles();
 	}
 

@@ -48,7 +48,13 @@ public static partial class ProviderMetadataRepair
 		}
 		if (MediaSourceClassifier.IsBrowser(sourceAppUserModelId))
 		{
-			metadata = RepairBrowser(metadata);
+			metadata = RepairBrowser(metadata, repairedAlbumArtist);
+			if (!IsGenericChannelName(repairedArtist)
+				&& (ArtistIdentity.Parse(repairedArtist).StronglyMatches(ArtistIdentity.Parse(metadata.Artist))
+					|| (ArtistIdentity.Parse(repairedArtist).PerformerTokens.Count > 1
+						&& CanonicalizeArtist(metadata.Artist).Length > 0
+						&& CanonicalizeArtist(repairedArtist).Contains(CanonicalizeArtist(metadata.Artist), StringComparison.Ordinal))))
+				metadata = metadata with { Artist = repairedArtist };
 		}
 		return metadata;
 	}
@@ -82,20 +88,48 @@ public static partial class ProviderMetadataRepair
 		};
 	}
 
-	private static RepairedProviderMetadata RepairBrowser(RepairedProviderMetadata metadata)
+	private static RepairedProviderMetadata RepairBrowser(RepairedProviderMetadata metadata, string albumArtist)
 	{
 		if (string.IsNullOrWhiteSpace(metadata.Title)) return metadata;
 
 		string originalTitle = metadata.Title;
 		bool hasProductionMarker = ProductionMarkerRegex().IsMatch(originalTitle);
 		List<SearchMetadataCandidate> alternatives = new();
+		if (MetadataNormalizer.TryReleaseTitle(metadata.Album, out string albumTitle, out string work)
+			&& MetadataNormalizer.ComparisonKey(metadata.Artist) == MetadataNormalizer.ComparisonKey(albumTitle)
+			&& MetadataNormalizer.ComparisonKey(metadata.Title) == MetadataNormalizer.ComparisonKey(work))
+		{
+			bool hasArtist = albumArtist.Length > 0
+				&& MetadataNormalizer.ComparisonKey(albumArtist) != MetadataNormalizer.ComparisonKey(albumTitle)
+				&& MetadataNormalizer.ComparisonKey(albumArtist) != MetadataNormalizer.ComparisonKey(work);
+			alternatives.Add(new(albumTitle, hasArtist ? albumArtist : string.Empty, metadata.Album)
+			{
+				CanEstablishIdentity = hasArtist,
+				Evidence = "Artist equals album base title; title equals credited work"
+			});
+			return metadata with { SearchAlternates = alternatives };
+		}
+		// A release's quoted work name is not a quoted song title.
+		if (MetadataNormalizer.TryReleaseTitle(originalTitle, out _, out _)) return metadata;
+
+		Match leadingCredit = Regex.Match(originalTitle, @"^【(?<artist>[^】]+)】\s*(?<title>.+)$");
+		if (leadingCredit.Success)
+		{
+			string credit = leadingCredit.Groups["artist"].Value.Trim();
+			if (!Regex.IsMatch(credit, @"^(?:mv|official|lyrics?|video|pv)$", RegexOptions.IgnoreCase)
+				&& !RecordingEdition.HasMarker(credit)
+				&& (LooksLikeSameArtist(credit, metadata.Artist)
+					|| ArtistIdentity.Parse(credit).StronglyMatches(ArtistIdentity.Parse(metadata.Artist))))
+				return CreateResult(leadingCredit.Groups["title"].Value,
+					IsGenericChannelName(metadata.Artist) ? credit : metadata.Artist, metadata.Album, alternatives);
+		}
 
 		if (TryExtractQuotedTitle(originalTitle, out string prefix, out string quotedTitle))
 		{
 			IReadOnlyList<string> artistAliases = ExpandArtistAliases(CleanCredit(prefix));
 			string repairedArtist = SelectPrimaryArtist(artistAliases, metadata.Artist);
 			if (!string.IsNullOrWhiteSpace(quotedTitle)
-				&& (hasProductionMarker || artistAliases.Count > 0 || IsGenericChannelName(metadata.Artist)))
+				&& (hasProductionMarker || artistAliases.Any(alias => ArtistAppearsInChannel(alias, metadata.Artist))))
 			{
 				AddArtistAlternates(alternatives, quotedTitle, repairedArtist, metadata.Album, artistAliases);
 				if (!IsGenericChannelName(metadata.Artist))
@@ -118,12 +152,12 @@ public static partial class ProviderMetadataRepair
 			{
 				if (ArtistAppearsInChannel(right, metadata.Artist))
 				{
-					AddAlternative(alternatives, right, left, metadata.Album);
+					AddAlternative(alternatives, right, left, metadata.Album, false);
 					return CreateResult(left, right, metadata.Album, alternatives);
 				}
 				if (ArtistAppearsInChannel(left, metadata.Artist))
 				{
-					AddAlternative(alternatives, left, right, metadata.Album);
+					AddAlternative(alternatives, left, right, metadata.Album, false);
 					return CreateResult(right, left, metadata.Album, alternatives);
 				}
 
@@ -135,12 +169,12 @@ public static partial class ProviderMetadataRepair
 					IReadOnlyList<string> aliases = ExpandArtistAliases(right);
 					string repairedArtist = SelectPrimaryArtist(aliases, metadata.Artist);
 					AddArtistAlternates(alternatives, left, repairedArtist, metadata.Album, aliases);
-					AddAlternative(alternatives, right, left, metadata.Album);
+					AddAlternative(alternatives, right, left, metadata.Album, false);
 					return CreateResult(left, repairedArtist, metadata.Album, alternatives);
 				}
 
-				AddAlternative(alternatives, left, right, metadata.Album);
-				AddAlternative(alternatives, right, left, metadata.Album);
+				AddAlternative(alternatives, left, right, metadata.Album, false);
+				AddAlternative(alternatives, right, left, metadata.Album, false);
 				return CreateResult(left, metadata.Artist, metadata.Album, alternatives);
 			}
 		}
@@ -159,12 +193,12 @@ public static partial class ProviderMetadataRepair
 					IReadOnlyList<string> aliases = ExpandArtistAliases(left);
 					string repairedArtist = SelectPrimaryArtist(aliases, metadata.Artist);
 					AddArtistAlternates(alternatives, right, repairedArtist, metadata.Album, aliases);
-					AddAlternative(alternatives, left, right, metadata.Album);
+					AddAlternative(alternatives, left, right, metadata.Album, false);
 					return CreateResult(right, repairedArtist, metadata.Album, alternatives);
 				}
 				if (rightIsArtist)
 				{
-					AddAlternative(alternatives, right, left, metadata.Album);
+					AddAlternative(alternatives, right, left, metadata.Album, false);
 					return CreateResult(left, right, metadata.Album, alternatives);
 				}
 				if (IsGenericChannelName(metadata.Artist))
@@ -172,11 +206,11 @@ public static partial class ProviderMetadataRepair
 					IReadOnlyList<string> aliases = ExpandArtistAliases(left);
 					string repairedArtist = SelectPrimaryArtist(aliases, metadata.Artist);
 					AddArtistAlternates(alternatives, right, repairedArtist, metadata.Album, aliases);
-					AddAlternative(alternatives, left, right, metadata.Album);
+					AddAlternative(alternatives, left, right, metadata.Album, false);
 					return CreateResult(right, repairedArtist, metadata.Album, alternatives);
 				}
-				AddAlternative(alternatives, right, left, metadata.Album);
-				AddAlternative(alternatives, left, right, metadata.Album);
+				AddAlternative(alternatives, right, left, metadata.Album, false);
+				AddAlternative(alternatives, left, right, metadata.Album, false);
 			}
 		}
 
@@ -300,7 +334,12 @@ public static partial class ProviderMetadataRepair
 		List<SearchMetadataCandidate> alternatives)
 	{
 		title = TrimTitlePunctuation(title);
-		artist = CleanCredit(artist);
+		artist = MetadataNormalizer.NormalizeWhitespace(artist);
+		if (MetadataNormalizer.TryBilingualTitle(title, out string primaryTitle, out string alternateTitle))
+		{
+			AddAlternative(alternatives, alternateTitle, artist, album);
+			title = primaryTitle;
+		}
 		string primaryKey = CandidateKey(title, artist, album);
 		SearchMetadataCandidate[] distinctAlternatives = alternatives
 			.Where(candidate => !string.Equals(CandidateKey(candidate.Title, candidate.Artist, candidate.Album), primaryKey, StringComparison.Ordinal))
@@ -311,12 +350,12 @@ public static partial class ProviderMetadataRepair
 		return new RepairedProviderMetadata(title, artist, album, distinctAlternatives);
 	}
 
-	private static void AddAlternative(List<SearchMetadataCandidate> alternatives, string title, string artist, string album)
+	private static void AddAlternative(List<SearchMetadataCandidate> alternatives, string title, string artist, string album, bool canEstablishIdentity = true)
 	{
 		title = TrimTitlePunctuation(title);
 		artist = CleanCredit(artist);
 		if (title.Length == 0 || artist.Length == 0) return;
-		alternatives.Add(new SearchMetadataCandidate(title, artist, album));
+		alternatives.Add(new SearchMetadataCandidate(title, artist, album) { CanEstablishIdentity = canEstablishIdentity });
 	}
 
 	private static void AddUnique(List<string> values, string value)

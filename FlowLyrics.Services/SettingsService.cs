@@ -21,9 +21,9 @@ public sealed class SettingsService
 
 	public string SettingsPath { get; }
 
-	public SettingsService()
+	public SettingsService(string? appDataDirectory = null)
 	{
-		AppDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FlowLyrics");
+		AppDataDirectory = appDataDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FlowLyrics");
 		SettingsPath = Path.Combine(AppDataDirectory, "settings.json");
 	}
 

@@ -202,6 +202,7 @@
               <TextBlock Name="TrackStatusText" FontFamily="{DynamicResource DotFont}" Foreground="#BFFFFFFF" FontSize="9" FontWeight="SemiBold" Text="MEDIA SESSION / WAITING" />
             </StackPanel>
             <TextBlock Name="TrackTitleText" Margin="0,4,16,0" Foreground="#F2FFFFFF" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Text="Play something in a media player" />
+            <TextBlock Name="TrackArtistText" Margin="0,2,16,0" Foreground="#F2FFFFFF" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" LineHeight="16" LineStackingStrategy="BlockLineHeight" MaxHeight="32" Visibility="Collapsed" />
           </StackPanel>
         </Grid>
         <Grid Name="LyricsPanel" Row="1" ClipToBounds="True">

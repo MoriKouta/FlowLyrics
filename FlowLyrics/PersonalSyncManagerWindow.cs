@@ -150,14 +150,16 @@ public sealed class PersonalSyncManagerWindow : Window
 		_bRow = CreateHistoryEditorRow(editorPanel, HistoryField.B);
 		_lyricsRow = CreateHistoryEditorRow(editorPanel, HistoryField.Lyrics);
 		_deletePointButton = Button(L("この変更点を削除", "Delete this change"));
+		_deletePointButton.Foreground = Brush(238, 158, 157);
 		_deletePointButton.Click += DeletePoint_Click;
 		_deletePointButton.HorizontalAlignment = HorizontalAlignment.Left;
 		editorPanel.Children.Add(_deletePointButton);
 
 		WrapPanel buttons = new() { HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 13, 0, 0) };
-		Button reset = Button("RESET");
-		Button delete = Button("DELETE");
-		Button close = PrimaryButton(L("閉じる", "Close"));
+		Button reset = Button(L("調整をゼロに戻す", "Reset timing"));
+		Button delete = Button(L("保存済み調整を削除", "Delete saved sync"));
+		delete.Foreground = Brush(238, 158, 157);
+		Button close = Button(L("閉じる", "Close"));
 		reset.Click += Reset_Click;
 		delete.Click += Delete_Click;
 		close.Click += delegate { Close(); };

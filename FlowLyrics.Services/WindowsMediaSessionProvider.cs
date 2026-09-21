@@ -32,6 +32,13 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 
 	private bool _disposed;
 
+	private readonly IArtistCreditEnricher _artistEnricher;
+
+	public WindowsMediaSessionProvider(IArtistCreditEnricher? artistEnricher = null)
+	{
+		_artistEnricher = artistEnricher ?? new SpotifyUiAutomationEnricher();
+	}
+
 	public event EventHandler? SessionsChanged;
 
 	public async Task<IReadOnlyList<MediaSessionInfo>> GetSessionsAsync(CancellationToken cancellationToken = default)
@@ -206,6 +213,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 			_lastActivityById.Clear();
 		}
 		_initializationGate.Dispose();
+		_artistEnricher.Dispose();
 	}
 
 	private async Task<GlobalSystemMediaTransportControlsSessionManager?> EnsureManagerAsync(CancellationToken cancellationToken)
@@ -289,6 +297,17 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				properties?.Artist,
 				properties?.AlbumTitle,
 				properties?.AlbumArtist);
+			MediaTrackMetadata trackMetadata = new(metadata.Title, metadata.Artist, metadata.Album, duration,
+				metadata.SearchAlternates, properties?.Title ?? string.Empty, properties?.Artist ?? string.Empty,
+				properties?.AlbumTitle ?? string.Empty, properties?.AlbumArtist ?? string.Empty,
+				properties?.Subtitle ?? string.Empty, properties?.Genres?.ToArray() ?? Array.Empty<string>(), properties?.TrackNumber);
+			try
+			{
+				trackMetadata = SpotifyArtistCredit.Apply(trackMetadata, _artistEnricher.TryGet(sourceId, trackMetadata));
+				if (MediaSourceClassifier.IsSpotify(sourceId))
+					trackMetadata = trackMetadata with { SpotifyWindowState = _artistEnricher.WindowState };
+			}
+			catch (Exception ex) { System.Diagnostics.Debug.WriteLine("Artist enrichment unavailable: " + ex.GetType().Name); }
 			string sessionId = CreateSessionId(session, sourceId);
 			DateTimeOffset lastActivity;
 			lock (_gate)
@@ -306,14 +325,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				SessionId = sessionId,
 				SourceAppUserModelId = sourceId,
 				DisplaySourceName = MediaSourceClassifier.GetDisplayName(sourceId),
-				Metadata = new MediaTrackMetadata(
-					metadata.Title,
-					metadata.Artist,
-					metadata.Album,
-					duration,
-					metadata.SearchAlternates,
-					properties?.Title?.Trim() ?? string.Empty,
-					properties?.Artist?.Trim() ?? string.Empty),
+				Metadata = trackMetadata,
 				Position = position,
 				TimelineUpdatedAtUtc = timeline.LastUpdatedTime,
 				HasTimeline = duration > TimeSpan.Zero || position > TimeSpan.Zero,

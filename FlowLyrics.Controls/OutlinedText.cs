@@ -3,11 +3,27 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 
 namespace FlowLyrics.Controls;
 
 public sealed class OutlinedText : FrameworkElement
 {
+	private readonly DrawingVisual _glowVisual = new();
+	private readonly DrawingVisual _textVisual = new();
+	private readonly VisualCollection _layers;
+	public static readonly DependencyProperty GlowColorProperty = Register("GlowColor", typeof(Color), Colors.White, false);
+	public static readonly DependencyProperty GlowRadiusProperty = Register("GlowRadius", typeof(double), 0.0, false);
+	public static readonly DependencyProperty GlowOpacityProperty = Register("GlowOpacity", typeof(double), 0.0, false);
+	public Color GlowColor { get => (Color)GetValue(GlowColorProperty); set => SetValue(GlowColorProperty, value); }
+	public double GlowRadius { get => (double)GetValue(GlowRadiusProperty); set => SetValue(GlowRadiusProperty, value); }
+	public double GlowOpacity { get => (double)GetValue(GlowOpacityProperty); set => SetValue(GlowOpacityProperty, value); }
+	public bool HasGlow => GlowRadius > .05 && GlowOpacity > .001 && GlowColor.A > 0;
+
+	public OutlinedText() => _layers = new VisualCollection(this) { _glowVisual, _textVisual };
+	protected override int VisualChildrenCount => _layers.Count;
+	protected override Visual GetVisualChild(int index) => _layers[index];
+
 	public static readonly DependencyProperty TextProperty = Register("Text", typeof(string), string.Empty);
 
 	public static readonly DependencyProperty FontFamilyProperty = TextElement.FontFamilyProperty.AddOwner(typeof(OutlinedText), new FrameworkPropertyMetadata(SystemFonts.MessageFontFamily, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsRender));
@@ -210,11 +226,11 @@ public sealed class OutlinedText : FrameworkElement
 		{
 			return new Size(1.0, 1.0);
 		}
-		double drawingPadding = GetDrawingPadding();
+		double drawingPadding = GetDrawingPadding(horizontal: true);
 		double num = (double.IsInfinity(availableSize.Width) ? 4096.0 : Math.Max(1.0, availableSize.Width - drawingPadding * 2.0));
 		FormattedText formattedText = CreateFormattedText(num, FontSize);
 		double num2 = Math.Min(num, Math.Max(FontSize, formattedText.WidthIncludingTrailingWhitespace));
-		return new Size(height: Math.Ceiling(formattedText.Height * 1.12 + drawingPadding * 2.0), width: Math.Ceiling(num2 + drawingPadding * 2.0));
+		return new Size(height: Math.Ceiling(formattedText.Height * 1.12 + GetDrawingPadding() * 2.0), width: Math.Ceiling(num2 + drawingPadding * 2.0));
 	}
 
 	protected override Size ArrangeOverride(Size finalSize)
@@ -223,19 +239,45 @@ public sealed class OutlinedText : FrameworkElement
 		return finalSize;
 	}
 
-	protected override void OnRender(DrawingContext drawingContext)
+	// FrameworkElement can otherwise create an implicit layout clip even when
+	// ClipToBounds is false. Let the rear effect bleed; the viewport owns clipping.
+	protected override Geometry GetLayoutClip(Size layoutSlotSize) => ClipToBounds ? base.GetLayoutClip(layoutSlotSize) : null;
+
+	protected override void OnRender(DrawingContext context)
 	{
-		base.OnRender(drawingContext);
+		base.OnRender(context);
+		// Retained layers: only the rear silhouette is blurred. Never rasterize the sharp foreground.
+		using DrawingContext glow = _glowVisual.RenderOpen();
+		using DrawingContext drawingContext = _textVisual.RenderOpen();
+		if (HasGlow)
+		{
+			double radius = Math.Clamp(GlowRadius, 0, 40);
+			if (_glowVisual.Effect is not BlurEffect blur || blur.Radius != radius)
+			{
+				BlurEffect effect = new() { Radius = radius, KernelType = KernelType.Gaussian, RenderingBias = RenderingBias.Quality };
+				effect.Freeze();
+				_glowVisual.Effect = effect;
+			}
+			_glowVisual.Opacity = Math.Clamp(GlowOpacity, 0, 1) * .8;
+		}
+		else _glowVisual.Effect = null;
 		if (!string.IsNullOrEmpty(Text) && !(base.ActualWidth <= 2.0) && !(base.ActualHeight <= 2.0))
 		{
 			double drawingPadding = GetDrawingPadding();
-			double num = Math.Max(1.0, base.ActualWidth - drawingPadding * 2.0);
+			double horizontalPadding = GetDrawingPadding(horizontal: true);
+			double num = Math.Max(1.0, base.ActualWidth - horizontalPadding * 2.0);
 			double num2 = Math.Max(1.0, base.ActualHeight - drawingPadding * 2.0);
 			double fontSize = SelectFontSize(num, num2);
 			FormattedText formattedText = CreateFormattedText(num, fontSize);
-			double x = drawingPadding;
+			double x = horizontalPadding;
 			double y = drawingPadding + Math.Max(0.0, (num2 - formattedText.Height) / 2.0);
 			Geometry geometry = formattedText.BuildGeometry(new Point(x, y));
+			if (HasGlow)
+			{
+				SolidColorBrush glowBrush = new(GlowColor);
+				glowBrush.Freeze();
+				glow.DrawGeometry(glowBrush, null, geometry);
+			}
 			if (ShadowBrush != null && ShadowDepth > 0.0)
 			{
 				drawingContext.PushTransform(new TranslateTransform(ShadowDepth, ShadowDepth));
@@ -310,8 +352,10 @@ public sealed class OutlinedText : FrameworkElement
 		};
 	}
 
-	private double GetDrawingPadding()
+	private double GetDrawingPadding(bool horizontal = false)
 	{
+		// Glow is a retained rear visual and may bleed outside this element. Its
+		// radius must never change measuring, fitting, wrapping or glyph positions.
 		return Math.Max(1.0, StrokeThickness * 1.5 + ShadowDepth + 2.0);
 	}
 

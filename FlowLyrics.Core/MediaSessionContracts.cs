@@ -23,9 +23,18 @@ public sealed record MediaTrackMetadata(
 	TimeSpan Duration,
 	IReadOnlyList<SearchMetadataCandidate>? SearchAlternates = null,
 	string OriginalTitleRaw = "",
-	string OriginalArtistRaw = "")
+	string OriginalArtistRaw = "",
+	string? OriginalAlbumRaw = null,
+	string? OriginalAlbumArtistRaw = null,
+	string? OriginalSubtitleRaw = null,
+	IReadOnlyList<string>? OriginalGenresRaw = null,
+	int? OriginalTrackNumberRaw = null,
+	string? EnrichedArtistCredit = null,
+	string? EnrichmentSource = null,
+	string? SpotifyWindowState = null)
 {
 	public bool HasTitle => !string.IsNullOrWhiteSpace(TitleRaw);
+	public string DisplayArtist => EnrichedArtistCredit ?? ArtistRaw;
 }
 
 public sealed record MediaPlaybackCapabilities(

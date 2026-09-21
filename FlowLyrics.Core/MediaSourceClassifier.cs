@@ -29,6 +29,12 @@ public static class MediaSourceClassifier
 		return ContainsAny(value, "applemusic", "apple.music", "itunes");
 	}
 
+	public static bool IsSpotify(string? sourceAppUserModelId) =>
+		string.Equals(sourceAppUserModelId, "Spotify", StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(sourceAppUserModelId, "Spotify.exe", StringComparison.OrdinalIgnoreCase)
+		|| (sourceAppUserModelId?.StartsWith("SpotifyAB.SpotifyMusic_", StringComparison.OrdinalIgnoreCase) == true
+			&& sourceAppUserModelId.EndsWith("!Spotify", StringComparison.OrdinalIgnoreCase));
+
 	private static bool Contains(string value, string token) =>
 		value.Contains(token, StringComparison.OrdinalIgnoreCase);
 

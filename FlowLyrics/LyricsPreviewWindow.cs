@@ -40,6 +40,9 @@ public class LyricsPreviewWindow : Window, IComponentConnector
 		LrclibRecord record = candidate.Record;
 		base.Title = "Lyrics preview";
 		CloseButton.Content = T("Close");
+		CloseButton.Template = CandidateSearchWindow.CreateRoundedActionButtonTemplate();
+		CloseButton.MinHeight = 38;
+		CloseButton.Padding = new Thickness(15, 8, 15, 8);
 		TitleText.Text = record.TrackName ?? T("Unknown title");
 		ArtistText.Text = record.ArtistName ?? T("Unknown artist");
 		AlbumText.Text = record.AlbumName ?? T("Unknown album");

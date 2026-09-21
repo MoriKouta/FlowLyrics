@@ -36,4 +36,6 @@ public sealed class LyricsCacheEntry
 	public List<int> CandidateIds { get; set; } = new List<int>();
 
 	public int MatcherVersion { get; set; }
+
+	public string? ArtistEnrichmentCredit { get; set; }
 }

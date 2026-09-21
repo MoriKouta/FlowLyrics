@@ -32,13 +32,17 @@ public sealed class PersonalSyncWindow : Window
 	private PersonalSyncProfile _profile;
 	private bool _dirty;
 	private bool _deleted;
+	private bool _saveOnClosePending;
+	private bool _closeAfterSave;
 	private bool _refreshing;
+	private bool _timelineCoordinatesDirty = true;
 	private int _selectedLineIndex = -1;
 	private int _activeLineIndex = -1;
 	private double? _pendingHoldStart;
 	private double _pendingHoldLyricsTime;
 
 	private readonly TextBlock _offsetText;
+	private readonly Grid _offsetNudges;
 	private readonly TextBlock _nowText;
 	private readonly TextBlock _selectionText;
 	private readonly TextBlock _workflowHint;
@@ -49,8 +53,12 @@ public sealed class PersonalSyncWindow : Window
 	private readonly Button _cancelHoldButton;
 	private readonly CheckBox _trackScopeBox;
 	private readonly CheckBox _followNowBox;
+	private readonly CheckBox _wholeTrackBox;
 	private readonly ListBox _lyricsList;
-	private readonly Canvas _timeline;
+	private readonly Border _actionCard;
+	private readonly TextBlock _currentMarker;
+	private readonly StackPanel _currentMarkerHost;
+	private readonly Expander _advancedActions;
 	private readonly ListBox _pointsList;
 	private readonly TextBlock _pointTypeText;
 	private readonly TimeEditorRow _pointA;
@@ -59,6 +67,11 @@ public sealed class PersonalSyncWindow : Window
 	private readonly Button _deletePointButton;
 
 	public event EventHandler<PersonalSyncProfile?>? PreviewChanged;
+	public event EventHandler<TimeSpan>? SeekRequested;
+	private Point _dragStart;
+	private int _dragLine = -1;
+	private bool _dragging;
+	private readonly string _dragToken = Guid.NewGuid().ToString("N");
 
 	public PersonalSyncWindow(PersonalSyncStore store, PersonalSyncContext context, PersonalSyncProfile? profile,
 		IReadOnlyList<LyricLine> lines, Func<int?> selectedLineProvider, Func<TimeSpan> playbackPositionProvider, string language)
@@ -110,86 +123,40 @@ public sealed class PersonalSyncWindow : Window
 			FontFamily = new FontFamily("Consolas"), FontSize = 12, TextAlignment = TextAlignment.Right,
 			VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(224, 220, 223)
 		};
+		// A fixed drop target remains available even when the active lyric is offscreen.
+		_nowText.AllowDrop = true;
+		_nowText.ToolTip = T("Drag to the current position to align");
+		_nowText.DragOver += (_, e) => { e.Effects = IsOwnLyricDrag(e) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+		_nowText.Drop += (_, e) => { if (IsOwnLyricDrag(e)) AlignDraggedLyric(_dragLine, _playbackPositionProvider().TotalSeconds); e.Handled = true; };
 		Grid.SetColumn(_nowText, 1);
 		header.Children.Add(_nowText);
 		root.Children.Add(header);
 
 		Grid body = new();
-		body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.98, GridUnitType.Star) });
-		body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
-		body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.12, GridUnitType.Star) });
+		body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+		body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		Grid.SetRow(body, 1);
 		root.Children.Add(body);
 
-		ScrollViewer leftScroll = new()
-		{
-			VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-			HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-			Padding = new Thickness(0, 0, 5, 0)
-		};
-		StackPanel left = new();
-		leftScroll.Content = left;
-		body.Children.Add(leftScroll);
+		DockPanel offset = new() { Margin = new Thickness(0, 0, 0, 10) };
+		StackPanel offsetHeading = new() { Width = 200 };
+		offsetHeading.Children.Add(SectionTitle(T("Global offset")));
+		_offsetText = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 20, Foreground = Foreground };
+		offsetHeading.Children.Add(_offsetText);
+		offset.Children.Add(offsetHeading);
+		_offsetNudges = CreateNudgeButtons(Nudge);
+		_offsetNudges.MaxWidth = 420;
+		_offsetNudges.HorizontalAlignment = HorizontalAlignment.Left;
+		offset.Children.Add(_offsetNudges);
+		body.Children.Add(offset);
 
-		Border offsetCard = Card();
-		StackPanel offsetPanel = CardContent();
-		offsetCard.Child = offsetPanel;
-		left.Children.Add(offsetCard);
-		offsetPanel.Children.Add(SectionTitle(L("曲全体のタイミング", "Whole-track timing")));
-		offsetPanel.Children.Add(new TextBlock
-		{
-			Text = L("＋で遅く、－で早く表示します。入力は不要です。", "Plus displays lyrics later; minus displays them earlier. No typing needed."),
-			Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 9)
-		});
-		_offsetText = new TextBlock
-		{
-			HorizontalAlignment = HorizontalAlignment.Center, FontFamily = new FontFamily("Consolas"), FontSize = 25,
-			FontWeight = FontWeights.Bold, Foreground = Accent(), Margin = new Thickness(0, 0, 0, 8)
-		};
-		offsetPanel.Children.Add(_offsetText);
-		offsetPanel.Children.Add(CreateNudgeButtons(Nudge));
+		StackPanel timelinePanel = new();
+		Expander pointDetails = new() { Header = T("Adjustment points"), Content = new ScrollViewer { Content = timelinePanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 215 }, MaxHeight = 245 };
+		Grid.SetRow(pointDetails, 2);
+		body.Children.Add(pointDetails);
 
-		Border timelineCard = Card();
-		StackPanel timelinePanel = CardContent();
-		timelineCard.Child = timelinePanel;
-		left.Children.Add(timelineCard);
-		timelinePanel.Children.Add(SectionTitle(L("曲の途中で合わせ直す", "Re-sync during the track")));
-		timelinePanel.Children.Add(new TextBlock
-		{
-			Text = L("上から下へ曲が進みます。●は切替、帯は歌詞を止める区間、白線は現在位置です。", "The song flows top to bottom. ● is a switch, the band is a lyric hold, and the white line is now."),
-			Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 8)
-		});
-		_timeline = new Canvas { Height = 270, Background = Brush(31, 29, 32), ClipToBounds = true };
-		_timeline.SizeChanged += delegate { DrawTimeline(); };
-		timelinePanel.Children.Add(_timeline);
-		_selectionText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 5) };
-		timelinePanel.Children.Add(_selectionText);
-		_matchButton = Button(L("選択した歌詞を現在位置に設定", "Set selected lyric to current time"));
-		_matchButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-		_matchButton.Click += MatchSelectedLine_Click;
-		timelinePanel.Children.Add(_matchButton);
-
-		_holdButton = PrimaryButton(L("ここから歌詞を止める", "Hold lyrics from here"));
-		_holdButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-		_holdButton.Click += Hold_Click;
-		timelinePanel.Children.Add(_holdButton);
-		_workflowHint = new TextBlock
-		{
-			Text = L("止めるときに押し、再開したい歌詞を右で選び、その歌詞が聞こえた瞬間にもう一度押します。", "Press to hold, select the resume lyric on the right, then press again the instant you hear it."),
-			Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 3, 4, 5)
-		};
-		timelinePanel.Children.Add(_workflowHint);
-		_cancelHoldButton = Button(L("停止設定をキャンセル", "Cancel pending hold"));
-		_cancelHoldButton.Visibility = Visibility.Collapsed;
-		_cancelHoldButton.Click += delegate { CancelPendingHold(); };
-		timelinePanel.Children.Add(_cancelHoldButton);
-
-		Button anchorButton = Button(L("ここから選択したタイミングへ切り替える", "Switch to selected timing from here"));
-		anchorButton.HorizontalAlignment = HorizontalAlignment.Stretch;
-		anchorButton.Click += AddAnchor_Click;
-		timelinePanel.Children.Add(anchorButton);
-
-		_pointsList = new ListBox { MinHeight = 96, MaxHeight = 180, Margin = new Thickness(0, 10, 0, 6) };
+		_pointsList = new ListBox { Name = "TimingChangesList", MinHeight = 60, MaxHeight = 150, Margin = new Thickness(0, 10, 0, 6) };
 		_pointsList.SelectionChanged += delegate { RefreshPointEditor(); };
 		timelinePanel.Children.Add(_pointsList);
 
@@ -203,46 +170,80 @@ public sealed class PersonalSyncWindow : Window
 		timelinePanel.Children.Add(editCard);
 		_pointTypeText = new TextBlock
 		{
-			Text = L("変更点を選ぶと、ボタンだけで時刻を直せます", "Select a change, then adjust it with buttons only"),
+			Text = L("上の補正点を選んで調整します", "Select a change above to adjust its timing"),
 			FontWeight = FontWeights.SemiBold, Foreground = Muted(), TextWrapping = TextWrapping.Wrap
 		};
 		editPanel.Children.Add(_pointTypeText);
 		_pointA = CreateTimeEditorRow(editPanel, TimeField.A);
 		_pointB = CreateTimeEditorRow(editPanel, TimeField.B);
 		_pointLyrics = CreateTimeEditorRow(editPanel, TimeField.Lyrics);
-		_deletePointButton = Button(L("この変更点を削除", "Delete this change"));
+		_deletePointButton = DangerButton(L("選択した補正を削除", "Delete selected change"));
 		_deletePointButton.HorizontalAlignment = HorizontalAlignment.Left;
 		_deletePointButton.Click += DeleteSelectedPoint_Click;
 		editPanel.Children.Add(_deletePointButton);
 
 		Border lyricsCard = Card();
+		lyricsCard.Name = "LyricsEditingCard";
 		Grid lyricsPanel = new() { Margin = new Thickness(12) };
 		lyricsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		lyricsPanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 		lyricsPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		lyricsCard.Child = lyricsPanel;
-		Grid.SetColumn(lyricsCard, 2);
+		Grid.SetRow(lyricsCard, 1);
 		body.Children.Add(lyricsCard);
 		DockPanel lyricsHeader = new() { Margin = new Thickness(2, 0, 2, 8) };
 		_followNowBox = new CheckBox { Content = L("再生中の行を追う", "Follow current line"), IsChecked = true };
 		DockPanel.SetDock(_followNowBox, Dock.Right);
 		lyricsHeader.Children.Add(_followNowBox);
-		lyricsHeader.Children.Add(SectionTitle(L("時刻付き歌詞", "Lyrics with timestamps")));
+		lyricsHeader.Children.Add(SectionTitle(T("Timing editor")));
 		lyricsPanel.Children.Add(lyricsHeader);
-		_lyricsList = new ListBox { BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
+		_lyricsList = new ListBox { Name = "SyncLyricsList", BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 		_lyricsList.SelectionChanged += LyricsList_SelectionChanged;
 		_lyricsList.PreviewMouseWheel += delegate { _followNowBox.IsChecked = false; };
 		Grid.SetRow(_lyricsList, 1);
 		lyricsPanel.Children.Add(_lyricsList);
-		TextBlock lyricsHint = new()
-		{
-			Text = L("行をクリックして選択。● が現在表示中です。停止中も再開したい行を選べます。", "Click a line to select it. ● is the displayed line. You can choose a resume line while held."),
-			Foreground = Muted(), Margin = new Thickness(2, 8, 2, 0), TextWrapping = TextWrapping.Wrap
-		};
-		Grid.SetRow(lyricsHint, 2);
-		lyricsPanel.Children.Add(lyricsHint);
+		// One action surface travels with the selected lyric, rather than living
+		// in a disconnected panel. The time axis is part of each lyric row.
+		_actionCard = new Border { Name = "LyricActionPanel", Padding = new Thickness(0, 6, 0, 4) };
+		StackPanel actions = new();
+		_actionCard.Child = actions;
+		_currentMarkerHost = new StackPanel { AllowDrop = true, Background = Brushes.Transparent };
+		_currentMarker = new TextBlock { Foreground = Brushes.White, FontSize = 12, Margin = new Thickness(0, 5, 0, 5) };
+		_currentMarkerHost.Children.Add(_currentMarker);
+		_currentMarkerHost.DragOver += (_, e) => { e.Effects = IsOwnLyricDrag(e) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; };
+		_currentMarkerHost.Drop += (_, e) => { if (IsOwnLyricDrag(e)) AlignDraggedLyric(_dragLine, _playbackPositionProvider().TotalSeconds); e.Handled = true; };
 
-		DockPanel footer = new() { Margin = new Thickness(0, 14, 0, 0) };
+		_selectionText = new TextBlock { TextWrapping = TextWrapping.Wrap, MaxHeight = 48, TextTrimming = TextTrimming.CharacterEllipsis,
+			FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) };
+		// Selection is already visible in its lyric row.
+		_matchButton = PrimaryButton(string.Empty);
+		_matchButton.Name = "AlignSelectedLyricButton";
+		_matchButton.HorizontalAlignment = HorizontalAlignment.Left;
+		_matchButton.MinWidth = 200;
+		_matchButton.Click += MatchSelectedLine_Click;
+		actions.Children.Add(_matchButton);
+		_wholeTrackBox = new CheckBox { Content = L("曲全体にも適用", "Apply to the whole track"), Margin = new Thickness(4, 7, 4, 7),
+			ToolTip = L("OFF: この位置から先を補正。ON: 曲全体のずれを調整。", "Off: align from here onward. On: shift the whole track.") };
+		_wholeTrackBox.Checked += delegate { RefreshLiveUi(); };
+		_wholeTrackBox.Unchecked += delegate { RefreshLiveUi(); };
+		StackPanel more = new();
+		more.Children.Add(_wholeTrackBox);
+		_holdButton = Button(T("Start lyric hold"));
+		_holdButton.Name = "HoldLyricDisplayButton";
+		_holdButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+		_holdButton.Click += Hold_Click;
+		more.Children.Add(_holdButton);
+		_advancedActions = new Expander { Header = T("More"), Content = more, Margin = new Thickness(0, 4, 0, 0) };
+		actions.Children.Add(_advancedActions);
+		_advancedActions.Expanded += (_, _) => RevealRowAction();
+		_workflowHint = new TextBlock { Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(4, 6, 4, 2), FontSize = 12 };
+		actions.Children.Add(_workflowHint);
+		_cancelHoldButton = Button(L("一時停止を取り消す", "Cancel hold"));
+		_cancelHoldButton.Visibility = Visibility.Collapsed;
+		_cancelHoldButton.Click += delegate { CancelPendingHold(); };
+		actions.Children.Add(_cancelHoldButton);
+
+		StackPanel footer = new() { Margin = new Thickness(0, 14, 0, 0) };
 		Grid.SetRow(footer, 2);
 		root.Children.Add(footer);
 		_trackScopeBox = new CheckBox
@@ -255,11 +256,12 @@ public sealed class PersonalSyncWindow : Window
 		footer.Children.Add(_trackScopeBox);
 		WrapPanel bottomButtons = new() { HorizontalAlignment = HorizontalAlignment.Right };
 		DockPanel.SetDock(bottomButtons, Dock.Right);
-		_undoButton = Button("UNDO");
-		_redoButton = Button("REDO");
-		Button reset = Button(L("リセット", "Reset"));
-		Button remove = Button(L("この曲の調整を解除", "Remove sync"));
-		Button close = PrimaryButton(L("閉じる", "Close"));
+		_undoButton = Button(L("元に戻す", "Undo"));
+		_redoButton = Button(L("やり直す", "Redo"));
+		Button reset = Button(L("調整をゼロに戻す", "Reset timing"));
+		Button remove = DangerButton(L("保存済み調整を削除", "Delete saved sync"));
+		Button close = Button(T("Close"));
+		close.ToolTip = T("Changes are saved when you close.");
 		_undoButton.Click += delegate { Undo(); };
 		_redoButton.Click += delegate { Redo(); };
 		reset.Click += Reset_Click;
@@ -272,6 +274,10 @@ public sealed class PersonalSyncWindow : Window
 		bottomButtons.Children.Add(close);
 		footer.Children.Add(bottomButtons);
 
+		InputBindings.Add(new KeyBinding(ApplicationCommands.Undo, new KeyGesture(Key.Z, ModifierKeys.Control)));
+		InputBindings.Add(new KeyBinding(ApplicationCommands.Redo, new KeyGesture(Key.Y, ModifierKeys.Control)));
+		CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo, (_, e) => { Undo(); e.Handled = true; }, (_, e) => e.CanExecute = _undo.Count > 0));
+		CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo, (_, e) => { Redo(); e.Handled = true; }, (_, e) => e.CanExecute = _redo.Count > 0));
 		BuildLyricsList();
 		_previewTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(120) };
 		_previewTimer.Tick += delegate { RefreshLiveUi(); };
@@ -296,30 +302,89 @@ public sealed class PersonalSyncWindow : Window
 		_lyricRows.Clear();
 		for (int index = 0; index < _lines.Count; index++)
 		{
+			int lineIndex = index;
 			LyricLine line = _lines[index];
-			Grid row = new() { Margin = new Thickness(4, 3, 6, 3) };
-			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
-			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
+			StackPanel content = new();
+			Grid row = new() { Margin = new Thickness(4, 5, 6, 5), MinHeight = 28 };
+			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(88) });
 			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-			TextBlock marker = new() { Foreground = Accent(), FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
-			TextBlock time = new() { Text = Format(line.Time.TotalSeconds), FontFamily = new FontFamily("Consolas"), Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center };
+			TextBlock marker = new() { Text = "○", Foreground = Muted(), FontSize = 14, VerticalAlignment = VerticalAlignment.Center,
+				Cursor = Cursors.SizeAll, ToolTip = T("Drag to the current position to align") };
+			marker.PreviewMouseLeftButtonDown += (_, e) => { _dragStart = e.GetPosition(this); _dragLine = lineIndex; };
+			marker.PreviewMouseMove += (_, e) =>
+			{
+				if (_dragging || _pendingHoldStart.HasValue || e.LeftButton != MouseButtonState.Pressed || _dragLine != lineIndex) return;
+				Point at = e.GetPosition(this);
+				if (Math.Abs(at.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance && Math.Abs(at.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance) return;
+				_dragging = true;
+				try { DragDrop.DoDragDrop(marker, new DataObject("FlowLyrics.SyncLyric", _dragToken), DragDropEffects.Move); }
+				finally { _dragging = false; _dragLine = -1; RefreshLiveUi(); }
+			};
+			TextBlock time = new() { FontFamily = new FontFamily("Consolas"), Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center,
+				Cursor = Cursors.Hand, ToolTip = T("Seek to this lyric") };
+			time.MouseLeftButtonUp += (_, e) => { SeekToLyric(lineIndex); e.Handled = true; };
 			TextBlock lyric = new() { Text = line.Text, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-			Grid.SetColumn(time, 1);
-			Grid.SetColumn(lyric, 2);
-			row.Children.Add(marker);
-			row.Children.Add(time);
-			row.Children.Add(lyric);
-			ListBoxItem item = new() { Content = row, Tag = index, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+			Grid.SetColumn(time, 1); Grid.SetColumn(lyric, 2);
+			row.Children.Add(new Border { Width = 1, Background = Brush(78, 74, 80), HorizontalAlignment = HorizontalAlignment.Center });
+			row.Children.Add(marker); row.Children.Add(time); row.Children.Add(lyric);
+			content.Children.Add(row);
+			StackPanel inline = new() { Margin = new Thickness(116, 0, 6, 0) };
+			content.Children.Add(inline);
+			TextBlock holdRange = new() { Foreground = Brush(168, 205, 223), Margin = new Thickness(28, 0, 0, 5), Visibility = Visibility.Collapsed };
+			content.Children.Add(holdRange);
+			ListBoxItem item = new() { Content = content, Tag = index, Padding = new Thickness(5, 1, 5, 1), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 			_lyricsList.Items.Add(item);
-			_lyricRows.Add(new LyricRow(marker, time, lyric));
+			_lyricRows.Add(new LyricRow(marker, time, lyric, content, inline, holdRange));
 		}
 	}
 
-	private void Nudge(double delta) => Change(profile =>
+	private bool IsOwnLyricDrag(DragEventArgs e) => !_pendingHoldStart.HasValue && Equals(e.Data.GetData("FlowLyrics.SyncLyric"), _dragToken) && _dragLine >= 0;
+
+	private void AlignDraggedLyric(int index, double playback)
+	{
+		if (_pendingHoldStart.HasValue || index < 0 || index >= _lines.Count || !double.IsFinite(playback)) return;
+		_selectedLineIndex = index;
+		_lyricsList.SelectedIndex = index;
+		if (_wholeTrackBox.IsChecked == true)
+		{
+			double delta = PersonalSyncMapper.MapPlaybackToLyrics(playback, _profile) - _lines[index].Time.TotalSeconds;
+			Change(profile => ShiftWholeTrack(profile, delta));
+			return;
+		}
+		AlignLineAt(index, Math.Max(0, playback));
+	}
+
+	private void AlignLineAt(int index, double playback)
+	{
+		Guid id = Guid.NewGuid();
+		Change(profile =>
+		{
+			profile.Mode = PersonalSyncMode.Advanced;
+			PersonalSyncAnchor? nearby = profile.Anchors.FirstOrDefault(a => Math.Abs(a.PlaybackSeconds - playback) < .12);
+			if (nearby == null) profile.Anchors.Add(new PersonalSyncAnchor { Id = id, PlaybackSeconds = playback, LyricsSeconds = _lines[index].Time.TotalSeconds });
+			else { id = nearby.Id; nearby.PlaybackSeconds = playback; nearby.LyricsSeconds = _lines[index].Time.TotalSeconds; }
+			profile.Anchors = profile.Anchors.OrderBy(a => a.PlaybackSeconds).ToList();
+		});
+		SelectPoint(id);
+	}
+
+	private void SeekToLyric(int index)
+	{
+		if (index < 0 || index >= _lines.Count) return;
+		double? playback = PersonalSyncTimeline.PlaybackForLyric(_lines[index].Time.TotalSeconds, _profile);
+		if (playback.HasValue) SeekRequested?.Invoke(this, TimeSpan.FromSeconds(playback.Value));
+	}
+
+	private void Nudge(double delta) => Change(profile => ShiftWholeTrack(profile, delta));
+
+	private static void ShiftWholeTrack(PersonalSyncProfile profile, double delta)
 	{
 		if (profile.Mode == PersonalSyncMode.None) profile.Mode = PersonalSyncMode.Offset;
 		profile.OffsetSeconds = Round(profile.OffsetSeconds + delta);
-	});
+		foreach (PersonalSyncAnchor anchor in profile.Anchors) anchor.LyricsSeconds = Math.Max(0, anchor.LyricsSeconds - delta);
+		foreach (PersonalSyncSegment hold in profile.Segments) hold.LyricsTimeSeconds = Math.Max(0, hold.LyricsTimeSeconds - delta);
+	}
 
 	private void Change(Action<PersonalSyncProfile> mutation)
 	{
@@ -367,30 +432,17 @@ public sealed class PersonalSyncWindow : Window
 
 	private void MatchSelectedLine_Click(object sender, RoutedEventArgs e)
 	{
+		if (_pendingHoldStart.HasValue) { Hold_Click(sender, e); return; }
+		if (_wholeTrackBox.IsChecked != true) { AddAnchor_Click(sender, e); return; }
 		if (!ValidSelectedLine(out int selected)) return;
-		double offset = PersonalSyncMapper.CalculateOffsetSeconds(_playbackPositionProvider(), _lines[selected].Time);
-		Change(profile =>
-		{
-			profile.Mode = profile.Anchors.Count > 0 || profile.Segments.Count > 0 ? PersonalSyncMode.Advanced : PersonalSyncMode.Offset;
-			profile.OffsetSeconds = offset;
-		});
+		double delta = PersonalSyncMapper.MapPlaybackToLyrics(_playbackPositionProvider(), _profile).TotalSeconds - _lines[selected].Time.TotalSeconds;
+		Change(profile => ShiftWholeTrack(profile, delta));
 	}
 
 	private void AddAnchor_Click(object sender, RoutedEventArgs e)
 	{
 		if (!ValidSelectedLine(out int selected)) return;
-		double playback = Math.Max(0, _playbackPositionProvider().TotalSeconds);
-		double lyrics = Math.Max(0, _lines[selected].Time.TotalSeconds);
-		Guid anchorId = Guid.NewGuid();
-		Change(profile =>
-		{
-			profile.Mode = PersonalSyncMode.Advanced;
-			PersonalSyncAnchor? nearby = profile.Anchors.FirstOrDefault(anchor => Math.Abs(anchor.PlaybackSeconds - playback) < 0.12);
-			if (nearby == null) profile.Anchors.Add(new PersonalSyncAnchor { Id = anchorId, PlaybackSeconds = playback, LyricsSeconds = lyrics });
-			else { anchorId = nearby.Id; nearby.PlaybackSeconds = playback; nearby.LyricsSeconds = lyrics; }
-			profile.Anchors = profile.Anchors.OrderBy(anchor => anchor.PlaybackSeconds).ToList();
-		});
-		SelectPoint(anchorId);
+		AlignLineAt(selected, Math.Max(0, _playbackPositionProvider().TotalSeconds));
 	}
 
 	private void Hold_Click(object sender, RoutedEventArgs e)
@@ -403,7 +455,9 @@ public sealed class PersonalSyncWindow : Window
 			int active = FindActiveLine(mapped);
 			_pendingHoldLyricsTime = active >= 0 && active < _lines.Count ? _lines[active].Time.TotalSeconds : mapped;
 			EmitPendingHoldPreview();
+			RefreshLyricRowVisuals();
 			RefreshLiveUi();
+			RevealRowAction();
 			return;
 		}
 
@@ -429,6 +483,7 @@ public sealed class PersonalSyncWindow : Window
 			profile.Segments = profile.Segments.OrderBy(segment => segment.PlaybackStartSeconds).ToList();
 			profile.Anchors = profile.Anchors.OrderBy(anchor => anchor.PlaybackSeconds).ToList();
 		});
+		RefreshLyricRowVisuals();
 		SelectPoint(holdId);
 	}
 
@@ -436,6 +491,7 @@ public sealed class PersonalSyncWindow : Window
 	{
 		if (!_pendingHoldStart.HasValue) return;
 		_pendingHoldStart = null;
+		RefreshLyricRowVisuals();
 		PreviewChanged?.Invoke(this, _dirty || _hadStoredProfile ? _profile.Clone() : null);
 		RefreshLiveUi();
 	}
@@ -459,10 +515,16 @@ public sealed class PersonalSyncWindow : Window
 	{
 		if (_refreshing) return;
 		_selectedLineIndex = _lyricsList.SelectedItem is ListBoxItem { Tag: int index } ? index : -1;
+		if (_activeLineIndex >= 0) _followNowBox.IsChecked = false;
+		RefreshLyricRowVisuals();
+		DrawTimeline();
 		RefreshSelectionText();
 		RefreshPointEditor();
 		RefreshPendingWorkflow();
+		RevealRowAction();
 	}
+
+	private void RevealRowAction() => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => { if (IsVisible && _actionCard.IsVisible) _actionCard.BringIntoView(); }));
 
 	private TimeEditorRow CreateTimeEditorRow(StackPanel parent, TimeField field)
 	{
@@ -499,7 +561,7 @@ public sealed class PersonalSyncWindow : Window
 		_deletePointButton.IsEnabled = has;
 		if (_pointsList.SelectedItem is not SyncPointListItem item)
 		{
-			_pointTypeText.Text = L("変更点を選ぶと、ボタンだけで時刻を直せます", "Select a change, then adjust it with buttons only");
+			_pointTypeText.Text = L("上の補正点を選んで調整します", "Select a change above to adjust its timing");
 			SetEditorRow(_pointA, false, string.Empty, 0, string.Empty, false);
 			SetEditorRow(_pointB, false, string.Empty, 0, string.Empty, false);
 			SetEditorRow(_pointLyrics, false, string.Empty, 0, string.Empty, false);
@@ -510,11 +572,11 @@ public sealed class PersonalSyncWindow : Window
 		{
 			PersonalSyncAnchor? anchor = _profile.Anchors.FirstOrDefault(candidate => candidate.Id == item.Id);
 			if (anchor == null) return;
-			_pointTypeText.Text = L("切替点：この再生位置から、指定した歌詞位置へ切り替えます", "Switch point: jump to the chosen lyric position at this playback time");
+			_pointTypeText.Text = L("補正点：ここから先の歌詞を合わせます", "Alignment point: timing changes from here onward");
 			SetEditorRow(_pointA, true, L("切替を始める再生位置", "Playback time where the switch begins"), anchor.PlaybackSeconds,
 				L("現在の再生位置に合わせる", "Use current playback position"), true);
 			SetEditorRow(_pointB, true, L("切替先の歌詞位置", "Lyric position to switch to"), anchor.LyricsSeconds,
-				L("右で選んだ歌詞に合わせる", "Use selected lyric on the right"), ValidSelectedLine(out _));
+				T("Use selected lyric"), ValidSelectedLine(out _));
 			SetEditorRow(_pointLyrics, false, string.Empty, 0, string.Empty, false);
 		}
 		else
@@ -527,7 +589,7 @@ public sealed class PersonalSyncWindow : Window
 			SetEditorRow(_pointB, true, L("選択歌詞から再開する再生位置", "Playback time where the selected lyric resumes"), hold.PlaybackEndSeconds,
 				L("現在の再生位置に合わせる", "Use current playback position"), true);
 			SetEditorRow(_pointLyrics, true, L("停止中に表示する歌詞位置", "Lyric position shown while held"), hold.LyricsTimeSeconds,
-				L("右で選んだ歌詞に合わせる", "Use selected lyric on the right"), ValidSelectedLine(out _));
+				T("Use selected lyric"), ValidSelectedLine(out _));
 		}
 	}
 
@@ -658,6 +720,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private async void PersonalSyncWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
 	{
+		if (_closeAfterSave) return;
 		_previewTimer.Stop();
 		if (_pendingHoldStart.HasValue)
 		{
@@ -665,11 +728,17 @@ public sealed class PersonalSyncWindow : Window
 			PreviewChanged?.Invoke(this, _dirty || _hadStoredProfile ? _profile.Clone() : null);
 		}
 		if (!_dirty || _deleted) return;
+		// Cancel synchronously: setting Cancel after an awaited write is too late.
+		e.Cancel = true;
+		if (_saveOnClosePending) return;
+		_saveOnClosePending = true;
 		try
 		{
 			_profile = await _store.UpsertAsync(_profile);
 			_dirty = false;
 			PreviewChanged?.Invoke(this, _profile.Mode == PersonalSyncMode.None ? null : _profile.Clone());
+			_closeAfterSave = true;
+			_ = Dispatcher.BeginInvoke(new Action(Close));
 		}
 		catch (Exception ex)
 		{
@@ -678,10 +747,12 @@ public sealed class PersonalSyncWindow : Window
 			MessageBox.Show(this, L("歌詞タイミング調整を保存できませんでした。\n\n", "Could not save Personal Sync.\n\n") + ex.Message,
 				"FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
+		finally { _saveOnClosePending = false; }
 	}
 
 	private void RefreshAll()
 	{
+		_timelineCoordinatesDirty = true;
 		_refreshing = true;
 		try
 		{
@@ -700,45 +771,37 @@ public sealed class PersonalSyncWindow : Window
 
 	private void RefreshLiveUi()
 	{
-		if (_lines.Count == 0) return;
+		if (_lines.Count == 0) { RefreshPendingWorkflow(); return; }
 		double playback = Math.Max(0, _playbackPositionProvider().TotalSeconds);
 		double lyrics = _pendingHoldStart.HasValue ? _pendingHoldLyricsTime : PersonalSyncMapper.MapPlaybackToLyrics(playback, _profile);
 		int active = FindActiveLine(lyrics);
-		_nowText.Text = L("再生", "PLAY") + "  " + Format(playback) + "\n" + L("歌詞", "LYRIC") + "  " + Format(lyrics);
-		_matchButton.Content = ValidSelectedLine(out _)
-			? L($"選択した歌詞を現在の {Format(playback)} に設定", $"Set selected lyric to current {Format(playback)}")
-			: L("右の歌詞を選択してください", "Select a lyric on the right");
-		_matchButton.IsEnabled = _selectedLineIndex >= 0 && !_pendingHoldStart.HasValue;
-		RefreshPendingWorkflow();
+		_nowText.Text = (_dragging ? T("Align to now") : L("再生", "PLAY")) + "  " + Format(playback) + "\n" + L("歌詞", "LYRIC") + "  " + Format(lyrics);
+
 		if (active != _activeLineIndex)
 		{
 			_activeLineIndex = active;
 			RefreshLyricRowVisuals();
 			if (_followNowBox.IsChecked == true && active >= 0 && active < _lyricsList.Items.Count) _lyricsList.ScrollIntoView(_lyricsList.Items[active]);
 		}
+		RefreshPendingWorkflow();
 		DrawTimeline();
 	}
 
 	private void RefreshPendingWorkflow()
 	{
 		bool pending = _pendingHoldStart.HasValue;
+		bool selected = ValidSelectedLine(out _);
+		_offsetNudges.IsEnabled = !pending;
 		_cancelHoldButton.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
-		if (!pending)
-		{
-			_holdButton.Content = L("ここから歌詞を止める", "Hold lyrics from here");
-			_holdButton.IsEnabled = true;
-			_workflowHint.Text = L("止めるときに押し、再開したい歌詞を右で選び、その歌詞が聞こえた瞬間にもう一度押します。", "Press to hold, select the resume lyric on the right, then press again the instant you hear it.");
-			_workflowHint.Foreground = Muted();
-			return;
-		}
-		_holdButton.Content = ValidSelectedLine(out int selected)
-			? L($"「{ShortLyric(_lines[selected].Text)}」から今すぐ再開", $"Resume now from “{ShortLyric(_lines[selected].Text)}”")
-			: L("右で再開する歌詞を選択", "Select the resume lyric on the right");
-		_holdButton.IsEnabled = ValidSelectedLine(out _);
-		_workflowHint.Text = L(
-			$"歌詞を {Format(_pendingHoldStart!.Value)} から固定中。再開する行を選び、聞こえた瞬間にオレンジのボタンを押してください。",
-			$"Lyrics are held from {Format(_pendingHoldStart!.Value)}. Select the resume line and press the orange button when you hear it.");
-		_workflowHint.Foreground = Accent();
+		_holdButton.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
+		_advancedActions.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
+		_holdButton.IsEnabled = _activeLineIndex >= 0;
+		_wholeTrackBox.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
+		_matchButton.Content = pending ? T("Resume here") : T("Align to now");
+		_matchButton.IsEnabled = selected && (!pending || _playbackPositionProvider().TotalSeconds > _pendingHoldStart!.Value + .05);
+		_workflowHint.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+		_workflowHint.Text = T("Hold in progress. Choose the lyric to resume.");
+		_workflowHint.Foreground = pending ? Brush(168, 205, 223) : Muted();
 	}
 
 	private void RefreshLyricRowVisuals()
@@ -747,7 +810,9 @@ public sealed class PersonalSyncWindow : Window
 		{
 			LyricRow row = _lyricRows[index];
 			bool active = index == _activeLineIndex;
-			row.Marker.Text = active ? "●" : string.Empty;
+			double lyric = _lines[index].Time.TotalSeconds;
+			bool held = (active && _pendingHoldStart.HasValue) || _profile.Segments.Any(h => Math.Abs(h.LyricsTimeSeconds - lyric) < .05);
+			row.Marker.Text = held ? "Ⅱ" : active ? "●" : _profile.Anchors.Any(a => Math.Abs(a.LyricsSeconds - lyric) < .05) ? "◆" : "○";
 			row.Time.Foreground = active ? Accent() : Muted();
 			row.Lyric.Foreground = active ? Brushes.White : Brush(210, 206, 210);
 			row.Lyric.FontWeight = active ? FontWeights.Bold : FontWeights.Normal;
@@ -758,12 +823,12 @@ public sealed class PersonalSyncWindow : Window
 	{
 		if (ValidSelectedLine(out int selected))
 		{
-			_selectionText.Text = "✓  [" + Format(_lines[selected].Time.TotalSeconds) + "]  " + _lines[selected].Text;
+			_selectionText.Text = L("選択中  ", "SELECTED  ") + "[" + Format(_lines[selected].Time.TotalSeconds) + "]  " + _lines[selected].Text;
 			_selectionText.Foreground = Accent();
 		}
 		else
 		{
-			_selectionText.Text = L("右の歌詞をクリックして選択", "Click a lyric on the right to select it");
+			_selectionText.Text = T("Select a lyric");
 			_selectionText.Foreground = Muted();
 		}
 	}
@@ -785,7 +850,7 @@ public sealed class PersonalSyncWindow : Window
 		{
 			double offset = anchor.PlaybackSeconds - anchor.LyricsSeconds;
 			SyncPointListItem item = new(anchor.Id, true,
-				$"●  {L("切替", "SWITCH")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}  ({offset:+0.0;-0.0;0.0}s)\n    {NearestLyricText(anchor.LyricsSeconds)}");
+				$"●  {L("補正", "ALIGN")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}  ({offset:+0.0;-0.0;0.0}s)\n    {NearestLyricText(anchor.LyricsSeconds)}");
 			_pointsList.Items.Add(item);
 			if (selectedId == anchor.Id) _pointsList.SelectedItem = item;
 		}
@@ -798,7 +863,7 @@ public sealed class PersonalSyncWindow : Window
 			if (candidate is SyncPointListItem item && item.Id == id)
 			{
 				_pointsList.SelectedItem = item;
-				_pointsList.ScrollIntoView(item);
+
 				break;
 			}
 		}
@@ -820,82 +885,35 @@ public sealed class PersonalSyncWindow : Window
 
 	private void DrawTimeline()
 	{
-		if (_timeline.ActualWidth <= 1 || _timeline.ActualHeight <= 1) return;
-		_timeline.Children.Clear();
-		double width = _timeline.ActualWidth;
-		double height = _timeline.ActualHeight;
-		double duration = Math.Max(1.0, _context.Track.DurationSeconds);
-		double axisX = 38, top = 22, bottom = height - 22;
-		_timeline.Children.Add(new Line { X1 = axisX, X2 = axisX, Y1 = top, Y2 = bottom, Stroke = Brush(100, 95, 102), StrokeThickness = 3 });
-		AddTimelineText("0:00", 4, 3, Muted(), 9);
-		AddTimelineText(Format(duration), 4, height - 18, Muted(), 9);
-
-		double labelY = 10;
-		foreach (TimelineEvent item in TimelineEvents().OrderBy(item => item.PlaybackSeconds))
+		if (_lyricRows.Count == 0) return;
+		if (ValidSelectedLine(out int selected) && _actionCard.Parent != _lyricRows[selected].Inline)
 		{
-			double markerY = Y(item.PlaybackSeconds, duration, top, bottom);
-			double desired = Math.Clamp(markerY - 18, 8, Math.Max(8, height - 42));
-			labelY = Math.Min(Math.Max(desired, labelY), Math.Max(8, height - 42));
-			_timeline.Children.Add(new Line { X1 = axisX + 7, X2 = 67, Y1 = markerY, Y2 = labelY + 16, Stroke = item.IsHold ? Accent() : Brush(166, 158, 166), StrokeThickness = 1, Opacity = .7 });
-			if (item.IsHold)
-			{
-				double endY = Y(item.EndSeconds, duration, top, bottom);
-				Rectangle range = new() { Width = 16, Height = Math.Max(4, endY - markerY), Fill = Accent(), Opacity = .42, RadiusX = 5, RadiusY = 5 };
-				Canvas.SetLeft(range, axisX - 8);
-				Canvas.SetTop(range, markerY);
-				_timeline.Children.Add(range);
-			}
-			else
-			{
-				Ellipse point = new() { Width = 13, Height = 13, Fill = Accent(), Stroke = Brushes.White, StrokeThickness = 1 };
-				Canvas.SetLeft(point, axisX - 6.5);
-				Canvas.SetTop(point, markerY - 6.5);
-				_timeline.Children.Add(point);
-			}
-			AddTimelineText(item.Label, 72, labelY, Brushes.White, 10, Math.Max(80, width - 82));
-			labelY += 42;
+			if (_actionCard.Parent is Panel previous) previous.Children.Remove(_actionCard);
+			_lyricRows[selected].Inline.Children.Add(_actionCard);
 		}
-
-		double now = Math.Clamp(_playbackPositionProvider().TotalSeconds, 0, duration);
-		double nowY = Y(now, duration, top, bottom);
-		_timeline.Children.Add(new Line { X1 = 13, X2 = width - 9, Y1 = nowY, Y2 = nowY, Stroke = Brushes.White, StrokeThickness = 1.2 });
-		TextBlock nowLabel = AddTimelineText(L("現在 ", "NOW ") + Format(now), Math.Max(65, width - 105), Math.Clamp(nowY - 16, 1, height - 18), Brushes.White, 9);
-		nowLabel.Background = Brush(31, 29, 32);
-		if (_pendingHoldStart.HasValue)
+		int active = Math.Clamp(_activeLineIndex, 0, _lyricRows.Count - 1);
+		if (_currentMarkerHost.Parent != _lyricRows[active].Content)
 		{
-			double startY = Y(_pendingHoldStart.Value, duration, top, bottom);
-			Rectangle pending = new() { Width = 20, Height = Math.Max(3, nowY - startY), Fill = Accent(), Opacity = .62, RadiusX = 6, RadiusY = 6 };
-			Canvas.SetLeft(pending, axisX - 10);
-			Canvas.SetTop(pending, startY);
-			_timeline.Children.Add(pending);
+			if (_currentMarkerHost.Parent is Panel old) old.Children.Remove(_currentMarkerHost);
+			_lyricRows[active].Content.Children.Insert(0, _currentMarkerHost);
 		}
-	}
-
-	private IEnumerable<TimelineEvent> TimelineEvents()
-	{
-		foreach (PersonalSyncSegment hold in _profile.Segments)
+		_currentMarker.Text = "────▶ " + T(_dragging ? "Align to now" : "Now") + " " + Format(_playbackPositionProvider().TotalSeconds) + " ────";
+		// Playback ticks only move the marker. Recompute row coordinates after edits.
+		if (!_timelineCoordinatesDirty) return;
+		_timelineCoordinatesDirty = false;
+		RefreshLyricRowVisuals();
+		for (int i = 0; i < _lyricRows.Count; i++)
 		{
-			PersonalSyncAnchor? resume = _profile.Anchors.FirstOrDefault(anchor => Math.Abs(anchor.PlaybackSeconds - hold.PlaybackEndSeconds) < 0.15);
-			string resumeText = resume == null ? L("そのまま再開", "resume continuously") : ShortLyric(NearestLyricText(resume.LyricsSeconds));
-			yield return new TimelineEvent(hold.PlaybackStartSeconds, hold.PlaybackEndSeconds, true,
-				$"{L("歌詞停止", "HOLD")} {Format(hold.PlaybackStartSeconds)} → {Format(hold.PlaybackEndSeconds)}\n{L("再開", "RESUME")}: {resumeText}");
+			LyricRow row = _lyricRows[i];
+			double lyric = _lines[i].Time.TotalSeconds;
+			double? playback = PersonalSyncTimeline.PlaybackForLyric(lyric, _profile);
+			row.Time.Text = playback.HasValue ? Format(playback.Value) : "—";
+			bool hold = _profile.Segments.Any(h => Math.Abs(h.LyricsTimeSeconds - lyric) < .05);
+			row.Content.Background = hold ? Brush(39, 52, 59) : Brushes.Transparent;
+			row.HoldRange.Visibility = hold ? Visibility.Visible : Visibility.Collapsed;
+			row.HoldRange.Text = hold ? string.Join("\n", _profile.Segments.Where(h => Math.Abs(h.LyricsTimeSeconds - lyric) < .05)
+				.Select(h => T("Lyric hold") + " " + Format(h.PlaybackStartSeconds) + " — " + Format(h.PlaybackEndSeconds))) : string.Empty;
 		}
-		foreach (PersonalSyncAnchor anchor in _profile.Anchors)
-			yield return new TimelineEvent(anchor.PlaybackSeconds, anchor.PlaybackSeconds, false,
-				$"{L("切替", "SWITCH")} {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}\n{ShortLyric(NearestLyricText(anchor.LyricsSeconds))}");
-	}
-
-	private TextBlock AddTimelineText(string text, double x, double y, Brush foreground, double size, double maxWidth = double.PositiveInfinity)
-	{
-		TextBlock label = new()
-		{
-			Text = text, Foreground = foreground, FontFamily = new FontFamily("Consolas"), FontSize = size,
-			TextWrapping = TextWrapping.Wrap, MaxWidth = maxWidth
-		};
-		Canvas.SetLeft(label, x);
-		Canvas.SetTop(label, y);
-		_timeline.Children.Add(label);
-		return label;
 	}
 
 	private int FindActiveLine(double lyricsSeconds)
@@ -963,10 +981,12 @@ public sealed class PersonalSyncWindow : Window
 	private static Border Card() => new() { Background = Brush(36, 33, 37), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 0, 0, 11) };
 	private static Button Button(string text) => new() { Content = text };
 	private static Button PrimaryButton(string text) => new() { Content = text, Background = Accent(), Foreground = Brush(28, 25, 28), BorderBrush = Accent(), FontWeight = FontWeights.SemiBold };
+	private static Button DangerButton(string text) => new() { Content = text, Foreground = Brush(238, 158, 157) };
 	private static double Y(double seconds, double duration, double top, double bottom) => top + Math.Clamp(seconds / duration, 0, 1) * Math.Max(1, bottom - top);
 	private static double Round(double value) => Math.Round(Math.Clamp(value, -3600.0, 3600.0), 3);
 	private static string Format(double seconds) => TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss\.f" : @"m\:ss\.f", CultureInfo.InvariantCulture);
 	private static string ShortLyric(string text) => text.Length <= 28 ? text : text[..27] + "…";
+	private string T(string key) => LocalizationService.Translate(_language, key);
 	private string L(string ja, string en) => _language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? ja : en;
 	private string SourceContext(PersonalSyncSourceIdentity source)
 	{
@@ -978,8 +998,7 @@ public sealed class PersonalSyncWindow : Window
 	private static SolidColorBrush Muted() => Brush(181, 176, 181);
 
 	private enum TimeField { A, B, Lyrics }
-	private sealed record LyricRow(TextBlock Marker, TextBlock Time, TextBlock Lyric);
+	private sealed record LyricRow(TextBlock Marker, TextBlock Time, TextBlock Lyric, StackPanel Content, StackPanel Inline, TextBlock HoldRange);
 	private sealed record TimeEditorRow(Border Surface, TextBlock Label, TextBlock Value, Button SetButton);
-	private sealed record TimelineEvent(double PlaybackSeconds, double EndSeconds, bool IsHold, string Label);
 	private sealed record SyncPointListItem(Guid Id, bool IsAnchor, string Label) { public override string ToString() => Label; }
 }

@@ -13,6 +13,8 @@ public sealed class LyricsCandidate
 
 	public bool AutoEligible { get; init; }
 
+	public bool UsesVideoDurationTolerance { get; init; }
+
 	public bool ArtistMatchIsCrossScript { get; init; }
 
 	public bool LyricsScriptMismatch { get; init; }

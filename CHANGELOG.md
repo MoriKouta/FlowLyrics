@@ -4,6 +4,23 @@
 
 ### Changed
 
+- Prioritize evidenced search identities before weak hints, preserve safe early exit, and log query stages, candidate counts and first-safe/total latency. Log actual volume/mute writes and UIA scan costs without changing audio control logic; reuse successful visible Spotify credits for 30 seconds.
+
+- Integrate Personal Sync lyric rows and playback coordinates in one editing surface, with row-local align/resume, drag-to-current alignment, click-to-seek, Ctrl+Z/Ctrl+Y, and optional hold/point controls. Keep non-destructive save-on-close and untouched-profile behavior.
+- Keep the Personal Sync Settings entry and player S button; remove the duplicate Current Track timing action. Keep lyrics details visible and reduce Local LRC to a compact choose/use row, preserving files, saved LRCLIB selections and older cache-only imports.
+- Separate the retained Gaussian glow silhouette from text layout: radius no longer changes fit, wrapping, glyph position or viewport margins; allow effect bleed outside text controls. Unify ID/search/candidate/preview and disclosure controls.
+- Added `1.3.1-dev.11` with conservative recording identity, explicit release/title/CV aliases, source-aware duration validation, and complete artist-credit display.
+- Repair runtime BAML attachment of Glow, My Palettes and Reverse Colors. The Color tab now exposes Text Effects and Surface cards independently of tab order or localization, with loaded-window and settings/palette round-trip regression coverage.
+- Retain confirmed Spotify credits in a bounded session-memory cache while the same raw track is minimized, expose Spotify window state, and refresh credits on return without restoring or focusing Spotify.
+- Bypass the client HTTP cache for explicit lyric refresh, candidate search and ID loading. Add direct LRCLIB ID preview/manual selection and localized guidance about server-side search caching, without artificial cache-busting queries.
+- Recognize explicit quoted Soundtrack release suffixes, retain existing persistence keys and legacy fallbacks, and expose title aliases, search artists, release/edition identity and inference evidence in diagnostics. Upgrade automatic-cache matcher validation to version 8.
+- Wait for Personal Sync persistence before closing the editor so an asynchronous save failure can keep the window open. Add loaded-window hold/resume/edit/undo/redo/reopen and no-op regressions.
+- Require matching title or an evidenced alias, strong artist identity, compatible edition and instrumental state, and valid duration for every automatic LRCLIB selection. Album agreement affects ranking without being required.
+- Retain complete raw title/artist/album values and source identity separately from display and search metadata. Browser artist credits and bilingual titles use only evidence present in the provider metadata.
+- Distinguish named remixers, language variants, re-recordings, and other edition markers; cross-script artist differences alone no longer establish identity.
+- Keep the two-second duration tolerance for audio/unknown sources. A longer browser video may differ by at most 90 seconds and 30% of the recording duration, only with strong title/artist identity and no edition conflict.
+- Separate overlay title and artist text, and bound wrapped artist credits to two lines in both the overlay and Settings without splitting artist names.
+- Add optional Spotify now-playing UI Automation artist-credit enrichment after inspecting GSMTC fields. Preserve raw metadata and the original matching candidate, validate the current title/process/credit region, and fall back without blocking media polling. Diagnostics include raw album artist, subtitle, genres, track number, display artist, and enrichment source.
 - Started the `1.3.1` development cycle with confirmation build `1.3.1-dev.1`.
 - Added the `1.3.1-dev.2` confirmation build with generic Windows Media Session support.
 - Rebuilt the same implementation as `1.3.1-dev.3` for a fresh downloadable confirmation package.
@@ -20,7 +37,7 @@
 - Made lyrics cache and manual LRCLIB overrides player-independent while retaining and migrating legacy keys.
 - Centered the volume popup precisely and made the active Reverse Colors button visually explicit.
 - Stabilized Apple Music timelines, normalized non-zero media timeline origins, restored optimistic seeking, and prevented stale post-seek positions from snapping back.
-- Auto-applied the highest-scoring usable LRCLIB candidate when strict automatic safety checks do not produce a match.
+- Earlier development builds auto-applied the highest-scoring usable LRCLIB candidate after strict checks failed; dev.11 removes that fallback and requires every automatic result to pass the safety gates.
 - Generalized per-session volume and mute control from Spotify to the selected player, including Apple Music, TIDAL, VLC, and major browsers.
 - Made Lyrics Only a persistent visual mode that preserves and disables the underlying component choices instead of clearing them.
 - Kept Personal Sync data in a separate atomic JSON store so LRCLIB responses, local LRC files, and lyrics-cache timestamps are never rewritten.
@@ -28,6 +45,8 @@
 
 ### Fixed
 
+- Removed the unsafe BEST MATCH fallback and its cache-validation bypass. MatcherVersion 7 rejects old automatic cache entries while retaining explicit manual selections and local LRC data.
+- Preserve version/featured-artist suffixes during search normalization and keep ambiguous metadata-role interpretations as search hints unless independent artist evidence is available.
 - Retried slow, rate-limited, malformed, and transient LRCLIB responses with longer bounded timeouts, per-request coalescing, server backoff, and partial-result preservation.
 - Matched packaged audio sessions by their real process AUMID so Apple Music and other Store players can use per-session volume controls.
 - Sent track-relative GSMTC seek positions first and added a conservative UI Automation range fallback for players that expose a timeline but reject the system seek command.
@@ -41,6 +60,7 @@
 
 ### Tests
 
+- Added recording-identity, title-credit, CV/unit-credit, edition, duration, raw/display preservation, simulated LRCLIB/cache, and WPF layout regressions, including actual Settings BAML construction.
 - Added automated coverage for provider metadata repair, metadata normalization, source-independent identity, LRCLIB query encoding and best-match fallback, immediate source selection, Apple-style timeline jitter and seeking, audio-session identity matching, capability propagation, and legacy cache migration.
 - Added Personal Sync coverage for no-op mapping, positive/negative offsets, arbitrary seeking, anchors, lyric holds, source precedence, lyrics-ID mismatch protection, persistence, and timestamp immutability.
 - Added Glow normalization/preset coverage and a persistence regression test for untouched Personal Sync profiles.

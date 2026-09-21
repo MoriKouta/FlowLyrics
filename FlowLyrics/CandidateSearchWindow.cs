@@ -3,6 +3,7 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,6 +49,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	private bool _isSearching;
 
 	private Button? _titleOnlyButton;
+	private TextBox? _recordIdBox;
+	private Button? _loadIdButton;
 
 	internal TextBlock TitleLabel;
 
@@ -106,8 +109,10 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		AlbumBox.Text = track.Album;
 		ApplyLanguage();
 		InitializeSearchActions();
-		ApplySearchActionChrome();
+
 		InitializeContributionFooter();
+		InitializeDirectIdControls();
+		ApplySearchActionChrome();
 		base.Loaded += async delegate
 		{
 			await SearchAsync(titleOnly: false);
@@ -123,6 +128,74 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	private string T(string key)
 	{
 		return LocalizationService.Translate(_language, key);
+	}
+
+	private void InitializeDirectIdControls()
+	{
+		if (Content is not Grid root) return;
+		foreach (UIElement child in root.Children)
+			if (Grid.GetRow(child) >= 1) Grid.SetRow(child, Grid.GetRow(child) + 1);
+		root.RowDefinitions.Insert(1, new RowDefinition { Height = GridLength.Auto });
+		StackPanel panel = new() { Name = "DirectIdPanel", Margin = new Thickness(0, 4, 0, 10) };
+		WrapPanel row = new();
+		row.Children.Add(new TextBlock { Text = T("LRCLIB ID"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+		_recordIdBox = new TextBox { Name = "LrclibIdBox", Width = 140, ToolTip = T("LRCLIB ID") };
+		_recordIdBox.KeyDown += async (_, e) =>
+		{
+			if (e.Key == System.Windows.Input.Key.Enter) { e.Handled = true; await LoadIdAsync(); }
+		};
+		row.Children.Add(_recordIdBox);
+		_loadIdButton = new Button { Name = "LoadLrclibIdButton", Content = T("Load ID"), Margin = new Thickness(8, 0, 0, 0) };
+		_loadIdButton.FontFamily = SearchButton.FontFamily;
+		_loadIdButton.FontSize = SearchButton.FontSize;
+		_loadIdButton.Click += async (_, _) => await LoadIdAsync();
+		row.Children.Add(_loadIdButton);
+		panel.Children.Add(row);
+		TextBlock hint = new() { Text = T("LRCLIB search results may remain cached after a new submission. If you know the LRCLIB ID, load it directly."), TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 6, 0, 0) };
+		hint.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+		panel.Children.Add(hint);
+		Grid.SetRow(panel, 1);
+		root.Children.Add(panel);
+	}
+
+	private async Task LoadIdAsync()
+	{
+		if (!int.TryParse(_recordIdBox?.Text, NumberStyles.None, CultureInfo.InvariantCulture, out int id) || id <= 0)
+		{
+			StatusText.Text = T("Enter a positive LRCLIB ID.");
+			return;
+		}
+		int generation = ++_searchGeneration;
+		_searchCancellation?.Cancel();
+		_searchCancellation?.Dispose();
+		_searchCancellation = new CancellationTokenSource();
+		_isSearching = false;
+		_loadingTimer.Stop();
+		LoadingDotLine.Visibility = Visibility.Collapsed;
+		SearchButton.IsEnabled = false;
+		if (_titleOnlyButton != null) _titleOnlyButton.IsEnabled = false;
+		_loadIdButton!.IsEnabled = false;
+		ResultsList.ItemsSource = null;
+		StatusText.Text = T("Loading LRCLIB ID…");
+		try
+		{
+			LrclibRecord? record = await _lyricsService.GetRecordByIdAsync(id, _searchCancellation.Token, bypassRequestCache: true);
+			if (generation != _searchGeneration) return;
+			if (record == null) { StatusText.Text = T("Could not load the selected LRCLIB ID."); return; }
+			ResultsList.ItemsSource = new[] { ToViewModel(LyricsMatcher.Evaluate(_track, record)) };
+			StatusText.Text = T("Review this record and preview the lyrics before using it.");
+		}
+		catch (OperationCanceledException) { }
+		catch (Exception ex) { if (generation == _searchGeneration) StatusText.Text = ex.Message; }
+		finally
+		{
+			if (generation == _searchGeneration)
+			{
+				SearchButton.IsEnabled = true;
+				if (_titleOnlyButton != null) _titleOnlyButton.IsEnabled = true;
+				_loadIdButton.IsEnabled = true;
+			}
+		}
 	}
 
 	public void SetAccentColor(string value)
@@ -208,7 +281,12 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	private void ApplySearchActionChrome()
 	{
 		ControlTemplate template = CreateRoundedActionButtonTemplate();
-		foreach (Button button in new[] { _titleOnlyButton, SearchButton }.OfType<Button>())
+		Style shared = new(typeof(Button), TryFindResource(typeof(Button)) as Style);
+		shared.Setters.Add(new Setter(Control.TemplateProperty, template));
+		shared.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 36.0));
+		shared.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 8, 12, 8)));
+		Resources[typeof(Button)] = shared;
+		foreach (Button button in new[] { _titleOnlyButton, SearchButton, _loadIdButton, CloseButton }.OfType<Button>())
 		{
 			button.Template = template;
 			button.MinHeight = 38.0;
@@ -221,7 +299,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		}
 	}
 
-	private static ControlTemplate CreateRoundedActionButtonTemplate()
+	internal static ControlTemplate CreateRoundedActionButtonTemplate()
 	{
 		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border), "Surface");
 		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
@@ -271,7 +349,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			Opacity = 0.72
 		};
 		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
-		message.Inlines.Add(new Run(T("No good match? Try creating synchronized lyrics yourself and share them with the next listener.")) + "  ");
+		message.Inlines.Add(new Run(T("No good match? Try creating synchronized lyrics yourself and share them with the next listener.") + "  "));
 		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = _englishDotFont, FontSize = 9.0, TextDecorations = null };
 		lrclib.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
@@ -373,12 +451,13 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			LyricsSearchRequest request = titleOnly
 				? new LyricsSearchRequest(TitleBox.Text, string.Empty, string.Empty, string.Empty)
 				: new LyricsSearchRequest(TitleBox.Text, ArtistBox.Text, AlbumBox.Text, KeywordBox.Text);
-			IReadOnlyList<LyricsCandidate> readOnlyList = await _lyricsService.SearchCandidatesAsync(_track, request, _searchCancellation.Token, progress);
+			IReadOnlyList<LyricsCandidate> readOnlyList = await _lyricsService.SearchCandidatesAsync(_track, request, _searchCancellation.Token, progress, bypassRequestCache: true);
 			if (generation == _searchGeneration)
 			{
 				if (readOnlyList.Count == 0)
 				{
-					StatusText.Text = T("No LRCLIB results were found. Try another title, artist, or English name.");
+					StatusText.Text = T("No LRCLIB results were found. Try another title, artist, or English name.") + "\n"
+						+ T("LRCLIB search results may remain cached after a new submission. If you know the LRCLIB ID, load it directly.");
 					return;
 				}
 				ResultsList.ItemsSource = readOnlyList.Select(ToViewModel).ToArray();
@@ -416,7 +495,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	private CandidateCardViewModel ToViewModel(LyricsCandidate candidate)
 	{
 		LrclibRecord record = candidate.Record;
-		bool flag = !string.IsNullOrWhiteSpace(record.SyncedLyrics) || string.IsNullOrWhiteSpace(record.PlainLyrics) || record.Instrumental || _plainFallbackEnabled;
+		bool usable = record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || !string.IsNullOrWhiteSpace(record.PlainLyrics);
+		bool flag = usable && (record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || _plainFallbackEnabled);
 		string value = (record.Instrumental ? T("Instrumental") : ((!string.IsNullOrWhiteSpace(record.SyncedLyrics)) ? T("Synced") : T("Plain")));
 		string value2 = (candidate.DurationDifferenceSeconds.HasValue ? string.Format(T("difference {0:+0.0;-0.0;0.0} s"), candidate.DurationDifferenceSeconds.Value) : T("duration unavailable"));
 		return new CandidateCardViewModel
@@ -431,7 +511,7 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			Matches = T("Matched") + ": " + JoinTranslated(candidate.MatchedFields),
 			Mismatches = T("Not matched") + ": " + ((candidate.MismatchedFields.Count == 0) ? T("None") : JoinTranslated(candidate.MismatchedFields)),
 			CanUse = flag,
-			DisabledReason = (flag ? string.Empty : T("Enable Plain Lyrics Fallback to use this result.")),
+			DisabledReason = flag ? string.Empty : T(usable ? "Enable Plain Lyrics Fallback to use this result." : "The selected LRCLIB record has no usable lyrics."),
 			PreviewLabel = T("Preview"),
 			UseLabel = T("Use these lyrics"),
 			OpenLabel = T("Open in LRCLIB")

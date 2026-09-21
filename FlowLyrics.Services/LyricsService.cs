@@ -19,7 +19,10 @@ namespace FlowLyrics.Services;
 
 public sealed class LyricsService : IDisposable
 {
-	private sealed record CachedJsonResponse(string Json, DateTimeOffset ExpiresAtUtc);
+	private sealed record CachedJsonResponse(string Json, DateTimeOffset ExpiresAtUtc)
+	{
+		public ConcurrentDictionary<string, byte> TrackKeys { get; } = new(StringComparer.Ordinal);
+	}
 
 	private sealed record CacheReadResult(LyricsCacheEntry Entry, bool IsCurrentBuild, string SourceName);
 
@@ -27,13 +30,14 @@ public sealed class LyricsService : IDisposable
 
 	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(10L);
 
-	private const int CurrentMatcherVersion = 6;
+	private const int CurrentMatcherVersion = 8;
 
 	private readonly HttpClient _httpClient;
 
 	private readonly string _cacheDirectory;
 
 	private readonly string _localLrcDirectory;
+	private readonly LocalLrcPreferenceStore _localLrcPreferences;
 
 	private readonly FileSystemWatcher _localLrcWatcher;
 
@@ -67,9 +71,10 @@ public sealed class LyricsService : IDisposable
 
 	public event Action? LocalLrcFilesChanged;
 
-	public LyricsService(string appDataDirectory)
+	public LyricsService(string appDataDirectory, HttpMessageHandler? messageHandler = null)
 	{
 		_localLrcDirectory = Path.Combine(appDataDirectory, "lyrics-cache");
+		_localLrcPreferences = new(appDataDirectory);
 		_cacheDirectory = Path.Combine(appDataDirectory, "dev-cache", BuildInfo.CacheNamespace, "lyrics-cache");
 		Directory.CreateDirectory(_localLrcDirectory);
 		Directory.CreateDirectory(_cacheDirectory);
@@ -87,7 +92,7 @@ public sealed class LyricsService : IDisposable
 		_localLrcWatcher.Changed += LocalLrcWatcher_Changed;
 		_localLrcWatcher.Deleted += LocalLrcWatcher_Changed;
 		_localLrcWatcher.Renamed += LocalLrcWatcher_Changed;
-		HttpClientHandler handler = new HttpClientHandler
+		HttpMessageHandler handler = messageHandler ?? new HttpClientHandler
 		{
 			AutomaticDecompression = (DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli),
 			UseCookies = false,
@@ -167,8 +172,36 @@ public sealed class LyricsService : IDisposable
 
 	public async Task<LyricsLookupResult> GetLyricsAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting = null)
 	{
+		Stopwatch elapsed = Stopwatch.StartNew();
+		await _logger.WriteAsync($"lookup start identity={track.StableIdentityKey} refresh={forceRefresh}");
+		try { return await GetLyricsCoreAsync(track, forceRefresh, cancellationToken, networkSearchStarting); }
+		finally { await _logger.WriteAsync($"lookup complete identity={track.StableIdentityKey} totalMs={elapsed.ElapsedMilliseconds}"); }
+	}
+
+	private async Task<LyricsLookupResult> GetLyricsCoreAsync(TrackInfo track, bool forceRefresh, CancellationToken cancellationToken, Action? networkSearchStarting)
+	{
+		Stopwatch stageTimer = Stopwatch.StartNew();
 		await LogTrackAsync(track, forceRefresh ? "lookup:force" : "lookup:auto");
 		ManualLyricsSelection manual = await _overrideStore.GetAsync(track, cancellationToken);
+		// Keep legacy precedence until the user explicitly chooses a source.
+		bool localEnabled = await _localLrcPreferences.GetAsync(track, cancellationToken) ?? manual == null;
+		LyricsLookupResult? local = localEnabled ? await TryReadLocalLrcAsync(track, cancellationToken) : null;
+		if (local != null)
+		{
+			await _logger.WriteAsync("local-lrc accepted path=" + Path.GetFileName(local.LocalLrcPath) + " cacheKey=" + track.CacheKey);
+			return local;
+		}
+		string savedLocalPath = _localLrcPreferences.GetSavedLyricsPath(track);
+		if (localEnabled && File.Exists(savedLocalPath))
+		{
+			string savedLrc = await File.ReadAllTextAsync(savedLocalPath, cancellationToken);
+			var savedLines = LrcParser.Parse(savedLrc);
+			if (savedLines.Count > 0) return new LyricsLookupResult
+			{
+				Status = LyricsLookupStatus.LocalLrc, LocalLrcPath = savedLocalPath,
+				Lyrics = new LyricsResult(savedLines, null, "LOCAL LRC")
+			};
+		}
 		if (manual != null)
 		{
 			if (!forceRefresh)
@@ -183,7 +216,8 @@ public sealed class LyricsService : IDisposable
 					return FromCache(manualCache, selectedManually: true);
 				}
 			}
-			LrclibRecord manualRecord = await GetRecordByIdAsync(manual.LrclibId, cancellationToken);
+			LrclibRecord manualRecord = await GetRecordByIdAsync(manual.LrclibId, cancellationToken, bypassRequestCache: forceRefresh);
+			AssociateRequest(track, $"api/get/{manual.LrclibId}");
 			if (manualRecord == null)
 			{
 				throw new LyricsServiceException(LyricsErrorKind.LrclibId, LocalizationService.TranslateCurrent("Could not load the selected LRCLIB ID."));
@@ -191,13 +225,9 @@ public sealed class LyricsService : IDisposable
 			await _logger.WriteAsync($"manual-selection accepted id={manualRecord.Id} cacheKey={track.CacheKey}");
 			return await CacheAndCreateResultAsync(track, manualRecord, "Manual", cancellationToken);
 		}
-		LyricsLookupResult local = await TryReadLocalLrcAsync(track, cancellationToken);
-		if (local != null)
-		{
-			await _logger.WriteAsync("local-lrc accepted path=" + Path.GetFileName(local.LocalLrcPath) + " cacheKey=" + track.CacheKey);
-			return local;
-		}
-		if (!forceRefresh && _positiveMemoryCache.TryGetValue(track.StableIdentityKey, out LyricsCacheEntry memoryCache) && IsValidPositiveCache(track, memoryCache))
+
+		if (!forceRefresh && _positiveMemoryCache.TryGetValue(track.StableIdentityKey, out LyricsCacheEntry memoryCache)
+			&& (localEnabled || !memoryCache.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase)) && IsValidPositiveCache(track, memoryCache))
 		{
 			await _logger.WriteAsync($"memory-cache accepted id={memoryCache.LrclibId} cacheKey={track.CacheKey}");
 			return FromCache(memoryCache, selectedManually: false);
@@ -206,7 +236,10 @@ public sealed class LyricsService : IDisposable
 		{
 			CacheReadResult? cacheRead = await ReadCacheAcrossBuildsAsync(track, cancellationToken);
 			LyricsCacheEntry? manualCache = cacheRead?.Entry;
-			if (manualCache != null && manualCache.MatcherVersion < CurrentMatcherVersion)
+			if (!localEnabled && manualCache?.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase) == true)
+				manualCache = null; // An OFF toggle must not delete a cached local import.
+			if (manualCache != null && !manualCache.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase)
+				&& manualCache.MatcherVersion < CurrentMatcherVersion)
 			{
 				await _logger.WriteAsync($"cache rejected reason=matcher-upgrade oldVersion={manualCache.MatcherVersion} cacheKey={track.CacheKey}");
 				if (cacheRead!.IsCurrentBuild)
@@ -217,7 +250,8 @@ public sealed class LyricsService : IDisposable
 			}
 			if (manualCache != null)
 			{
-				if (manualCache.CacheKind == "Negative")
+				if (manualCache.CacheKind == "Negative"
+					&& string.Equals(manualCache.ArtistEnrichmentCredit, track.EnrichedArtistCredit, StringComparison.Ordinal))
 				{
 					await _logger.WriteAsync($"negative-cache accepted cacheKey={track.CacheKey} expires={manualCache.ExpiresAtUtc:O}");
 					return new LyricsLookupResult
@@ -246,17 +280,20 @@ public sealed class LyricsService : IDisposable
 				}
 			}
 		}
+		await _logger.WriteAsync($"lookup stage=local-and-cache elapsedMs={stageTimer.ElapsedMilliseconds} hit=false");
 		networkSearchStarting?.Invoke();
+		stageTimer.Restart();
 		List<LrclibRecord> candidates = new List<LrclibRecord>();
 		LrclibRecord exact = null;
 		try
 		{
-			exact = await TryGetExactAsync(track, cancellationToken);
+			exact = await TryGetExactAsync(track, cancellationToken, forceRefresh);
 		}
 		catch (LyricsServiceException ex) when (ex.Kind is LyricsErrorKind.Network or LyricsErrorKind.Timeout or LyricsErrorKind.RateLimited or LyricsErrorKind.Json)
 		{
 			await _logger.WriteAsync($"exact lookup failed kind={ex.Kind} fallback=api/search cacheKey={track.CacheKey}");
 		}
+		await _logger.WriteAsync($"lookup stage=exact-get elapsedMs={stageTimer.ElapsedMilliseconds} candidates={(exact == null ? 0 : 1)}");
 		if (exact != null)
 		{
 			candidates.Add(exact);
@@ -264,27 +301,23 @@ public sealed class LyricsService : IDisposable
 			await LogCandidateAsync(track, "api/get", exactEvaluation);
 			if (exactEvaluation.AutoEligible && (exact.Instrumental || !string.IsNullOrWhiteSpace(exact.SyncedLyrics)))
 			{
+				await _logger.WriteAsync($"lookup safe-candidate stage=exact-get id={exact.Id} elapsedMs={stageTimer.ElapsedMilliseconds}");
 				return await CacheAndCreateResultAsync(track, exact, "Auto", cancellationToken);
 			}
 		}
-		IReadOnlyList<LyricsCandidate> ranked = await SearchCandidatesAsync(track, new LyricsSearchRequest(track.Title, track.Artist, track.Album, string.Empty), cancellationToken, candidates, stopWhenSafeSyncedFound: true, null);
+		IReadOnlyList<LyricsCandidate> ranked = await SearchCandidatesAsync(track, new LyricsSearchRequest(track.Title, track.Artist, track.Album, string.Empty), cancellationToken, candidates, stopWhenSafeSyncedFound: true, null, forceRefresh);
 		LyricsCandidate selected = LyricsMatcher.SelectSafeAutomaticCandidate(track, ranked.Select((LyricsCandidate candidate) => candidate.Record));
 		if (selected != null)
 		{
 			await _logger.WriteAsync($"automatic-selection accepted id={selected.Record.Id} score={selected.Score} cacheKey={track.CacheKey}");
 			return await CacheAndCreateResultAsync(track, selected.Record, "Auto", cancellationToken);
 		}
-		LyricsCandidate? bestMatch = LyricsMatcher.SelectBestEffortCandidate(ranked);
-		if (bestMatch != null)
-		{
-			await _logger.WriteAsync($"best-match-selection accepted id={bestMatch.Record.Id} score={bestMatch.Score} reasons={Safe(string.Join(';', bestMatch.RejectionReasons))} cacheKey={track.CacheKey}");
-			return await CacheAndCreateResultAsync(track, bestMatch.Record, "BestMatch", cancellationToken);
-		}
-		if (ranked.Count > 0) await _logger.WriteAsync("automatic-selection rejected reason=no-usable-lyrics candidates=" + string.Join(',', ranked.Select(candidate => candidate.Record.Id)) + " cacheKey=" + track.CacheKey);
+		if (ranked.Count > 0) await _logger.WriteAsync("automatic-selection rejected reason=no-safe-match candidates=" + string.Join(',', ranked.Select(candidate => candidate.Record.Id)) + " cacheKey=" + track.CacheKey);
 		await _cacheStore.WriteAsync(track, new LyricsCacheEntry
 		{
 			TrackKey = track.CacheKey,
 			CacheKind = "Negative",
+			ArtistEnrichmentCredit = track.EnrichedArtistCredit,
 			MatcherVersion = CurrentMatcherVersion,
 			SavedAtUtc = DateTimeOffset.UtcNow,
 			ExpiresAtUtc = DateTimeOffset.UtcNow.Add(NegativeCacheLifetime)
@@ -296,19 +329,20 @@ public sealed class LyricsService : IDisposable
 		};
 	}
 
-	public Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken)
+	public Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, bool bypassRequestCache = false)
 	{
-		return SearchCandidatesAsync(track, request, cancellationToken, null, stopWhenSafeSyncedFound: false, null);
+		return SearchCandidatesAsync(track, request, cancellationToken, null, stopWhenSafeSyncedFound: false, null, bypassRequestCache);
 	}
 
-	public Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, IProgress<LyricsSearchProgress>? progress)
+	public Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, IProgress<LyricsSearchProgress>? progress, bool bypassRequestCache = false)
 	{
-		return SearchCandidatesAsync(track, request, cancellationToken, null, stopWhenSafeSyncedFound: false, progress);
+		return SearchCandidatesAsync(track, request, cancellationToken, null, stopWhenSafeSyncedFound: false, progress, bypassRequestCache);
 	}
 
 	public async Task<LyricsLookupResult> ApplyManualSelectionAsync(TrackInfo track, int lrclibId, CancellationToken cancellationToken)
 	{
 		LrclibRecord record = await GetRecordByIdAsync(lrclibId, cancellationToken);
+		AssociateRequest(track, $"api/get/{lrclibId}");
 		if (record == null)
 		{
 			throw new LyricsServiceException(LyricsErrorKind.LrclibId, LocalizationService.TranslateCurrent("Could not load the selected LRCLIB ID."));
@@ -325,6 +359,7 @@ public sealed class LyricsService : IDisposable
 		{
 			throw new LyricsServiceException(LyricsErrorKind.ManualSelectionSave, LocalizationService.TranslateCurrent("Could not save the manual lyrics selection."), ex);
 		}
+		await SetLocalLrcEnabledAsync(track, false, cancellationToken);
 		await ClearTrackCacheAsync(track, cancellationToken);
 		await _logger.WriteAsync($"manual-selection saved identity={track.StableIdentityKey} id={lrclibId} cacheKey={track.CacheKey}");
 		return await CacheAndCreateResultAsync(track, record, "Manual", cancellationToken);
@@ -350,7 +385,10 @@ public sealed class LyricsService : IDisposable
 		try
 		{
 			_positiveMemoryCache.TryRemove(track.StableIdentityKey, out LyricsCacheEntry _);
+			foreach (var response in _requestCache)
+				if (response.Value.TrackKeys.ContainsKey(track.StableIdentityKey)) _requestCache.TryRemove(response.Key, out _);
 			await _cacheStore.DeleteAsync(track, cancellationToken);
+			foreach (LyricsCacheStore fallback in _fallbackCacheStores) await fallback.DeleteAsync(track, cancellationToken);
 			await _logger.WriteAsync("track-cache cleared cacheKey=" + track.CacheKey + " path=" + Path.GetFileName(_cacheStore.GetPath(track)));
 		}
 		catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
@@ -362,6 +400,31 @@ public sealed class LyricsService : IDisposable
 	public void ClearCache(TrackInfo track)
 	{
 		ClearTrackCacheAsync(track).GetAwaiter().GetResult();
+	}
+
+	public async Task<string?> GetAvailableLocalLrcPathAsync(TrackInfo track, CancellationToken cancellationToken = default)
+	{
+		var local = await TryReadLocalLrcAsync(track, cancellationToken);
+		if (local != null) return local.LocalLrcPath;
+		string saved = _localLrcPreferences.GetSavedLyricsPath(track);
+		return File.Exists(saved) ? saved : null;
+	}
+
+	public async Task<bool> IsLocalLrcEnabledAsync(TrackInfo track, CancellationToken cancellationToken = default) =>
+		await _localLrcPreferences.GetAsync(track, cancellationToken) ?? await _overrideStore.GetAsync(track, cancellationToken) == null;
+
+	public async Task SetLocalLrcEnabledAsync(TrackInfo track, bool enabled, CancellationToken cancellationToken = default)
+	{
+		// Older manual imports lived only in the lyric cache. Retain their text before
+		// LRCLIB can replace that cache entry while local lyrics are switched off.
+		if (!enabled)
+		{
+			LyricsCacheEntry? cached = (await ReadCacheAcrossBuildsAsync(track, cancellationToken))?.Entry;
+			if (cached?.Source.StartsWith("LOCAL LRC", StringComparison.OrdinalIgnoreCase) == true && !string.IsNullOrWhiteSpace(cached.SyncedLyrics))
+				await _localLrcPreferences.SaveLyricsAsync(track, cached.SyncedLyrics, cancellationToken);
+		}
+		await _localLrcPreferences.SetAsync(track, enabled, cancellationToken);
+		_positiveMemoryCache.TryRemove(track.StableIdentityKey, out _);
 	}
 
 	public async Task<string> ImportLocalLrcFileAsync(TrackInfo track, string sourcePath, CancellationToken cancellationToken = default(CancellationToken))
@@ -378,6 +441,7 @@ public sealed class LyricsService : IDisposable
 			await File.WriteAllTextAsync(destination, text, Encoding.UTF8, cancellationToken);
 		}
 		await ClearTrackCacheAsync(track, cancellationToken);
+		await SetLocalLrcEnabledAsync(track, true, cancellationToken);
 		await _logger.WriteAsync("local-lrc imported file=" + fileName + " cacheKey=" + track.CacheKey);
 		return destination;
 	}
@@ -399,16 +463,18 @@ public sealed class LyricsService : IDisposable
 			SavedAtUtc = DateTimeOffset.UtcNow
 		};
 		await _cacheStore.WriteAsync(track, entry, cancellationToken);
+		await _localLrcPreferences.SaveLyricsAsync(track, lrc, cancellationToken);
+		await SetLocalLrcEnabledAsync(track, true, cancellationToken);
 		return ToLyricsResult(entry);
 	}
 
-	public async Task<LrclibRecord?> GetRecordByIdAsync(int id, CancellationToken cancellationToken)
+	public async Task<LrclibRecord?> GetRecordByIdAsync(int id, CancellationToken cancellationToken, bool bypassRequestCache = false)
 	{
 		if (id <= 0)
 		{
 			return null;
 		}
-		return await GetJsonWithRetryAsync<LrclibRecord>($"api/get/{id}", 2, cancellationToken, throwOnNotFound: true);
+		return await GetJsonWithRetryAsync<LrclibRecord>($"api/get/{id}", 2, cancellationToken, throwOnNotFound: true, bypassRequestCache: bypassRequestCache);
 	}
 
 	public static Uri GetLrclibRecordUri(int id)
@@ -423,8 +489,10 @@ public sealed class LyricsService : IDisposable
 		_httpClient.Dispose();
 	}
 
-	private async Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, IEnumerable<LrclibRecord>? seed, bool stopWhenSafeSyncedFound, IProgress<LyricsSearchProgress>? progress)
+	private async Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, IEnumerable<LrclibRecord>? seed, bool stopWhenSafeSyncedFound, IProgress<LyricsSearchProgress>? progress, bool bypassRequestCache)
 	{
+		Stopwatch searchTimer = Stopwatch.StartNew();
+		long? firstSafeMs = null;
 		Dictionary<int, LrclibRecord> records = new Dictionary<int, LrclibRecord>();
 		if (seed != null)
 		{
@@ -445,10 +513,11 @@ public sealed class LyricsService : IDisposable
 			&& string.Equals(request.Title?.Trim(), track.Title.Trim(), StringComparison.Ordinal)
 			&& string.Equals(request.Artist?.Trim(), track.Artist.Trim(), StringComparison.Ordinal)
 			&& string.Equals(request.Album?.Trim(), track.Album.Trim(), StringComparison.Ordinal);
-		IReadOnlyList<SearchMetadataCandidate> providerAlternates = stopWhenSafeSyncedFound && requestUsesTrackIdentity
-			? track.SearchAlternates?.Where(candidate => !candidate.IsEmpty && !string.IsNullOrWhiteSpace(candidate.Artist)).Take(6).ToArray()
-				?? Array.Empty<SearchMetadataCandidate>()
-			: Array.Empty<SearchMetadataCandidate>();
+		IReadOnlyList<SearchMetadataCandidate> providerAlternates = metadataCandidates.Skip(1)
+			.Concat(requestUsesTrackIdentity ? track.SearchAlternates ?? Array.Empty<SearchMetadataCandidate>() : Array.Empty<SearchMetadataCandidate>())
+			.Where(candidate => !candidate.IsEmpty)
+			.OrderByDescending(candidate => candidate.CanEstablishIdentity)
+			.DistinctBy(candidate => (candidate.Title, candidate.Artist, candidate.Album)).Take(12).ToArray();
 		await _logger.WriteAsync($"metadata RAW title={Safe(rawMetadata.Title)} artist={Safe(rawMetadata.Artist)} album={Safe(rawMetadata.Album)}");
 		await _logger.WriteAsync($"metadata NORMALIZED title={Safe(normalizedMetadata?.Title ?? rawMetadata.Title)} artist={Safe(normalizedMetadata?.Artist ?? rawMetadata.Artist)} album={Safe(normalizedMetadata?.Album ?? rawMetadata.Album)}");
 		CancellationToken token;
@@ -501,6 +570,7 @@ public sealed class LyricsService : IDisposable
 			// A later metadata variant can time out after an earlier request already
 			// returned usable candidates. Preserve that partial success instead of
 			// replacing it with a generic communication error.
+			await _logger.WriteAsync($"search complete totalMs={searchTimer.ElapsedMilliseconds} queries={completedRequests} candidates={records.Count} firstSafeMs={firstSafeMs?.ToString() ?? "none"}");
 			return ranked;
 		}
 		bool HasSafeSyncedCandidate()
@@ -546,7 +616,8 @@ public sealed class LyricsService : IDisposable
 			};
 			for (int i = 0; i < providerAlternates.Count; i++)
 			{
-				identities.Add((providerAlternates[i], "provider-" + (i + 1).ToString(CultureInfo.InvariantCulture)));
+				if (providerAlternates[i].CanEstablishIdentity)
+					identities.Add((providerAlternates[i], "provider-" + (i + 1).ToString(CultureInfo.InvariantCulture)));
 			}
 
 			// Use the most selective request first, then compare the small set of
@@ -569,6 +640,12 @@ public sealed class LyricsService : IDisposable
 			foreach ((SearchMetadataCandidate metadata, string label) in normalizedIdentities)
 			{
 				await RunSearchAsync("fields:" + label + ":title+artist", Fields(metadata.Title, metadata.Artist, null));
+				if (ShouldStop()) return true;
+			}
+
+			foreach (SearchMetadataCandidate hint in providerAlternates.Where(candidate => !candidate.CanEstablishIdentity))
+			{
+				await RunSearchAsync("fields:search-hint:title+artist", Fields(hint.Title, hint.Artist, null));
 				if (ShouldStop()) return true;
 			}
 
@@ -604,9 +681,11 @@ public sealed class LyricsService : IDisposable
 				return 0;
 			}
 			ReportProgress(method);
+			Stopwatch queryTimer = Stopwatch.StartNew();
+			await _logger.WriteAsync($"search start stage={method} searchElapsedMs={searchTimer.ElapsedMilliseconds}");
 			try
 			{
-				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 3, token)) ?? Array.Empty<LrclibRecord>();
+				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 3, token, bypassRequestCache: bypassRequestCache, cacheOwner: track)) ?? Array.Empty<LrclibRecord>();
 				successfulRequests++;
 				consecutiveTransportFailures = 0;
 				foreach (LrclibRecord lrclibRecord in array)
@@ -614,6 +693,11 @@ public sealed class LyricsService : IDisposable
 					records[lrclibRecord.Id] = lrclibRecord;
 				}
 				await _logger.WriteAsync($"search method={method} url={new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri} results={array.Length} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
+				if (firstSafeMs == null && HasSafeSyncedCandidate())
+				{
+					firstSafeMs = searchTimer.ElapsedMilliseconds;
+					await _logger.WriteAsync($"search safe-candidate stage={method} elapsedMs={firstSafeMs}");
+				}
 				return array.Length;
 			}
 			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -635,6 +719,7 @@ public sealed class LyricsService : IDisposable
 			}
 			finally
 			{
+				await _logger.WriteAsync($"search response stage={method} elapsedMs={queryTimer.ElapsedMilliseconds} candidates={records.Count}");
 				completedRequests++;
 				ReportProgress(method);
 			}
@@ -653,7 +738,7 @@ public sealed class LyricsService : IDisposable
 		}
 	}
 
-	private async Task<LrclibRecord?> TryGetExactAsync(TrackInfo track, CancellationToken cancellationToken)
+	private async Task<LrclibRecord?> TryGetExactAsync(TrackInfo track, CancellationToken cancellationToken, bool bypassRequestCache)
 	{
 		if (string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist) || track.Duration <= TimeSpan.Zero)
 		{
@@ -661,26 +746,41 @@ public sealed class LyricsService : IDisposable
 		}
 		Dictionary<string, string> dictionary = Fields(track.Title, track.Artist, track.Album);
 		dictionary["duration"] = Math.Round(track.Duration.TotalSeconds).ToString(CultureInfo.InvariantCulture);
-		return await GetJsonWithRetryAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 2, cancellationToken);
+		return await GetJsonWithRetryAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 2, cancellationToken, bypassRequestCache: bypassRequestCache, cacheOwner: track);
 	}
 
-	private async Task<T?> GetJsonWithRetryAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound = false)
+	private async Task<T?> GetJsonWithRetryAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound = false, bool bypassRequestCache = false, TrackInfo? cacheOwner = null)
 	{
-		if (TryReadRequestCache<T>(relativeUrl, out T value))
+		if (!bypassRequestCache && TryReadRequestCache<T>(relativeUrl, out T value))
 		{
+			await _logger.WriteAsync("request-cache hit");
+			AssociateRequest(cacheOwner, relativeUrl);
 			return value;
 		}
+		if (bypassRequestCache) await _logger.WriteAsync("request-cache bypass reason=explicit-refresh url=" + relativeUrl);
 		SemaphoreSlim gate = _requestGates.GetOrAdd(relativeUrl, _ => new SemaphoreSlim(1, 1));
 		await gate.WaitAsync(cancellationToken);
 		try
 		{
-			if (TryReadRequestCache<T>(relativeUrl, out value)) return value;
-			return await GetJsonWithRetryCoreAsync<T>(relativeUrl, maxAttempts, cancellationToken, throwOnNotFound);
+			if (!bypassRequestCache && TryReadRequestCache<T>(relativeUrl, out T cached))
+			{
+				AssociateRequest(cacheOwner, relativeUrl);
+				return cached;
+			}
+			T? result = await GetJsonWithRetryCoreAsync<T>(relativeUrl, maxAttempts, cancellationToken, throwOnNotFound);
+			AssociateRequest(cacheOwner, relativeUrl);
+			return result;
 		}
 		finally
 		{
 			gate.Release();
 		}
+	}
+
+	private void AssociateRequest(TrackInfo? track, string relativeUrl)
+	{
+		if (track != null && _requestCache.TryGetValue(relativeUrl, out CachedJsonResponse? response))
+			response.TrackKeys[track.StableIdentityKey] = 0;
 	}
 
 	private async Task<T?> GetJsonWithRetryCoreAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound)
@@ -694,6 +794,7 @@ public sealed class LyricsService : IDisposable
 			using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 			requestCancellation.CancelAfter((attempt == 0) ? TimeSpan.FromSeconds(30L) : TimeSpan.FromSeconds(45L));
 			Stopwatch requestTimer = Stopwatch.StartNew();
+			await _logger.WriteAsync($"http start method=GET url={requestUrl} attempt={attempt + 1}");
 			int? statusCode = null;
 			string contentType = "unavailable";
 			string responsePrefix = string.Empty;
@@ -730,7 +831,12 @@ public sealed class LyricsService : IDisposable
 				}
 				response.EnsureSuccessStatusCode();
 				T? result = JsonSerializer.Deserialize<T>(responseBody, _jsonOptions);
-				_requestCache[relativeUrl] = new CachedJsonResponse(responseBody, DateTimeOffset.UtcNow.Add(RequestCacheLifetime));
+				CachedJsonResponse refreshed = new(responseBody, DateTimeOffset.UtcNow.Add(RequestCacheLifetime));
+				_requestCache.AddOrUpdate(relativeUrl, refreshed, (_, previous) =>
+				{
+					foreach (string owner in previous.TrackKeys.Keys) refreshed.TrackKeys[owner] = 0;
+					return refreshed;
+				});
 				TrimRequestCache();
 				return result;
 			}
@@ -852,12 +958,7 @@ public sealed class LyricsService : IDisposable
 		{
 			return true;
 		}
-		if (string.Equals(entry.SelectionMode, "BestMatch", StringComparison.OrdinalIgnoreCase))
-		{
-			return entry.IsInstrumental
-				|| !string.IsNullOrWhiteSpace(entry.SyncedLyrics)
-				|| !string.IsNullOrWhiteSpace(entry.PlainLyrics);
-		}
+		if (entry.MatcherVersion < CurrentMatcherVersion) return false;
 		if (!entry.LrclibId.HasValue || string.IsNullOrWhiteSpace(entry.LrclibTrackName) || string.IsNullOrWhiteSpace(entry.LrclibArtistName))
 		{
 			return false;

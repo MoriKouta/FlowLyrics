@@ -12,13 +12,15 @@ public sealed class AppLogger
 {
 	private readonly string _path;
 
-	private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Locks = new(StringComparer.OrdinalIgnoreCase);
+	private readonly SemaphoreSlim _lock;
 
 	public AppLogger(string appDataDirectory)
 	{
 		string text = Path.Combine(appDataDirectory, "logs");
 		Directory.CreateDirectory(text);
 		_path = Path.Combine(text, "flowlyrics.log");
+		_lock = Locks.GetOrAdd(Path.GetFullPath(_path), _ => new SemaphoreSlim(1, 1));
 	}
 
 	public async Task WriteAsync(string message)

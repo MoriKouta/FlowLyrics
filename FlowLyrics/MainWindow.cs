@@ -27,11 +27,11 @@ namespace FlowLyrics;
 
 public class MainWindow : Window, IComponentConnector
 {
-	private readonly SettingsService _settingsService = new SettingsService();
+	private readonly SettingsService _settingsService;
 
-	private readonly MediaSessionService _mediaSessionService = new MediaSessionService();
+	private readonly MediaSessionService _mediaSessionService;
 
-	private readonly SystemVolumeService _systemVolumeService = new SystemVolumeService();
+	private readonly SystemVolumeService _systemVolumeService;
 
 	private readonly LyricsService _lyricsService;
 
@@ -72,6 +72,8 @@ public class MainWindow : Window, IComponentConnector
 	private HwndSource? _windowSource;
 
 	private string? _activeTrackKey;
+
+	private string? _activeEnrichedArtistCredit;
 
 	private string? _lyricsRetryTrackKey;
 
@@ -267,6 +269,8 @@ public class MainWindow : Window, IComponentConnector
 
 	internal TextBlock TrackTitleText;
 
+	private readonly TextBlock _trackArtistText;
+
 	internal Grid LyricsPanel;
 
 	internal ScrollViewer LyricsScrollViewer;
@@ -325,9 +329,16 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _contentLoaded;
 
-	public MainWindow()
+	public MainWindow() : this(new SettingsService(), new MediaSessionService()) { }
+
+	public MainWindow(SettingsService settingsService, MediaSessionService mediaSessionService)
 	{
+		_settingsService = settingsService;
+		AppLogger audioLogger = new(settingsService.AppDataDirectory);
+		_systemVolumeService = new(message => { _ = audioLogger.WriteAsync(message); });
+		_mediaSessionService = mediaSessionService;
 		InitializeComponent();
+		_trackArtistText = CurrentTrackHeader.Attach(TrackInfoPanel, TrackTitleText);
 		ApplyCompactUtilityControlSizing();
 		VolumePopup.PlacementTarget = VolumeButton;
 		VolumePopup.CustomPopupPlacementCallback = PlaceVolumePopup;
@@ -587,7 +598,7 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsCancellation?.Cancel();
 				}
 				TrackStatusText.Text = "MEDIA SESSION / WAITING";
-				TrackTitleText.Text = T("Play something in a media player");
+				UpdateCurrentTrackHeader(null, T("Play something in a media player"));
 				_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 				StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 				if (_settings.ShowStatusWhenIdle)
@@ -601,7 +612,10 @@ public class MainWindow : Window, IComponentConnector
 			}
 			else
 			{
+				bool trackDisplayChanged = _snapshot?.Track.CacheKey != playbackSnapshot.Track.CacheKey
+					|| _snapshot?.Track.DisplayArtist != playbackSnapshot.Track.DisplayArtist;
 				_snapshot = playbackSnapshot;
+				if (trackDisplayChanged) _settingsWindow?.RefreshCurrentTrack();
 				RefreshPersonalSyncResolution();
 				_pauseHidden = _settings.HideWhenPaused && !playbackSnapshot.IsPlaying;
 				UpdatePlaybackChrome();
@@ -610,6 +624,7 @@ public class MainWindow : Window, IComponentConnector
 				{
 					ClosePersonalSyncEditor(save: true);
 					_activeTrackKey = playbackSnapshot.Track.CacheKey;
+					_activeEnrichedArtistCredit = playbackSnapshot.Track.EnrichedArtistCredit;
 					_personalSyncActiveProfile = null;
 					_personalSyncContextKey = string.Empty;
 					UpdatePersonalSyncButton();
@@ -620,11 +635,18 @@ public class MainWindow : Window, IComponentConnector
 					_lyricsLookup = null;
 					ResetLyricsPresentationState();
 					TrackStatusText.Text = GetPlaybackSourceLabel(playbackSnapshot) + " / CHECKING CACHE";
-					TrackTitleText.Text = playbackSnapshot.Track.DisplayName;
+					UpdateCurrentTrackHeader(playbackSnapshot.Track);
 					_trackStatusColor = System.Windows.Media.Color.FromRgb(142, 151, 166);
 					StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 					SetStatus(T("Checking saved lyrics…"), playbackSnapshot.Track.DisplayName, animate: false);
 					LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
+				}
+				else if (!string.IsNullOrWhiteSpace(playbackSnapshot.Track.EnrichedArtistCredit)
+					&& !string.Equals(_activeEnrichedArtistCredit, playbackSnapshot.Track.EnrichedArtistCredit, StringComparison.Ordinal))
+				{
+					// A delayed UIA result adds search evidence without changing cache or Personal Sync identity.
+					_activeEnrichedArtistCredit = playbackSnapshot.Track.EnrichedArtistCredit;
+					_ = LoadLyricsAsync(playbackSnapshot.Track, forceRefresh: false);
 				}
 			}
 		}
@@ -1254,6 +1276,8 @@ public class MainWindow : Window, IComponentConnector
 		{
 			Owner = this
 		};
+		_personalSyncAdvancedWindow.SeekRequested += async (_, destination) =>
+			await RunPlaybackCommandAsync((service, token) => service.TrySeekAsync(destination, token));
 		_personalSyncAdvancedWindow.PreviewChanged += delegate(object? _, PersonalSyncProfile? profile)
 		{
 			if (profile == null)
@@ -1349,7 +1373,7 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		string layoutKey = string.Join("|", _activeTrackKey, _settings.FontFamily, _settings.FontSize, _settings.MinimumFontSize,
-			_settings.TextAlignment, _settings.LineSpacing, _settings.MaximumWrapLines, _settings.WrapLongLines, _settings.AutoFitText,
+			_settings.TextAlignment, _settings.LineSpacing, GlowViewportInset, _settings.MaximumWrapLines, _settings.WrapLongLines, _settings.AutoFitText,
 			LyricsScrollViewer.ViewportWidth);
 		if (string.Equals(_plainLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
 		{
@@ -1363,8 +1387,8 @@ public class MainWindow : Window, IComponentConnector
 		}
 
 		RebuildLineControls(lines.Count, lines, 0);
-		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(6.0, LyricsScrollViewer.ViewportHeight * 0.07), 0.0,
-			Math.Max(10.0, LyricsScrollViewer.ViewportHeight * 0.14));
+		LyricsStackPanel.Margin = new Thickness(0.0, Math.Max(GlowViewportInset, LyricsScrollViewer.ViewportHeight * 0.07), 0.0,
+			Math.Max(GlowViewportInset, LyricsScrollViewer.ViewportHeight * 0.14));
 		_activeLineIndex = -1;
 		_lastLineIndex = int.MinValue;
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -1465,11 +1489,11 @@ public class MainWindow : Window, IComponentConnector
 			return;
 		}
 		string layoutKey = string.Join("|", _activeTrackKey, lines.Count, _settings.FontFamily, _settings.FontSize,
-			_settings.MinimumFontSize, _settings.TextAlignment, _settings.LineSpacing, LyricsScrollViewer.ViewportWidth, LyricsScrollViewer.ViewportHeight);
+			_settings.MinimumFontSize, _settings.TextAlignment, _settings.LineSpacing, GlowViewportInset, LyricsScrollViewer.ViewportWidth, LyricsScrollViewer.ViewportHeight);
 		if (!string.Equals(_fullLyricsLayoutKey, layoutKey, StringComparison.Ordinal))
 		{
 			RebuildLineControls(lines.Count, lines, 0);
-			LyricsStackPanel.Margin = new Thickness(2.0);
+			LyricsStackPanel.Margin = new Thickness(2.0, GlowViewportInset, 2.0, GlowViewportInset);
 			for (int i = 0; i < _lineControls.Count; i++)
 			{
 				OutlinedText line = _lineControls[i];
@@ -1646,7 +1670,7 @@ public class MainWindow : Window, IComponentConnector
 		_visibleFirstLineIndex = Math.Max(0, firstLineIndex);
 		if (!_plainLyricsScrollMode)
 		{
-			LyricsStackPanel.Margin = new Thickness(0.0);
+			LyricsStackPanel.Margin = new Thickness(0.0, GlowViewportInset, 0.0, GlowViewportInset);
 		}
 		LyricsStackPanel.Children.Clear();
 		_lineControls.Clear();
@@ -1667,6 +1691,9 @@ public class MainWindow : Window, IComponentConnector
 		LyricsStackPanel.UpdateLayout();
 	}
 
+	// Fixed viewport bleed, independent of whether glow is enabled or its radius.
+	private const double GlowViewportInset = 4;
+
 	private void ApplyTextSettingsToControls()
 	{
 		System.Windows.Media.FontFamily fontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily);
@@ -1675,6 +1702,8 @@ public class MainWindow : Window, IComponentConnector
 		System.Windows.Media.Color glowColor = ParseColor(_settings.GlowColor, Colors.White);
 		if (_settings.ReverseColors) glowColor = ApplyReverseColor(glowColor);
 		double glowOpacity = Math.Clamp(_settings.GlowOpacity * glowColor.A / 255.0, 0.0, 1.0);
+		if (!_plainLyricsScrollMode && !_showAllLyrics)
+			LyricsStackPanel.Margin = new Thickness(0, GlowViewportInset, 0, GlowViewportInset);
 		string textAlignment = _settings.TextAlignment;
 		TextAlignment textAlignment2 = ((textAlignment == "Center") ? TextAlignment.Center : ((textAlignment == "Right") ? TextAlignment.Right : TextAlignment.Left));
 		for (int i = 0; i < _lineControls.Count; i++)
@@ -1688,16 +1717,10 @@ public class MainWindow : Window, IComponentConnector
 			outlinedText.StrokeThickness = _settings.OutlineThickness;
 			outlinedText.ShadowBrush = shadowBrush;
 			outlinedText.ShadowDepth = _settings.ShadowDepth;
-			outlinedText.Effect = _settings.GlowStrength > 0.05 && glowOpacity > 0.001
-				? new System.Windows.Media.Effects.DropShadowEffect
-				{
-					Color = System.Windows.Media.Color.FromRgb(glowColor.R, glowColor.G, glowColor.B),
-					BlurRadius = _settings.GlowStrength,
-					ShadowDepth = 0.0,
-					Opacity = glowOpacity,
-					RenderingBias = System.Windows.Media.Effects.RenderingBias.Quality
-				}
-				: null;
+			outlinedText.Effect = null;
+			outlinedText.GlowColor = System.Windows.Media.Color.FromRgb(glowColor.R, glowColor.G, glowColor.B);
+			outlinedText.GlowRadius = _settings.GlowStrength;
+			outlinedText.GlowOpacity = glowOpacity;
 			outlinedText.TextAlignment = textAlignment2;
 			outlinedText.AutoFit = _settings.AutoFitText;
 			outlinedText.Wrap = _settings.WrapLongLines;
@@ -1871,7 +1894,7 @@ public class MainWindow : Window, IComponentConnector
 		if (_snapshot == null)
 		{
 			TrackStatusText.Text = "MEDIA SESSION / WAITING";
-			TrackTitleText.Text = T("Play something in a media player");
+			UpdateCurrentTrackHeader(null, T("Play something in a media player"));
 			if (_settings.ShowStatusWhenIdle)
 			{
 				SetStatus(T("Play something in a media player"), T("Following the selected Windows Media Session"), animate: false);
@@ -2053,7 +2076,7 @@ public class MainWindow : Window, IComponentConnector
 			SettingsButton.IsEnabled = true;
 			PlaybackSeekSlider.IsEnabled = snapshot.CanSeek && snapshot.Track.Duration > TimeSpan.Zero;
 			PlaybackMenuItem.IsEnabled = true;
-			TrackTitleText.Text = snapshot.Track.DisplayName;
+			UpdateCurrentTrackHeader(snapshot.Track);
 			UpdateLockButtonVisual();
 			UpdatePlaybackProgress();
 		}
@@ -2489,10 +2512,13 @@ public class MainWindow : Window, IComponentConnector
 	private void SetTrackStatus(string status, System.Windows.Media.Color color)
 	{
 		TrackStatusText.Text = GetPlaybackSourceLabel(_snapshot) + " / " + status;
-		TrackTitleText.Text = _snapshot?.Track.DisplayName ?? "FlowLyrics";
+		UpdateCurrentTrackHeader(_snapshot?.Track);
 		_trackStatusColor = color;
 		StatusDot.Fill = new SolidColorBrush(_trackStatusColor);
 	}
+
+	private void UpdateCurrentTrackHeader(TrackInfo? track, string idleText = "FlowLyrics") =>
+		CurrentTrackHeader.Update(TrackTitleText, _trackArtistText, track, idleText);
 
 	private static string GetPlaybackSourceLabel(PlaybackSnapshot? snapshot)
 	{
@@ -2819,6 +2845,7 @@ public class MainWindow : Window, IComponentConnector
 		};
 		_settingsPreviewHandler = PreviewSettings;
 		settingsWindow.PreviewChanged += _settingsPreviewHandler;
+		settingsWindow.PersonalSyncRequested += (_, _) => OpenAdvancedPersonalSync_Click(settingsWindow, new RoutedEventArgs());
 		settingsWindow.Closed += SettingsWindow_Closed;
 		_settingsWindow = settingsWindow;
 		settingsWindow.Show();

@@ -9,6 +9,16 @@ namespace FlowLyrics.Services;
 
 public sealed class SystemVolumeService
 {
+	private readonly Action<string>? _audioAudit;
+	public SystemVolumeService(Action<string>? audioAudit = null) => _audioAudit = audioAudit;
+
+	internal static int WriteAudio(Func<int> write, Action<string>? audit, string source, string action, string value, string reason)
+	{
+		// Record only at the actual COM-write boundary. Logging must never affect audio.
+		try { audit?.Invoke($"AUDIO WRITE at={DateTimeOffset.UtcNow:O} source={FlowLyrics.Core.MediaSourceClassifier.GetDisplayName(source)} action={action} value={value} reason={reason}"); } catch { }
+		return write();
+	}
+
 	private enum EDataFlow
 	{
 		Render,
@@ -256,11 +266,11 @@ public sealed class SystemVolumeService
 		return VisitPreferredSourceSessions(sourceAppUserModelId, delegate(ISimpleAudioVolume session)
 		{
 			Guid context = Guid.Empty;
-			if (Failed(session.SetMasterVolume(level, ref context)))
+			if (Failed(WriteAudio(() => session.SetMasterVolume(level, ref context), _audioAudit, sourceAppUserModelId ?? "", "SetMasterVolume", level.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "UserVolumeSlider")))
 			{
 				return false;
 			}
-			return level <= 0f || Succeeded(session.SetMute(muted: false, ref context));
+			return level <= 0f || Succeeded(WriteAudio(() => session.SetMute(muted: false, ref context), _audioAudit, sourceAppUserModelId ?? "", "SetMute", "false", "UserVolumeSlider"));
 		});
 	}
 
@@ -274,7 +284,7 @@ public sealed class SystemVolumeService
 		return VisitPreferredSourceSessions(sourceAppUserModelId, delegate(ISimpleAudioVolume session)
 		{
 			Guid context = Guid.Empty;
-			return Succeeded(session.SetMute(newMuted, ref context));
+			return Succeeded(WriteAudio(() => session.SetMute(newMuted, ref context), _audioAudit, sourceAppUserModelId ?? "", "SetMute", newMuted ? "true" : "false", "UserVolumeButton"));
 		});
 	}
 

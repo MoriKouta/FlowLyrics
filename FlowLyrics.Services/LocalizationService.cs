@@ -134,6 +134,7 @@ public static class LocalizationService
 		{
 			return value2;
 		}
+		if (MetadataUiTranslations.TryGet(text, key, out value2)) return value2;
 		if (!RuntimeTranslations.TryGet(text, key, out value2))
 		{
 			return key;

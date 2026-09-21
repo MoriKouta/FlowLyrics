@@ -15,13 +15,9 @@ public static class LyricsMatcher
 
 	private static readonly Regex BracketAliasPattern = new Regex("[\\(\\[【「（［]([^\\)\\]】」）］]+)[\\)\\]】」）］]", RegexOptions.Compiled);
 
-	private static readonly Regex ArtistSeparatorPattern = new Regex("\\s*(?:,|，|、|&|＆|/|／|;|；|×|=|\\bx\\b|\\bfeat(?:uring)?\\.?\\b|\\bft\\.?\\b|\\bstarring\\b)\\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
 	private static readonly Regex ComparisonPunctuationPattern = new Regex("[\\-‐‑‒–—―ーｰ・･,，、/／&＆×=+＋:：;；_]+", RegexOptions.Compiled);
 
 	private static readonly Regex RemainingPunctuationPattern = new Regex("[^\\p{L}\\p{N}]+", RegexOptions.Compiled);
-
-	private static readonly Regex EditionPattern = new Regex("\\b(live|instrumental|remix|mix|cover|karaoke|tv\\s*size|acoustic|sped\\s*up|slowed|nightcore|remaster(?:ed)?|edit|version)\\b|ライブ|インスト(?:ゥルメンタル)?|リミックス|カバー|カラオケ|テレビサイズ|tvサイズ|アコースティック|リマスター", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
 	private static readonly Regex LrcTagPattern = new Regex("\\[[^\\]]*\\]", RegexOptions.Compiled);
 
@@ -40,13 +36,8 @@ public static class LyricsMatcher
 
 		foreach (SearchMetadataCandidate alternate in track.SearchAlternates)
 		{
-			if (alternate.IsEmpty || string.IsNullOrWhiteSpace(alternate.Artist)) continue;
-			TrackInfo alternateTrack = new(
-				alternate.Title,
-				alternate.Artist,
-				alternate.Album,
-				track.Duration,
-				track.LegacyProviderTrackId);
+			if (alternate.IsEmpty || !alternate.CanEstablishIdentity || string.IsNullOrWhiteSpace(alternate.Artist)) continue;
+			TrackInfo alternateTrack = track with { Title = alternate.Title, Artist = alternate.Artist, Album = alternate.Album, SearchAlternates = null };
 			LyricsCandidate evaluated = EvaluateSingle(alternateTrack, candidate);
 			if (IsBetterIdentityMatch(evaluated, best)) best = evaluated;
 		}
@@ -63,190 +54,85 @@ public static class LyricsMatcher
 
 	private static LyricsCandidate EvaluateSingle(TrackInfo track, LrclibRecord candidate)
 	{
-		List<string> list = new List<string>();
-		List<string> list2 = new List<string>();
-		List<string> list3 = new List<string>();
-		string expectedTitle = NormalizeForComparison(track.Title);
-		bool num = ExtractTitleAliases(candidate.TrackName).Any((string alias) => string.Equals(expectedTitle, NormalizeForComparison(alias), StringComparison.Ordinal));
-		bool flag = num && !string.Equals(expectedTitle, NormalizeForComparison(candidate.TrackName), StringComparison.Ordinal);
-		if (num)
+		List<string> matched = new();
+		List<string> mismatched = new();
+		List<string> reasons = new();
+		HashSet<string> titles = MetadataNormalizer.TitleAliases(track.Title)
+			.Select(NormalizeForComparison).ToHashSet(StringComparer.Ordinal);
+		bool titleMatch = titles.Count > 0 && MetadataNormalizer.TitleAliases(candidate.TrackName)
+			.Any(alias => titles.Contains(NormalizeForComparison(alias)));
+		bool exactTitle = NormalizeForComparison(track.Title).Length > 0
+			&& NormalizeForComparison(track.Title) == NormalizeForComparison(candidate.TrackName);
+		bool artistMatch = ArtistIdentity.Parse(track.Artist).StronglyMatches(ArtistIdentity.Parse(candidate.ArtistName));
+		bool wholeArtist = NormalizeForComparison(track.Artist).Length > 0
+			&& NormalizeForComparison(track.Artist) == NormalizeForComparison(candidate.ArtistName);
+		bool crossScriptHint = !artistMatch && IsCrossScriptArtistPair(track.Artist, candidate.ArtistName);
+		void Check(bool valid, string field, string reason)
 		{
-			list.Add(flag ? "Title alias" : "Title");
+			if (valid) matched.Add(field);
+			else { mismatched.Add(field); reasons.Add(reason); }
 		}
-		else
-		{
-			list2.Add("Title");
-			list3.Add("Title does not match");
-		}
-		string text = NormalizeForComparison(track.Artist);
-		string b = NormalizeForComparison(candidate.ArtistName);
-		bool flag2 = text.Length > 0 && string.Equals(text, b, StringComparison.Ordinal);
-		HashSet<string> hashSet = ArtistTokens(track.Artist);
-		HashSet<string> hashSet2 = ArtistTokens(candidate.ArtistName);
-		bool flag3 = hashSet.Count > 0 && hashSet.SetEquals(hashSet2);
-		bool flag4 = hashSet.Count > 0 && hashSet2.Count > hashSet.Count && hashSet.IsSubsetOf(hashSet2);
-		bool flag5 = !flag2 && !flag3 && !flag4 && IsCrossScriptArtistPair(track.Artist, candidate.ArtistName);
-		if (flag2 || flag3 || flag4 || flag5)
-		{
-			list.Add(flag2 ? "Artist" : (flag4 ? "Primary artist included" : (flag3 ? "Artist tokens" : "Cross-script artist")));
-		}
-		else
-		{
-			list2.Add("Artist");
-			list3.Add("Artist does not match");
-		}
-		string text2 = NormalizeForComparison(track.Album);
-		string text3 = NormalizeForComparison(candidate.AlbumName);
-		bool flag6 = text2.Length > 0 && string.Equals(text2, text3, StringComparison.Ordinal);
-		bool flag7 = text2.Length >= 3 && text3.Length >= 3 && (text2.Contains(text3, StringComparison.Ordinal) || text3.Contains(text2, StringComparison.Ordinal));
-		if (flag6 || flag7)
-		{
-			list.Add("Album");
-		}
-		else if (text2.Length > 0 && text3.Length > 0)
-		{
-			list2.Add("Album");
-		}
-		double? num2 = null;
-		if (track.Duration > TimeSpan.Zero && candidate.Duration > 0.0)
-		{
-			num2 = Math.Abs(track.Duration.TotalSeconds - candidate.Duration);
-			if (num2 <= 2.0)
-			{
-				list.Add("Duration");
-			}
-			else
-			{
-				list2.Add("Duration");
-				list3.Add("Duration exceeds 2 seconds");
-			}
-		}
-		else
-		{
-			list2.Add("Duration");
-			list3.Add("Duration is unavailable");
-		}
-		HashSet<string> hashSet3 = EditionTokens(track.Title + " " + track.Album);
-		HashSet<string> hashSet4 = EditionTokens((candidate.TrackName ?? string.Empty) + " " + (candidate.AlbumName ?? string.Empty));
-		bool flag8 = !hashSet3.SetEquals(hashSet4);
-		if (flag8)
-		{
-			list2.Add("Version");
-			list3.Add("Version does not match");
-		}
-		bool flag9 = hashSet3.Contains("instrumental");
-		bool flag10 = candidate.Instrumental != flag9;
-		if (flag10)
-		{
-			list2.Add("Instrumental");
-			list3.Add("Instrumental status does not match");
-		}
-		bool flag11 = candidate.Instrumental || !string.IsNullOrWhiteSpace(candidate.SyncedLyrics) || !string.IsNullOrWhiteSpace(candidate.PlainLyrics);
-		if (!flag11)
-		{
-			list3.Add("No usable lyrics");
-		}
-		bool flag12 = LooksLikeRomanizedLyricsForJapaneseTitle(track.Title, candidate.SyncedLyrics, candidate.PlainLyrics);
-		if (flag12)
-		{
-			list2.Add("Lyrics script");
-			list3.Add("Lyrics script does not match");
-		}
-		int num3 = 0;
-		if (num)
-		{
-			num3 += (flag ? 45 : 50);
-		}
-		if (flag2)
-		{
-			num3 += 35;
-		}
-		else if (flag3)
-		{
-			num3 += 25;
-		}
-		else if (flag4)
-		{
-			num3 += 25;
-		}
-		else if (flag5)
-		{
-			num3 += 15;
-		}
-		if (flag6)
-		{
-			num3 += 5;
-		}
-		else if (flag7)
-		{
-			num3 += 2;
-		}
-		if (!string.IsNullOrWhiteSpace(candidate.SyncedLyrics))
-		{
-			num3 += 20;
-		}
-		if (num2.HasValue)
-		{
-			if (num2.Value < 0.5)
-			{
-				num3 += 15;
-			}
-			else if (num2.Value <= 1.0)
-			{
-				num3 += 10;
-			}
-			else if (num2.Value <= 2.0)
-			{
-				num3 += 5;
-			}
-		}
-		if (flag8)
-		{
-			num3 -= 40;
-		}
-		if (flag10)
-		{
-			num3 -= 60;
-		}
-		if (flag12)
-		{
-			num3 -= 30;
-		}
-		bool flag13 = !string.IsNullOrWhiteSpace(candidate.SyncedLyrics);
-		bool flag14 = num && (flag2 || flag3 || flag4 || (flag5 && flag13)) && num2 <= 2.0 && !flag8 && !flag10 && !flag12 && flag11;
-		string qualityKey = (flag14 ? "High match" : "Needs review");
-		if (flag10 || candidate.Instrumental)
-		{
-			qualityKey = "Instrumental";
-		}
-		else if (num2 > 2.0)
-		{
-			qualityKey = "Duration mismatch";
-		}
-		else if (!flag2 && !flag3 && !flag4 && !flag5)
-		{
-			qualityKey = "Artist mismatch";
-		}
-		else if (flag12)
-		{
-			qualityKey = "Romanized lyrics";
-		}
-		else if (string.IsNullOrWhiteSpace(candidate.SyncedLyrics) && !string.IsNullOrWhiteSpace(candidate.PlainLyrics))
-		{
-			qualityKey = "Plain only";
-		}
+		Check(titleMatch, exactTitle ? "Title" : "Title alias", "Title does not match");
+		Check(artistMatch, "Artist", "Artist identity is not established");
+		string album = NormalizeForComparison(track.Album);
+		bool albumMatch = album.Length > 0 && album == NormalizeForComparison(candidate.AlbumName);
+		if (albumMatch) matched.Add("Album");
+		else if (album.Length > 0 && !string.IsNullOrWhiteSpace(candidate.AlbumName)) mismatched.Add("Album");
+
+		HashSet<string> editions = RecordingEdition.Signature(track.Title, track.Album);
+		// Provider interpretations may remove credits, but must never erase an edition.
+		editions.UnionWith(RecordingEdition.Signature(track.OriginalMediaTitle));
+		HashSet<string> candidateEditions = RecordingEdition.Signature(candidate.TrackName, candidate.AlbumName);
+		bool editionMatch = editions.SetEquals(candidateEditions);
+		bool instrumental = editions.Contains("instrumental") || editions.Contains("karaoke");
+		bool instrumentalMatch = candidate.Instrumental == instrumental;
+		Check(editionMatch, "Version", "Version does not match");
+		Check(instrumentalMatch, "Instrumental", "Instrumental status does not match");
+
+		double? difference = track.Duration > TimeSpan.Zero && double.IsFinite(candidate.Duration) && candidate.Duration > 0
+			? Math.Abs(track.Duration.TotalSeconds - candidate.Duration) : null;
+		bool standardDuration = difference.HasValue && difference.Value <= 2.0;
+		// Only a longer video, with independently established identities, may include
+		// intro/outro material. Unknown sources retain the audio rule.
+		bool videoDuration = !standardDuration && difference.HasValue
+			&& MediaSourceClassifier.IsBrowser(track.SourceAppUserModelId)
+			&& track.Duration.TotalSeconds > candidate.Duration
+			&& difference.Value <= Math.Min(90.0, candidate.Duration * 0.30)
+			&& titleMatch && artistMatch && editionMatch && instrumentalMatch;
+		Check(standardDuration || videoDuration, "Duration",
+			difference.HasValue ? "Duration exceeds source tolerance" : "Duration is unavailable");
+		if (videoDuration) matched.Add("Video timeline difference");
+
+		bool usable = candidate.Instrumental || !string.IsNullOrWhiteSpace(candidate.SyncedLyrics)
+			|| !string.IsNullOrWhiteSpace(candidate.PlainLyrics);
+		if (!usable) reasons.Add("No usable lyrics");
+		bool scriptMismatch = LooksLikeRomanizedLyricsForJapaneseTitle(
+			track.OriginalMediaTitle ?? track.Title, candidate.SyncedLyrics, candidate.PlainLyrics);
+		if (scriptMismatch) { mismatched.Add("Lyrics script"); reasons.Add("Lyrics script does not match"); }
+
+		int score = (titleMatch ? (exactTitle ? 50 : 45) : 0)
+			+ (artistMatch ? (wholeArtist ? 35 : 30) : 0)
+			+ (albumMatch ? 5 : 0)
+			+ (!string.IsNullOrWhiteSpace(candidate.SyncedLyrics) ? 20 : 0)
+			+ (standardDuration ? (difference <= 0.5 ? 15 : 5) : 0)
+			- (editionMatch ? 0 : 40) - (instrumentalMatch ? 0 : 60) - (scriptMismatch ? 30 : 0);
+		bool eligible = titleMatch && artistMatch && (standardDuration || videoDuration)
+			&& editionMatch && instrumentalMatch && usable && !scriptMismatch;
 		return new LyricsCandidate
 		{
 			Record = candidate,
-			Score = num3,
-			DurationDifferenceSeconds = num2,
-			AutoEligible = flag14,
-			ArtistMatchIsCrossScript = flag5,
-			LyricsScriptMismatch = flag12,
-			MatchedFields = list,
-			MismatchedFields = list2,
-			RejectionReasons = list3.Distinct<string>(StringComparer.Ordinal).ToArray(),
-			QualityKey = qualityKey
+			Score = score,
+			DurationDifferenceSeconds = difference,
+			AutoEligible = eligible,
+			ArtistMatchIsCrossScript = crossScriptHint,
+			LyricsScriptMismatch = scriptMismatch,
+			UsesVideoDurationTolerance = videoDuration,
+			MatchedFields = matched,
+			MismatchedFields = mismatched,
+			RejectionReasons = reasons,
+			QualityKey = eligible ? (candidate.Instrumental ? "Instrumental" : "High match")
+				: !titleMatch ? "Needs review" : !artistMatch ? "Artist mismatch"
+				: !(standardDuration || videoDuration) ? "Duration mismatch" : "Needs review"
 		};
 	}
 
@@ -295,9 +181,9 @@ public static class LyricsMatcher
 		return candidates
 			.GroupBy(candidate => candidate.Record.Id)
 			.Select(group => group.First())
-			.Where(candidate => candidate.Record.Instrumental
+			.Where(candidate => candidate.AutoEligible && (candidate.Record.Instrumental
 				|| !string.IsNullOrWhiteSpace(candidate.Record.SyncedLyrics)
-				|| !string.IsNullOrWhiteSpace(candidate.Record.PlainLyrics))
+				|| !string.IsNullOrWhiteSpace(candidate.Record.PlainLyrics)))
 			.OrderByDescending(candidate => candidate.Score)
 			.ThenByDescending(HasSyncedLyrics)
 			.ThenBy(candidate => candidate.LyricsScriptMismatch ? 1 : 0)
@@ -396,20 +282,7 @@ public static class LyricsMatcher
 		return true;
 	}
 
-	public static IReadOnlyList<string> ExtractTitleAliases(string? title)
-	{
-		if (string.IsNullOrWhiteSpace(title))
-		{
-			return Array.Empty<string>();
-		}
-		List<string> list = new List<string> { title.Trim() };
-		foreach (Match item in BracketAliasPattern.Matches(title))
-		{
-			AddUnique(list, item.Groups[1].Value);
-		}
-		AddUnique(list, BracketAliasPattern.Replace(title, " "));
-		return list;
-	}
+	public static IReadOnlyList<string> ExtractTitleAliases(string? title) => MetadataNormalizer.TitleAliases(title);
 
 	public static string NormalizeForComparison(string? value)
 	{
@@ -425,39 +298,7 @@ public static class LyricsMatcher
 		return RemainingPunctuationPattern.Replace(input, string.Empty);
 	}
 
-	public static IReadOnlyList<string> GetKnownArtistSearchAliases(string? artist)
-	{
-		string text = NormalizeForComparison(artist);
-		if (text.Contains("藤井風", StringComparison.Ordinal) || text.Contains("fujiikaze", StringComparison.Ordinal))
-		{
-			return new string[1] { "Fujii Kaze" };
-		}
-		return Array.Empty<string>();
-	}
-
-	private static HashSet<string> ArtistTokens(string? artist)
-	{
-		HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-		string[] array = ArtistSeparatorPattern.Split((artist ?? string.Empty).Normalize(NormalizationForm.FormKC).ToLowerInvariant());
-		for (int i = 0; i < array.Length; i++)
-		{
-			string text = CanonicalArtistToken(NormalizeForComparison(array[i]));
-			if (text.Length > 0)
-			{
-				hashSet.Add(text);
-			}
-		}
-		return hashSet;
-	}
-
-	private static string CanonicalArtistToken(string token)
-	{
-		if ((!(token == "藤井風") && !(token == "fujiikaze")) || 1 == 0)
-		{
-			return token;
-		}
-		return "fujiikaze";
-	}
+	public static IReadOnlyList<string> GetKnownArtistSearchAliases(string? artist) => ArtistIdentity.Parse(artist).SearchCredits;
 
 	private static bool IsCrossScriptArtistPair(string? expected, string? actual)
 	{
@@ -498,24 +339,4 @@ public static class LyricsMatcher
 		return true;
 	}
 
-	private static HashSet<string> EditionTokens(string value)
-	{
-		HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
-		foreach (Match item in EditionPattern.Matches(value.Normalize(NormalizationForm.FormKC).ToLowerInvariant()))
-		{
-			string value2 = item.Value;
-			value2 = ((!value2.Contains("instrument", StringComparison.OrdinalIgnoreCase) && !value2.Contains("インスト", StringComparison.Ordinal)) ? ((!value2.Contains("live", StringComparison.OrdinalIgnoreCase) && !value2.Contains("ライブ", StringComparison.Ordinal)) ? ((!value2.Contains("remix", StringComparison.OrdinalIgnoreCase) && !value2.Contains("リミックス", StringComparison.Ordinal)) ? ((!value2.Contains("cover", StringComparison.OrdinalIgnoreCase) && !value2.Contains("カバー", StringComparison.Ordinal)) ? ((!value2.Contains("karaoke", StringComparison.OrdinalIgnoreCase) && !value2.Contains("カラオケ", StringComparison.Ordinal)) ? ((!value2.Contains("tv", StringComparison.OrdinalIgnoreCase) && !value2.Contains("テレビ", StringComparison.Ordinal)) ? NormalizeForComparison(value2) : "tvsize") : "karaoke") : "cover") : "remix") : "live") : "instrumental");
-			hashSet.Add(value2);
-		}
-		return hashSet;
-	}
-
-	private static void AddUnique(ICollection<string> values, string? value)
-	{
-		string text = WhitespacePattern.Replace(value?.Trim() ?? string.Empty, " ");
-		if (text.Length > 0 && !values.Contains<string>(text, StringComparer.OrdinalIgnoreCase))
-		{
-			values.Add(text);
-		}
-	}
 }
