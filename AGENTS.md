@@ -79,6 +79,18 @@ clearly instead of claiming validation succeeded.
   the same class of problems.
 - Do not add production dependencies unless they are necessary for the requested task.
 
+## Code health
+
+- Use `$code-health` at `.agents/skills/code-health/SKILL.md` for architecture,
+  refactoring, maintainability, and technical-debt tasks.
+- Preserve behavior during refactors; establish regression coverage before risky changes.
+- Prefer clear responsibility boundaries between UI, domain logic, persistence,
+  and external integrations. Do not keep adding unrelated duties to large Windows.
+- Extract code when it improves readability, testability, or change isolation;
+  avoid unnecessary abstractions, frameworks, and one-method classes.
+- Avoid duplicated business rules and unexplained shared magic values. Share only
+  logic and constants that have the same meaning and should change together.
+
 ## Lyrics and metadata matching
 
 Raw provider metadata and interpreted metadata are different concepts.
