@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -19,20 +16,13 @@ namespace FlowLyrics.Services;
 
 public sealed class LyricsService : IDisposable
 {
-	private sealed record CachedJsonResponse(string Json, DateTimeOffset ExpiresAtUtc)
-	{
-		public ConcurrentDictionary<string, byte> TrackKeys { get; } = new(StringComparer.Ordinal);
-	}
-
 	private sealed record CacheReadResult(LyricsCacheEntry Entry, bool IsCurrentBuild, string SourceName);
 
 	private static readonly TimeSpan NegativeCacheLifetime = TimeSpan.FromMinutes(1L);
 
-	private static readonly TimeSpan RequestCacheLifetime = TimeSpan.FromMinutes(10L);
-
 	private const int CurrentMatcherVersion = 8;
 
-	private readonly HttpClient _httpClient;
+	private readonly LrclibClient _lrclib;
 
 	private readonly string _cacheDirectory;
 
@@ -48,10 +38,6 @@ public sealed class LyricsService : IDisposable
 	private readonly LyricsOverrideStore _overrideStore;
 
 	private readonly AppLogger _logger;
-
-	private readonly ConcurrentDictionary<string, CachedJsonResponse> _requestCache = new ConcurrentDictionary<string, CachedJsonResponse>(StringComparer.Ordinal);
-
-	private readonly ConcurrentDictionary<string, SemaphoreSlim> _requestGates = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.Ordinal);
 
 	private readonly object _hotGate = new();
 	private readonly Dictionary<string, LyricsLookupResult> _hotCache = new(StringComparer.Ordinal);
@@ -75,16 +61,6 @@ public sealed class LyricsService : IDisposable
 
 	public async Task<LyricsLookupResult?> TryGetCachedLyricsAsync(TrackInfo track, CancellationToken cancellationToken = default, LyricsPerformanceTrace? trace = null)
 		=> await LookupAsync(track, false, cancellationToken, null, cacheOnly: true, trace);
-
-	private readonly object _serverBackoffLock = new object();
-
-	private DateTimeOffset _serverBackoffUntilUtc;
-
-	private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
-	{
-		PropertyNameCaseInsensitive = true,
-		WriteIndented = true
-	};
 
 	public string LyricsDirectory => _localLrcDirectory;
 
@@ -113,20 +89,7 @@ public sealed class LyricsService : IDisposable
 		_localLrcWatcher.Changed += LocalLrcWatcher_Changed;
 		_localLrcWatcher.Deleted += LocalLrcWatcher_Changed;
 		_localLrcWatcher.Renamed += LocalLrcWatcher_Changed;
-		HttpMessageHandler handler = messageHandler ?? new HttpClientHandler
-		{
-			AutomaticDecompression = (DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli),
-			UseCookies = false,
-			MaxConnectionsPerServer = 2
-		};
-		_httpClient = new HttpClient(handler)
-		{
-			BaseAddress = new Uri("https://lrclib.net/"),
-			Timeout = Timeout.InfiniteTimeSpan
-		};
-		_httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("FlowLyrics", BuildInfo.Version));
-		_httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(+https://github.com/MoriKouta/FlowLyrics)"));
-		_httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+		_lrclib = new LrclibClient(_logger, messageHandler);
 	}
 
 	private static IReadOnlyList<LyricsCacheStore> CreateFallbackCacheStores(string appDataDirectory, string currentCacheDirectory)
@@ -285,7 +248,7 @@ public sealed class LyricsService : IDisposable
 			if (cacheOnly) return null;
 			networkSearchStarting?.Invoke();
 			LrclibRecord manualRecord = await GetRecordByIdAsync(manual.LrclibId, cancellationToken, bypassRequestCache: forceRefresh);
-			AssociateRequest(track, $"api/get/{manual.LrclibId}");
+			_lrclib.AssociateRequest(track.StableIdentityKey, $"api/get/{manual.LrclibId}");
 			if (manualRecord == null)
 			{
 				throw new LyricsServiceException(LyricsErrorKind.LrclibId, LocalizationService.TranslateCurrent("Could not load the selected LRCLIB ID."));
@@ -404,7 +367,7 @@ public sealed class LyricsService : IDisposable
 	public async Task<LyricsLookupResult> ApplyManualSelectionAsync(TrackInfo track, int lrclibId, CancellationToken cancellationToken)
 	{
 		LrclibRecord record = await GetRecordByIdAsync(lrclibId, cancellationToken);
-		AssociateRequest(track, $"api/get/{lrclibId}");
+		_lrclib.AssociateRequest(track.StableIdentityKey, $"api/get/{lrclibId}");
 		if (record == null)
 		{
 			throw new LyricsServiceException(LyricsErrorKind.LrclibId, LocalizationService.TranslateCurrent("Could not load the selected LRCLIB ID."));
@@ -447,8 +410,7 @@ public sealed class LyricsService : IDisposable
 		_ = 1;
 		try
 		{
-			foreach (var response in _requestCache)
-				if (response.Value.TrackKeys.ContainsKey(track.StableIdentityKey)) _requestCache.TryRemove(response.Key, out _);
+			_lrclib.InvalidateTrack(track.StableIdentityKey);
 			await _cacheStore.DeleteAsync(track, cancellationToken);
 			foreach (LyricsCacheStore fallback in _fallbackCacheStores) await fallback.DeleteAsync(track, cancellationToken);
 			await _logger.WriteAsync("track-cache cleared cacheKey=" + track.CacheKey + " path=" + Path.GetFileName(_cacheStore.GetPath(track)));
@@ -536,7 +498,7 @@ public sealed class LyricsService : IDisposable
 		{
 			return null;
 		}
-		return await GetJsonWithRetryAsync<LrclibRecord>($"api/get/{id}", 2, cancellationToken, throwOnNotFound: true, bypassRequestCache: bypassRequestCache);
+		return await _lrclib.GetJsonAsync<LrclibRecord>($"api/get/{id}", 2, cancellationToken, throwOnNotFound: true, bypassRequestCache: bypassRequestCache);
 	}
 
 	public static Uri GetLrclibRecordUri(int id)
@@ -548,7 +510,7 @@ public sealed class LyricsService : IDisposable
 	{
 		_localLrcWatcher.EnableRaisingEvents = false;
 		_localLrcWatcher.Dispose();
-		_httpClient.Dispose();
+		_lrclib.Dispose();
 	}
 
 	private async Task<IReadOnlyList<LyricsCandidate>> SearchCandidatesAsync(TrackInfo track, LyricsSearchRequest request, CancellationToken cancellationToken, IEnumerable<LrclibRecord>? seed, bool stopWhenSafeSyncedFound, IProgress<LyricsSearchProgress>? progress, bool bypassRequestCache)
@@ -747,14 +709,14 @@ public sealed class LyricsService : IDisposable
 			await _logger.WriteAsync($"search start stage={method} searchElapsedMs={searchTimer.ElapsedMilliseconds}");
 			try
 			{
-				LrclibRecord[] array = (await GetJsonWithRetryAsync<LrclibRecord[]>(relativeUrl, 3, token, bypassRequestCache: bypassRequestCache, cacheOwner: track)) ?? Array.Empty<LrclibRecord>();
+				LrclibRecord[] array = (await _lrclib.GetJsonAsync<LrclibRecord[]>(relativeUrl, 3, token, bypassRequestCache: bypassRequestCache, cacheOwner: track.StableIdentityKey)) ?? Array.Empty<LrclibRecord>();
 				successfulRequests++;
 				consecutiveTransportFailures = 0;
 				foreach (LrclibRecord lrclibRecord in array)
 				{
 					records[lrclibRecord.Id] = lrclibRecord;
 				}
-				await _logger.WriteAsync($"search method={method} url={new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri} results={array.Length} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
+				await _logger.WriteAsync($"search method={method} url={_lrclib.GetAbsoluteUrl(relativeUrl)} results={array.Length} identity={track.StableIdentityKey} cacheKey={track.CacheKey}");
 				if (firstSafeMs == null && HasSafeSyncedCandidate())
 				{
 					firstSafeMs = searchTimer.ElapsedMilliseconds;
@@ -808,130 +770,7 @@ public sealed class LyricsService : IDisposable
 		}
 		Dictionary<string, string> dictionary = Fields(track.Title, track.Artist, track.Album);
 		dictionary["duration"] = Math.Round(track.Duration.TotalSeconds).ToString(CultureInfo.InvariantCulture);
-		return await GetJsonWithRetryAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 2, cancellationToken, bypassRequestCache: bypassRequestCache, cacheOwner: track);
-	}
-
-	private async Task<T?> GetJsonWithRetryAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound = false, bool bypassRequestCache = false, TrackInfo? cacheOwner = null)
-	{
-		if (!bypassRequestCache && TryReadRequestCache<T>(relativeUrl, out T value))
-		{
-			await _logger.WriteAsync("request-cache hit");
-			AssociateRequest(cacheOwner, relativeUrl);
-			return value;
-		}
-		if (bypassRequestCache) await _logger.WriteAsync("request-cache bypass reason=explicit-refresh url=" + relativeUrl);
-		SemaphoreSlim gate = _requestGates.GetOrAdd(relativeUrl, _ => new SemaphoreSlim(1, 1));
-		await gate.WaitAsync(cancellationToken);
-		try
-		{
-			if (!bypassRequestCache && TryReadRequestCache<T>(relativeUrl, out T cached))
-			{
-				AssociateRequest(cacheOwner, relativeUrl);
-				return cached;
-			}
-			T? result = await GetJsonWithRetryCoreAsync<T>(relativeUrl, maxAttempts, cancellationToken, throwOnNotFound);
-			AssociateRequest(cacheOwner, relativeUrl);
-			return result;
-		}
-		finally
-		{
-			gate.Release();
-		}
-	}
-
-	private void AssociateRequest(TrackInfo? track, string relativeUrl)
-	{
-		if (track != null && _requestCache.TryGetValue(relativeUrl, out CachedJsonResponse? response))
-			response.TrackKeys[track.StableIdentityKey] = 0;
-	}
-
-	private async Task<T?> GetJsonWithRetryCoreAsync<T>(string relativeUrl, int maxAttempts, CancellationToken cancellationToken, bool throwOnNotFound)
-	{
-		Exception? lastError = null;
-		int attempts = Math.Clamp(maxAttempts, 1, 3);
-		string requestUrl = new Uri(_httpClient.BaseAddress!, relativeUrl).AbsoluteUri;
-		for (int attempt = 0; attempt < attempts; attempt++)
-		{
-			await WaitForServerBackoffAsync(cancellationToken);
-			using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-			requestCancellation.CancelAfter((attempt == 0) ? TimeSpan.FromSeconds(30L) : TimeSpan.FromSeconds(45L));
-			Stopwatch requestTimer = Stopwatch.StartNew();
-			await _logger.WriteAsync($"http start method=GET url={requestUrl} attempt={attempt + 1}");
-			int? statusCode = null;
-			string contentType = "unavailable";
-			string responsePrefix = string.Empty;
-			try
-			{
-				using HttpResponseMessage response = await _httpClient.GetAsync(relativeUrl, HttpCompletionOption.ResponseHeadersRead, requestCancellation.Token);
-				statusCode = (int)response.StatusCode;
-				contentType = response.Content.Headers.ContentType?.ToString() ?? "unavailable";
-				string responseBody = await response.Content.ReadAsStringAsync(requestCancellation.Token);
-				responsePrefix = BodyPrefix(responseBody);
-				string retryAfter = response.Headers.RetryAfter?.ToString() ?? "none";
-				await _logger.WriteAsync($"http method=GET url={requestUrl} status={statusCode} contentType={Safe(contentType)} retryAfter={Safe(retryAfter)} attempt={attempt + 1} elapsedMs={requestTimer.ElapsedMilliseconds} bodyPrefix={responsePrefix}");
-				if (response.StatusCode == HttpStatusCode.NotFound)
-				{
-					if (throwOnNotFound)
-					{
-						throw new LyricsServiceException(LyricsErrorKind.NotFound, LocalizationService.TranslateCurrent("LRCLIB record was not found (404)."));
-					}
-					return default(T);
-				}
-				if (IsTransientStatus(response.StatusCode))
-				{
-					TimeSpan retryDelay = GetRetryDelay(response, attempt);
-					SetServerBackoff(retryDelay);
-					lastError = response.StatusCode == HttpStatusCode.TooManyRequests
-						? new LyricsServiceException(LyricsErrorKind.RateLimited, LocalizationService.TranslateCurrent("LRCLIB communication failed."))
-						: new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."));
-					if (attempt + 1 < attempts)
-					{
-						await WaitForServerBackoffAsync(cancellationToken);
-						continue;
-					}
-					break;
-				}
-				response.EnsureSuccessStatusCode();
-				T? result = JsonSerializer.Deserialize<T>(responseBody, _jsonOptions);
-				CachedJsonResponse refreshed = new(responseBody, DateTimeOffset.UtcNow.Add(RequestCacheLifetime));
-				_requestCache.AddOrUpdate(relativeUrl, refreshed, (_, previous) =>
-				{
-					foreach (string owner in previous.TrackKeys.Keys) refreshed.TrackKeys[owner] = 0;
-					return refreshed;
-				});
-				TrimRequestCache();
-				return result;
-			}
-			catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-			{
-				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
-				lastError = new LyricsServiceException(LyricsErrorKind.Timeout, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
-				SetServerBackoff(GetClientRetryDelay(attempt));
-			}
-			catch (JsonException ex)
-			{
-				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
-				lastError = new LyricsServiceException(LyricsErrorKind.Json, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
-				SetServerBackoff(GetClientRetryDelay(attempt));
-			}
-			catch (HttpRequestException ex)
-			{
-				await LogHttpExceptionAsync(requestUrl, statusCode, contentType, responsePrefix, ex, attempt + 1, requestTimer.ElapsedMilliseconds);
-				lastError = new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."), ex);
-				SetServerBackoff(GetClientRetryDelay(attempt));
-			}
-			if (attempt + 1 < attempts)
-			{
-				await WaitForServerBackoffAsync(cancellationToken);
-			}
-		}
-		throw lastError ?? new LyricsServiceException(LyricsErrorKind.Network, LocalizationService.TranslateCurrent("LRCLIB communication failed."));
-	}
-
-	private async Task LogHttpExceptionAsync(string requestUrl, int? statusCode, string contentType, string responsePrefix, Exception exception, int attempt, long elapsedMs)
-	{
-		await _logger.WriteAsync(
-			$"http-exception method=GET url={requestUrl} status={(statusCode?.ToString(CultureInfo.InvariantCulture) ?? "unavailable")} contentType={Safe(contentType)} attempt={attempt} elapsedMs={elapsedMs} bodyPrefix={responsePrefix} exceptionType={exception.GetType().FullName} exceptionMessage={Safe(exception.Message)} stackTrace={Safe(exception.StackTrace)}");
+		return await _lrclib.GetJsonAsync<LrclibRecord>("api/get?" + BuildQuery(dictionary), 2, cancellationToken, bypassRequestCache: bypassRequestCache, cacheOwner: track.StableIdentityKey);
 	}
 
 	private async Task<LyricsLookupResult> CacheAndCreateResultAsync(TrackInfo track, LrclibRecord record, string selectionMode, CancellationToken cancellationToken)
@@ -1124,93 +963,6 @@ public sealed class LyricsService : IDisposable
 		return string.Join("&", values.Select<KeyValuePair<string, string>, string>((KeyValuePair<string, string> pair) => Uri.EscapeDataString(pair.Key) + "=" + Uri.EscapeDataString(pair.Value)));
 	}
 
-	private static bool IsTransientStatus(HttpStatusCode statusCode)
-	{
-		if (statusCode != HttpStatusCode.RequestTimeout && statusCode != HttpStatusCode.TooManyRequests)
-		{
-			return statusCode >= HttpStatusCode.InternalServerError;
-		}
-		return true;
-	}
-
-	private bool TryReadRequestCache<T>(string relativeUrl, out T? value)
-	{
-		value = default(T);
-		if (!_requestCache.TryGetValue(relativeUrl, out CachedJsonResponse value2))
-		{
-			return false;
-		}
-		CachedJsonResponse value3;
-		if (value2.ExpiresAtUtc <= DateTimeOffset.UtcNow)
-		{
-			_requestCache.TryRemove(relativeUrl, out value3);
-			return false;
-		}
-		try
-		{
-			value = JsonSerializer.Deserialize<T>(value2.Json, _jsonOptions);
-			return true;
-		}
-		catch (JsonException)
-		{
-			_requestCache.TryRemove(relativeUrl, out value3);
-			return false;
-		}
-	}
-
-	private async Task WaitForServerBackoffAsync(CancellationToken cancellationToken)
-	{
-		TimeSpan timeSpan;
-		lock (_serverBackoffLock)
-		{
-			timeSpan = _serverBackoffUntilUtc - DateTimeOffset.UtcNow;
-		}
-		if (timeSpan > TimeSpan.Zero)
-		{
-			await Task.Delay(timeSpan, cancellationToken);
-		}
-	}
-
-	private void SetServerBackoff(TimeSpan delay)
-	{
-		DateTimeOffset dateTimeOffset = DateTimeOffset.UtcNow + delay;
-		lock (_serverBackoffLock)
-		{
-			if (dateTimeOffset > _serverBackoffUntilUtc)
-			{
-				_serverBackoffUntilUtc = dateTimeOffset;
-			}
-		}
-	}
-
-	private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
-	{
-		TimeSpan fallback = GetClientRetryDelay(attempt);
-		return TimeSpan.FromMilliseconds(Math.Clamp((response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? fallback).TotalMilliseconds, 500.0, 30000.0));
-	}
-
-	private static TimeSpan GetClientRetryDelay(int attempt)
-	{
-		double exponential = 750.0 * Math.Pow(2.0, Math.Clamp(attempt, 0, 4));
-		return TimeSpan.FromMilliseconds(Math.Min(12000.0, exponential + Random.Shared.Next(100, 451)));
-	}
-
-	private void TrimRequestCache()
-	{
-		if (_requestCache.Count <= 128)
-		{
-			return;
-		}
-		DateTimeOffset utcNow = DateTimeOffset.UtcNow;
-		foreach (KeyValuePair<string, CachedJsonResponse> item in _requestCache)
-		{
-			if (item.Value.ExpiresAtUtc <= utcNow)
-			{
-				_requestCache.TryRemove(item.Key, out CachedJsonResponse _);
-			}
-		}
-	}
-
 	private static string RequestPath(string relativeUrl)
 	{
 		int num = relativeUrl.IndexOf('?');
@@ -1238,13 +990,6 @@ public sealed class LyricsService : IDisposable
 	private static string Safe(string? value)
 	{
 		return (value ?? string.Empty).Replace('\r', ' ').Replace('\n', ' ').Replace('|', '/');
-	}
-
-	private static string BodyPrefix(string? value)
-	{
-		string body = value ?? string.Empty;
-		if (body.Length > 500) body = body.Substring(0, 500);
-		return Safe(body);
 	}
 
 	private static IEnumerable<LrclibRecord> DiscoverAlternativeArtistQueries(TrackInfo track, IEnumerable<LrclibRecord> records)

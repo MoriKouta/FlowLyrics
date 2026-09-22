@@ -22,6 +22,7 @@
 | SettingsWindow.cs | 3445 | runtime BAML補完、翻訳、style生成、preview、player選択、profile/LRC操作。P1: 非同期のsource/profile更新と大量のUI構築が混在 |
 | PersonalSyncWindow.cs | 1358 | editor構築、選択/drag/hold/undo、track変更とsave queue。P1: 編集状態と保存lifecycleを跨ぐ変更が複雑 |
 | LyricsService.cs | 1268 | 検索順序、採用/cache検証、Local LRC/manual優先度に加えHTTP retry/backoff/request cache。P1: 独立して変更される通信責務が混在 |
+| CoreBehaviorTests.cs | 876 | 共通の既存動作テスト。production責務ではない。新しい通信/保存テストは個別のファイルへ追加 |
 | CandidateSearchWindow.cs | 689 | 検索進捗とUI。現在の課題はまず上記4classを優先 |
 | SystemVolumeService.cs | 589 | COM audioとdispose。長さにはinterop定義も含み、長いことだけでは分割しない |
 
@@ -32,7 +33,7 @@
 | ID / risk | 問題・根拠 | 利用者への影響 / 方針 |
 |---|---|---|
 | P0 / Critical | 初期監査時点では再現確認した即時の重大障害なし | 「潜在不具合なし」の保証ではない |
-| H1 / P1 High | LyricsServiceがHTTP/cache gate/backoffと歌詞採用を所有。GetJsonWithRetryAsync/Core、ClearTrackCacheAsyncに通信詳細が漏れる | 通信方式の変更が歌詞判定に触れやすい。今回のbehavior-preserving抽出対象 |
+| H1 / P1 High（抽出済み） | LyricsServiceがHTTP/cache gate/backoffと歌詞採用を所有。GetJsonWithRetryAsync/Core、ClearTrackCacheAsyncに通信詳細が漏れていた | LrclibClientへ通信責務と状態を移動。LyricsServiceは曲keyとURLを渡し、通信cacheの内部を直接操作しない。採用基準と検索順序は維持 |
 | H2 / P1 High | MainWindowは現在曲・歌詞・Sync・Settings・描画の進行管理を集中所有 | 同じfieldを多数のcallbackが更新。完全分割はせず、次回はSync lifecycleをテストで固定してから分離 |
 | H3 / P1 High（再現済みbug、修正） | PersonalSyncStore.Upsertだけが失敗時にmemoryを無効化、Delete/DeleteForContextは同じ対処なし。LyricsOverrideStoreのSet/Removeにもmemory先行変更あり | 書込先をロックした6ケース中5件で不一致を再現。各storeのSaveAsyncへ失敗時の無効化を集約し、次回操作でdiskの確定状態を再読込。失敗した選択や削除が別の保存へ混ざる問題を防止 |
 | H4 / P1 High | MainWindow.AdjustCurrentTrackOffset/ResetTrackOffset、SettingsWindow.RefreshPersonalSyncProfilesにはawait後のtrack/operation世代確認が一様ではない | 古い処理が次曲UIへ反映される可能性。未再現の構造リスク。UI移行のcharacterizationを伴う別作業へ |
@@ -55,7 +56,7 @@ provider固有処理はMetadataRepair/UIAに隔離され、曲名を使った新
 |---|---|---|
 | 選択session/Stable・Pending・NoSession | MediaSessionService（元観測はprovider） | MainWindow snapshotは描画用。古いtaskは世代/identityで拒否 |
 | lyrics結果 | LyricsServiceがlookup結果を生成 | MainWindowは採用した結果と描画cursorを保持 |
-| HTTP response cache | 現在LyricsService内。今回LrclibClientへ抽出予定 | lyrics identityの安全性を保証するcacheとは別 |
+| HTTP response cache / retry / backoff | LrclibClient（今回抽出） | LyricsServiceが所有/Dispose。lyrics identityの安全性を保証するcacheとは別 |
 | disk lyrics cache/manual/LRC設定 | 各専用store | request cacheやhot cacheで永続ユーザー選択を置き換えない |
 | Sync profile | PersonalSyncStoreの保存済みprofile | editorはcloneの編集中draft、Mainは現在適用するpreview。重複をなくすために同一objectへしない |
 | Repeat | providerからのAutoRepeatMode観測 | coordinatorは観測値を公開、buttonは描画だけ |
@@ -82,6 +83,36 @@ provider固有処理はMetadataRepair/UIAに隔離され、曲名を使った新
 ## 実施結果
 
 - H3: 修正前の失敗注入は6件中5件失敗。修正後は6件成功、全267件成功（失敗0、skip 0）。Release build成功。コンパイル時の既存警告6件は増加なし、直後の増分buildは警告0件。
+- H1: LrclibTransportTestsに11ケースを先に追加し、既存LrclibRefreshTestsの6ケースと合わせて抽出前後とも17件成功。公開API経由でheader、応答cacheの独立性、同時要求の共有、待機中/通信中cancel、429再試行、network/JSON/timeoutの分類、Disposeを保護。既存テストで404、明示refresh、track単位無効化を保護。
+- 最終の指定コマンド: 全278件成功（baseline 261、追加17）、失敗0、skip 0。Release build成功、error 0。ソース再コンパイル時の警告はbaselineと同じ6件、最後の増分build出力は警告0件。diff確認済み。
+- 30/45秒timeout値、retry delay、cache expiryと削除方針は差分で維持を確認。実時間で30秒待つ試験、実LRCLIBの障害/制限、実プレイヤー操作は行っていない。通信テストはfake HTTP handlerを使用。
+
+## 利用者向けの変更説明
+
+| 問題 | なぜ問題か | 今回 | 効果 |
+|---|---|---|---|
+| 通信と歌詞選択を同じclassが担当 | 通信の修正で歌詞選択を誤って変えやすい | LrclibClientが通信・再試行・応答cacheを担当 | 通信だけを変更・検証する場所が明確になる |
+| 保存失敗後も削除や選択変更がmemoryに残る | 保存できなかった操作が、後の別操作で保存される | 各storeの共通保存出口で未保存状態を無効化 | 保存失敗後も確定済みデータへ戻れる |
+| 開発が続くと判断基準が会話履歴へ散る | 次のAIが全面改修や不用意な削除をしやすい | 短いAGENTS原則とcode-health手順・監査記録を追加 | 同じ順序で監査・テスト・小さなcheckpointを繰り返せる |
+
+## Code Health Summary / 次の小さい単位
+
+- **Largest files:** MainWindow 3886行、SettingsWindow 3445行、PersonalSyncWindow 1358行は維持。LyricsServiceは1268→1013行、抽出したLrclibClientは294行。行数の減少自体を品質評価には使わない。
+- **New responsibilities:** 新しい製品機能は追加しない。code-health skillが継続監査手順を定義。
+- **Extracted responsibilities:** HTTP lifecycle、retry/backoff、response cache/track associationをLrclibClientへ。既存のHttpMessageHandler注入を維持し、追加interfaceやframeworkなし。
+- **Duplicated logic found:** cache record復元（M1）、旧Sync UI（M2）、一部style（M7）。意味の違うcache/storeは統合しない。保存失敗時の対処は各storeの保存出口へ集約。
+- **Dead code found:** 確実に削除できると証明したものはなし。M3の候補、BAML connector、旧settings migrationは残す。
+- **New technical debt:** 抽出に伴いログ値の改行等を整える小さなprivate helperが両classに存在する。業務判定のコピーは増やしていない。ログ仕様変更時の整合確認対象とし、汎用frameworkは追加しない。HTTP gate/cacheの長期増加（M5）は既存から継承。
+- **Analyzer warnings:** 既存CS4014×2、CS0649×4。新規警告なし。警告抑制や全体formatは行わない。
+
+| 次の対象 | 最小の分離候補 / 先に固定する動作 |
+|---|---|
+| MainWindow（最優先） | Personal Syncの現在曲・preview・適用結果の進行管理。PersonalSyncTransitionTests等を基礎に、保存中の曲変更と終了を再現してから抽出。描画全体やBAMLを一度に移さない |
+| SettingsWindow | profile/source一覧の非同期更新。RuntimeSettingsTests/PlayerVisibilityTestsに加え、閉じた画面・古い選択への遅延結果を拒否する試験を先に用意 |
+| PersonalSyncWindow | 編集draftとsave queueの寿命。PersonalSyncEditorV2Tests/TransitionTestsを基礎に、drag/hold/undo中の切替とcloseを固定。UI compositionだけを細切れにしない |
+| LyricsService | 次のcache機能変更時にcache→record変換の一元化。検索段階の249行methodは優先順・早期終了のcharacterization後に検討 |
+
+UIイベントの寿命、await後の曲世代チェック（H4/H5）、大きな入力でのUI停止（M4）は今回の完了範囲ではない。現時点の構造リスクであり、実機で再現・解消を確認した不具合としては報告しない。
 
 ## 継続運用
 
