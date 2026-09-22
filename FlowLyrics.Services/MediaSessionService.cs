@@ -71,6 +71,7 @@ public sealed class MediaSessionService : IDisposable
 	}
 
 	public event EventHandler? SessionsChanged;
+	public event EventHandler? PlaybackNavigationRequested;
 
 	public void ConfigureSelection(string? preferredSourceId, IEnumerable<string>? ignoredSourceIds)
 	{
@@ -132,7 +133,7 @@ public sealed class MediaSessionService : IDisposable
 		if (!selected.Metadata.HasTitle || selected.PlaybackState == MediaPlaybackState.Changing)
 		{
 			lock (_gate) ResetMetadataStabilityLocked();
-			return new(MediaMetadataState.PendingMetadata);
+			return new(MediaMetadataState.PendingMetadata, Session: selected);
 		}
 
 		TrackInfo track = new(
@@ -170,8 +171,31 @@ public sealed class MediaSessionService : IDisposable
 			capabilities.CanPause,
 			selected.SessionId,
 			selected.SourceAppUserModelId,
-			selected.DisplaySourceName);
-		return new(stable ? MediaMetadataState.Stable : MediaMetadataState.PendingMetadata, snapshot);
+			selected.DisplaySourceName,
+			capabilities.CanStop, capabilities.CanRepeat, selected.RepeatMode);
+		return new(stable ? MediaMetadataState.Stable : MediaMetadataState.PendingMetadata, snapshot, selected);
+	}
+
+	public async Task<bool> TrySetRepeatAsync(string expectedSessionId, MediaRepeatMode mode, CancellationToken cancellationToken = default)
+	{
+		var selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(session => session.IsSelectedByFlowLyrics);
+		cancellationToken.ThrowIfCancellationRequested();
+		return selected?.SessionId == expectedSessionId && selected.Capabilities.CanRepeat
+			&& await _provider.TrySetRepeatAsync(expectedSessionId, mode, cancellationToken);
+	}
+
+	public async Task<bool> TryPauseOrStopAsync(string expectedSessionId, CancellationToken cancellationToken = default, string? expectedTrack = null)
+	{
+		var selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(session => session.IsSelectedByFlowLyrics);
+		cancellationToken.ThrowIfCancellationRequested();
+		if (selected?.SessionId != expectedSessionId || (expectedTrack != null && StopAfterTrackReservation.TrackIdentity(selected) != expectedTrack)) return false;
+		if (selected.Capabilities.CanPause && await _provider.TryPauseAsync(expectedSessionId, cancellationToken)) return true;
+		cancellationToken.ThrowIfCancellationRequested();
+		selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(session => session.IsSelectedByFlowLyrics);
+		cancellationToken.ThrowIfCancellationRequested();
+		return selected?.SessionId == expectedSessionId && selected.Capabilities.CanStop
+			&& (expectedTrack == null || StopAfterTrackReservation.TrackIdentity(selected) == expectedTrack)
+			&& await _provider.TryStopAsync(expectedSessionId, cancellationToken);
 	}
 
 	public async Task<bool> TryTogglePlayPauseAsync(CancellationToken cancellationToken = default)
@@ -182,18 +206,21 @@ public sealed class MediaSessionService : IDisposable
 
 	public async Task<bool> TrySkipNextAsync(CancellationToken cancellationToken = default)
 	{
+		PlaybackNavigationRequested?.Invoke(this, EventArgs.Empty);
 		string sessionId = GetSelectedSessionId();
 		return !string.IsNullOrEmpty(sessionId) && await _provider.TrySkipNextAsync(sessionId, cancellationToken);
 	}
 
 	public async Task<bool> TrySkipPreviousAsync(CancellationToken cancellationToken = default)
 	{
+		PlaybackNavigationRequested?.Invoke(this, EventArgs.Empty);
 		string sessionId = GetSelectedSessionId();
 		return !string.IsNullOrEmpty(sessionId) && await _provider.TrySkipPreviousAsync(sessionId, cancellationToken);
 	}
 
 	public async Task<bool> TrySeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
 	{
+		PlaybackNavigationRequested?.Invoke(this, EventArgs.Empty);
 		string sessionId = GetSelectedSessionId();
 		if (string.IsNullOrEmpty(sessionId) || !await _provider.TrySeekAsync(sessionId, position, cancellationToken)) return false;
 		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;

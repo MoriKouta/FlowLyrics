@@ -117,6 +117,36 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		}
 	}
 
+	public Task<bool> TryPauseAsync(string sessionId, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPauseEnabled,
+			session => session.TryPauseAsync().AsTask(cancellationToken), "pause", cancellationToken);
+
+	public Task<bool> TryStopAsync(string sessionId, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsStopEnabled,
+			session => session.TryStopAsync().AsTask(cancellationToken), "stop", cancellationToken);
+
+	public Task<bool> TrySetRepeatAsync(string sessionId, MediaRepeatMode mode, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsRepeatEnabled,
+			session => session.TryChangeAutoRepeatModeAsync(mode switch
+			{
+				MediaRepeatMode.List => Windows.Media.MediaPlaybackAutoRepeatMode.List,
+				MediaRepeatMode.Track => Windows.Media.MediaPlaybackAutoRepeatMode.Track,
+				_ => Windows.Media.MediaPlaybackAutoRepeatMode.None
+			}).AsTask(cancellationToken), "repeat " + mode, cancellationToken);
+
+	private async Task<bool> TryPlaybackCommandAsync(string sessionId, Func<GlobalSystemMediaTransportControlsSession, bool> supported,
+		Func<GlobalSystemMediaTransportControlsSession, Task<bool>> command, string name, CancellationToken cancellationToken)
+	{
+		var session = await ResolveSessionAsync(sessionId, cancellationToken);
+		try
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			return session != null && supported(session) && await command(session);
+		}
+		catch (OperationCanceledException) { throw; }
+		catch (Exception ex) { LogCommandFailure(name, ex); return false; }
+	}
+
 	public async Task<bool> TrySkipPreviousAsync(string sessionId, CancellationToken cancellationToken = default)
 	{
 		GlobalSystemMediaTransportControlsSession? session = await ResolveSessionAsync(sessionId, cancellationToken);
@@ -327,13 +357,21 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				TimelineUpdatedAtUtc = timeline.LastUpdatedTime,
 				HasTimeline = duration > TimeSpan.Zero || position > TimeSpan.Zero,
 				PlaybackState = MapPlaybackState(playback.PlaybackStatus),
+				RepeatMode = playback.AutoRepeatMode switch
+				{
+					Windows.Media.MediaPlaybackAutoRepeatMode.None => MediaRepeatMode.None,
+					Windows.Media.MediaPlaybackAutoRepeatMode.List => MediaRepeatMode.List,
+					Windows.Media.MediaPlaybackAutoRepeatMode.Track => MediaRepeatMode.Track,
+					_ => null
+				},
 				Capabilities = new MediaPlaybackCapabilities(
 					controls.IsPlayEnabled,
 					controls.IsPauseEnabled,
 					controls.IsPlayPauseToggleEnabled,
 					controls.IsNextEnabled,
 					controls.IsPreviousEnabled,
-					controls.IsPlaybackPositionEnabled || duration > TimeSpan.Zero),
+					controls.IsPlaybackPositionEnabled || duration > TimeSpan.Zero,
+					controls.IsStopEnabled, controls.IsRepeatEnabled),
 				IsCurrentSession = ReferenceEquals(session, currentSession),
 				LastActivityUtc = lastActivity,
 				CapturedAtUtc = capturedAt

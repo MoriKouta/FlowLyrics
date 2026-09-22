@@ -25,7 +25,7 @@ using FlowLyrics.Services;
 
 namespace FlowLyrics;
 
-public class MainWindow : Window, IComponentConnector
+public partial class MainWindow : Window, IComponentConnector
 {
 	private readonly SettingsService _settingsService;
 
@@ -387,6 +387,7 @@ public class MainWindow : Window, IComponentConnector
 		_ = _personalSyncStore.ListAsync(); // Load profiles while the first metadata read is pending.
 		_personalSyncStore.ProfilesChanged += delegate { base.Dispatcher.BeginInvoke((Action)(() => RefreshPersonalSyncResolution(force: true))); };
 		InitializePersonalSyncUi();
+		InitializePlaybackCommands();
 		_mediaTimer = new DispatcherTimer(DispatcherPriority.Background)
 		{
 			Interval = TimeSpan.FromMilliseconds(550L)
@@ -400,6 +401,7 @@ public class MainWindow : Window, IComponentConnector
 		_mediaSessionService.SessionsChanged += MediaSession_Changed;
 		Closed += (_, _) =>
 		{
+			_playbackCommands.Dispose();
 			_mediaSessionService.SessionsChanged -= MediaSession_Changed;
 			_metadataRefreshTimer.Stop();
 			_speculativeCancellation?.Cancel();
@@ -675,6 +677,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			_lyricsPerformance?.Mark("METADATA_READ_START");
 			MediaSessionUpdate update = await _mediaSessionService.GetUpdateAsync();
+			_playbackCommands.Observe(update);
 			_lyricsPerformance?.Mark("METADATA_READ_COMPLETE");
 			if (update.State == FlowLyrics.Core.MediaMetadataState.PendingMetadata)
 			{
@@ -1458,6 +1461,7 @@ public class MainWindow : Window, IComponentConnector
 			RefreshPersonalSyncResolution(force: true);
 		};
 		_personalSyncAdvancedWindow.Show();
+		_personalSyncAdvancedWindow.AttachPlaybackCommands(_playbackCommands);
 	}
 
 	private PersonalSyncDiagnosticSnapshot? GetPersonalSyncDiagnostics()
@@ -2103,6 +2107,7 @@ public class MainWindow : Window, IComponentConnector
 		}
 		UpdateReverseColorsButtonVisual();
 		UpdateOverlayChromeColors();
+		UpdateRepeatButton();
 	}
 
 	private System.Windows.Media.Brush CreatePlayerSurfaceBrush()
@@ -2117,6 +2122,7 @@ public class MainWindow : Window, IComponentConnector
 		yield return PreviousButton;
 		yield return PlayPauseButton;
 		yield return NextButton;
+		if (_repeatButton != null) yield return _repeatButton;
 		if (_personalSyncButton != null)
 		{
 			yield return _personalSyncButton;
@@ -2189,6 +2195,7 @@ public class MainWindow : Window, IComponentConnector
 		ControlBar.Visibility = ((!(!lyricsOnly && _settings.ShowPlaybackControls && flag2)) ? Visibility.Collapsed : Visibility.Visible);
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
+		if (_repeatButton != null) _repeatButton.Visibility = flag4 ? Visibility.Visible : Visibility.Collapsed;
 		VolumeButton.Visibility = ((!flag4) ? Visibility.Collapsed : Visibility.Visible);
 		if (_personalSyncButton != null)
 		{

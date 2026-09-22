@@ -38,6 +38,7 @@ public sealed record MediaTrackMetadata(
 }
 
 public enum MediaMetadataState { NoSession, PendingMetadata, Stable }
+public enum MediaRepeatMode { None, List, Track }
 
 // Separate metadata changes from frequent position/playback notifications.
 public sealed class MediaMetadataChangedEventArgs(string sessionId) : EventArgs
@@ -51,7 +52,9 @@ public sealed record MediaPlaybackCapabilities(
 	bool CanTogglePlayPause,
 	bool CanNext,
 	bool CanPrevious,
-	bool CanSeek);
+	bool CanSeek,
+	bool CanStop = false,
+	bool CanRepeat = false);
 
 public sealed record MediaSessionInfo
 {
@@ -70,6 +73,7 @@ public sealed record MediaSessionInfo
 	public bool HasTimeline { get; init; }
 
 	public MediaPlaybackState PlaybackState { get; init; }
+	public MediaRepeatMode? RepeatMode { get; init; }
 
 	public MediaPlaybackCapabilities Capabilities { get; init; } = new(false, false, false, false, false, false);
 
@@ -99,4 +103,7 @@ public interface IMediaSessionProvider : IDisposable
 	Task<bool> TrySkipPreviousAsync(string sessionId, CancellationToken cancellationToken = default);
 
 	Task<bool> TrySeekAsync(string sessionId, TimeSpan position, CancellationToken cancellationToken = default);
+	Task<bool> TryPauseAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	Task<bool> TryStopAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	Task<bool> TrySetRepeatAsync(string sessionId, MediaRepeatMode mode, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }

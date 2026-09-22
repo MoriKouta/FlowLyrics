@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Add observed GSMTC Off/List/Track Repeat and a one-shot Stop After Track action in Personal Sync, with capability checks, repeat-off confirmation, conservative natural-end detection and pause/stop fallback.
+
 - Keep Personal Sync open across track/source changes, preserve confirmed edits, discard unfinished gestures, and populate the next track after lyric rendering. Add contextual global alignment and nudges to the inspector.
 
 - Restore fixed English visual headings and Flow Dots independently of localized body fonts; keep the overlay's user-selected lyric font untouched.

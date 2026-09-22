@@ -15,7 +15,10 @@ public sealed record PlaybackSnapshot(
 	bool CanPause = true,
 	string SessionId = "",
 	string SourceAppUserModelId = "",
-	string SourceDisplayName = "Media Session")
+	string SourceDisplayName = "Media Session",
+	bool CanStop = false,
+	bool CanRepeat = false,
+	FlowLyrics.Core.MediaRepeatMode? RepeatMode = null)
 {
 	public TimeSpan EstimatedPosition(DateTimeOffset nowUtc)
 	{

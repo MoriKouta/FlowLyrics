@@ -39,6 +39,8 @@ public sealed class PersonalSyncWindow : Window
 	private readonly Grid _lyricNudges;
 	private readonly Button _resetButton;
 	private readonly Button _removeButton;
+	private readonly Button _stopAfterTrackButton;
+	private PlaybackCommandCoordinator? _playbackCommands;
 	public bool IsTrackReady => !_waitingForTrack && !_closed;
 	public string ContextKey => ContextIdentity(_context);
 	private static string ContextIdentity(PersonalSyncContext context) => context.Track.StableTrackKey + "|" + context.Source.StableSourceKey + "|" + context.Lyrics.Key;
@@ -182,6 +184,19 @@ public sealed class PersonalSyncWindow : Window
 		_offsetNudges.MaxWidth = 420;
 		_offsetNudges.HorizontalAlignment = HorizontalAlignment.Left;
 		offset.Children.Add(_offsetNudges);
+		_stopAfterTrackButton = Button(T("Stop after track"));
+		_stopAfterTrackButton.Name = "StopAfterTrackButton";
+		_stopAfterTrackButton.Margin = new Thickness(16, 0, 0, 0);
+		_stopAfterTrackButton.IsEnabled = false;
+		_stopAfterTrackButton.Click += async (_, _) =>
+		{
+			if (_playbackCommands != null && !await _playbackCommands.ToggleStopAfterTrackAsync())
+			{
+				_workflowHint.Text = T("Could not control the selected media player. Start playback and try again.");
+				_workflowHint.Visibility = Visibility.Visible;
+			}
+		};
+		offset.Children.Add(_stopAfterTrackButton);
 		Grid.SetColumnSpan(offset, 2);
 		body.Children.Add(offset);
 
@@ -332,7 +347,28 @@ public sealed class PersonalSyncWindow : Window
 		_previewTimer.Tick += delegate { RefreshLiveUi(); };
 		Loaded += PersonalSyncWindow_Loaded;
 		Closing += PersonalSyncWindow_Closing;
-		Closed += delegate { _closed = true; _trackRevision++; _previewTimer.Stop(); };
+		Closed += delegate
+		{
+			_closed = true; _trackRevision++; _previewTimer.Stop();
+			if (_playbackCommands != null) _playbackCommands.Changed -= PlaybackCommandsChanged;
+		};
+	}
+
+	public void AttachPlaybackCommands(PlaybackCommandCoordinator commands)
+	{
+		if (_playbackCommands != null) _playbackCommands.Changed -= PlaybackCommandsChanged;
+		_playbackCommands = commands; commands.Changed += PlaybackCommandsChanged;
+		PlaybackCommandsChanged(this, EventArgs.Empty);
+	}
+
+	private void PlaybackCommandsChanged(object? sender, EventArgs e)
+	{
+		if (_playbackCommands == null) return;
+		_stopAfterTrackButton.IsEnabled = _playbackCommands.CanArm || _playbackCommands.IsArmed || _playbackCommands.IsArming;
+		_stopAfterTrackButton.Foreground = _playbackCommands.IsArmed ? Accent() : Foreground;
+		_stopAfterTrackButton.BorderBrush = _playbackCommands.IsArmed ? Accent() : Muted();
+		_stopAfterTrackButton.ToolTip = _playbackCommands.IsArming ? T("Turning repeat off…")
+			: _playbackCommands.IsArmed ? T("Stop after track armed") : T("Stop playback when this track ends");
 	}
 
 	// Suspend immediately, but defer disk work and repopulation so the lyric overlay
