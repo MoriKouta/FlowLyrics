@@ -2103,6 +2103,10 @@ public class MainWindow : Window, IComponentConnector
 	private void ApplyUiLanguage()
 	{
 		LocalizationService.SetCurrentLanguage(_settings.Language);
+		LocalizedUiFont.Technical(TrackStatusText);
+		if (_playbackPositionText != null) LocalizedUiFont.Technical(_playbackPositionText);
+		if (_playbackDurationText != null) LocalizedUiFont.Technical(_playbackDurationText);
+		if (_seekHoverText != null) LocalizedUiFont.Technical(_seekHoverText);
 		LocalizedUiFont.Apply(this, _settings.Language, _englishDotFont);
 		SettingsMenuItem.Header = T("Settings...");
 		LockMenuItem.Header = T(_isLocked ? "Unlock" : "Lock");

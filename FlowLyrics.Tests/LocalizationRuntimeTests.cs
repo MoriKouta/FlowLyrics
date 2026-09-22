@@ -87,6 +87,8 @@ public sealed class LocalizationRuntimeTests
 				{
 					Assert.Equal(expected.Source, sync.FontFamily.Source);
 					Assert.Equal(LocalizationService.Translate(language, "Re-sync from here"), Read<Button>(sync, "_resyncButton").Content);
+					AssertHeading(sync, "PERSONAL SYNC"); AssertHeading(sync, "TIMING EDITOR");
+					Assert.Contains(Logical<TextBlock>(sync), label => label.Text == LocalizationService.Translate(language, "Global offset"));
 					sync.Width = 760; Pump();
 					foreach (Button action in Visuals<Button>(sync).Where(button => button.Name == "AlignLyricButton")) Assert.InRange(action.ActualWidth, 1, 148);
 					Visuals<Button>(sync).Single(button => button.Name == "TimingDetailsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
@@ -102,6 +104,7 @@ public sealed class LocalizationRuntimeTests
 				SettingsWindow settings = new(new() { Language = language }, directory, lyrics, media, store, () => snapshot, () => track, () => lookup, () => null, () => Task.CompletedTask);
 				Show(settings, "settings", () =>
 				{
+					AssertHeading(settings, "PLAYER"); AssertHeading(settings, "CURRENT TRACK"); AssertHeading(settings, "PERSONAL SYNC");
 					Assert.Equal(track.Title, Read<TextBlock>(settings, "CurrentTrackTitleText").Text);
 					Assert.Equal(track.Artist, Read<TextBlock>(settings, "CurrentTrackArtistText").Text);
 					var missing = new List<string>();
@@ -116,7 +119,12 @@ public sealed class LocalizationRuntimeTests
 					var tabs = Read<TabControl>(settings, "SettingsTabs");
 					foreach (TabItem tab in tabs.Items) { tabs.SelectedItem = tab; Pump(); Capture(settings, "settings-" + tabs.SelectedIndex); }
 					// Reusing the same window must update runtime-created labels and fonts.
-					Invoke(settings, "ApplyLanguage", "ja-JP"); Pump();
+					foreach (string selectedLanguage in new[] { "ja-JP", "en-US", "ja-JP" })
+					{
+						Invoke(settings, "ApplyLanguage", selectedLanguage); Pump();
+						Assert.Contains("Flow Dots", ((FontFamily)settings.Resources["DotFont"]).Source);
+						AssertHeading(settings, "PLAYER"); AssertHeading(settings, "CURRENT TRACK");
+					}
 					Assert.Contains("Yu Gothic UI", Read<Button>(settings, "_openSyncButton").FontFamily.Source);
 					Invoke(settings, "ApplyLanguage", language); Pump();
 					Assert.Equal(track.Title, Read<TextBlock>(settings, "CurrentTrackTitleText").Text);
@@ -132,8 +140,8 @@ public sealed class LocalizationRuntimeTests
 						if (field.GetValue(main) is DispatcherTimer timer) timer.Stop();
 					main.WindowState = WindowState.Normal; main.Width = 856; main.Height = 616; main.Left = 80; main.Top = 80; main.Show(); Pump();
 					Assert.True(main.ActualWidth > 400 && main.ActualHeight > 300);
-					if (language == "en-US") Assert.Contains("Flow Dots", ((FontFamily)main.Resources["DotFont"]).Source);
-					else Assert.Equal(expected.Source, ((FontFamily)main.Resources["DotFont"]).Source);
+					Assert.Contains("Flow Dots", ((FontFamily)main.Resources["DotFont"]).Source);
+					Assert.Equal(expected.Source, ((FontFamily)main.Resources["UiFont"]).Source);
 					main.Background = Brushes.Black; Pump(); Capture(main, "main");
 				}
 				finally
@@ -158,4 +166,10 @@ public sealed class LocalizationRuntimeTests
 		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
 	}
 	private Window? lastWindow;
+	private static void AssertHeading(Window window, string english)
+	{
+		TextBlock heading = Assert.Single(Logical<TextBlock>(window), text => text.Text == english && Equals(text.Tag, "VisualHeading"));
+		Assert.Contains("Flow Dots", heading.FontFamily.Source);
+		Assert.Contains(heading.FontFamily.GetTypefaces(), face => face.TryGetGlyphTypeface(out GlyphTypeface glyph) && glyph.FontUri.ToString().Contains("flowdots", StringComparison.OrdinalIgnoreCase));
+	}
 }

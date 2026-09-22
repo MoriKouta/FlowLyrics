@@ -58,7 +58,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		Grid heading = new() { Margin = new Thickness(0, 0, 0, 13) };
 		heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 		heading.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
-		heading.Children.Add(new TextBlock { Text = T("Sync history"), Foreground = Accent(), TextWrapping = TextWrapping.Wrap, FontSize = 22, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center });
+		heading.Children.Add(LocalizedUiFont.Heading("SYNC HISTORY", 22, Accent()));
 		_searchBox = new TextBox
 		{
 			Margin = new Thickness(0), ToolTip = T("Search title, artist, service, or playback app")
@@ -76,7 +76,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		Grid listGrid = new() { Margin = new Thickness(12) };
 		listGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		listGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-		listGrid.Children.Add(SectionTitle(T("Synced tracks")));
+		listGrid.Children.Add(SectionTitle("SYNCED TRACKS"));
 		_list = new ListBox { Margin = new Thickness(0, 8, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 		_list.SelectionChanged += delegate { RefreshDetails(); };
 		Grid.SetRow(_list, 1);
@@ -99,7 +99,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		StackPanel detailsPanel = CardContent();
 		detailsCard.Child = detailsPanel;
 		right.Children.Add(detailsCard);
-		detailsPanel.Children.Add(SectionTitle(T("Sync details")));
+		detailsPanel.Children.Add(SectionTitle("SYNC DETAILS"));
 		_details = new TextBlock { Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap, Foreground = Foreground };
 		detailsPanel.Children.Add(_details);
 
@@ -107,10 +107,10 @@ public sealed class PersonalSyncManagerWindow : Window
 		StackPanel offsetPanel = CardContent();
 		offsetCard.Child = offsetPanel;
 		right.Children.Add(offsetCard);
-		offsetPanel.Children.Add(SectionTitle(T("Global offset")));
+		offsetPanel.Children.Add(new TextBlock { Text = T("Global offset"), FontSize = 14, FontWeight = FontWeights.SemiBold });
 		_offsetValue = new TextBlock
 		{
-			HorizontalAlignment = HorizontalAlignment.Center, FontFamily = FontFamily,
+			HorizontalAlignment = HorizontalAlignment.Center, FontFamily = LocalizedUiFont.EnglishDotFont,
 			TextWrapping = TextWrapping.Wrap, FontSize = 22, FontWeight = FontWeights.Bold, Foreground = Accent(), Margin = new Thickness(0, 4, 0, 5)
 		};
 		offsetPanel.Children.Add(_offsetValue);
@@ -120,7 +120,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		StackPanel flowPanel = CardContent();
 		flowCard.Child = flowPanel;
 		right.Children.Add(flowCard);
-		flowPanel.Children.Add(SectionTitle(T("Changes during the track")));
+		flowPanel.Children.Add(SectionTitle("TIMELINE"));
 		flowPanel.Children.Add(new TextBlock
 		{
 			Text = T("The song flows top to bottom. Bands are holds and ● marks lyric switches."),
@@ -477,7 +477,7 @@ public sealed class PersonalSyncManagerWindow : Window
 	private static double Y(double seconds, double duration, double top, double bottom) => top + Math.Clamp(seconds / duration, 0, 1) * Math.Max(1, bottom - top);
 	private static double Round(double value) => Math.Round(Math.Clamp(value, -3600, 3600), 3);
 	private static string Format(double seconds) => TimeSpan.FromSeconds(Math.Max(0, seconds)).ToString(seconds >= 3600 ? @"h\:mm\:ss\.f" : @"m\:ss\.f", CultureInfo.InvariantCulture);
-	private static TextBlock SectionTitle(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White };
+	private static TextBlock SectionTitle(string text) => LocalizedUiFont.Heading(text);
 	private static StackPanel CardContent() => new() { Margin = new Thickness(14) };
 	private static Border Card() => new() { Background = Brush(36, 33, 37), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 0, 0, 11) };
 	private static Button Button(string text) => new() { Content = text };

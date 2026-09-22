@@ -10,8 +10,7 @@ internal static class PersonalSyncUiTheme
 
 	public static void Apply(Window window, string language)
 	{
-		window.FontFamily = LocalizedUiFont.Resolve(language, LocalizedUiFont.EnglishDotFont);
-		window.Resources["DotFont"] = window.FontFamily;
+		LocalizedUiFont.Apply(window, language, LocalizedUiFont.EnglishDotFont);
 		if (window.Resources.Contains(AppliedKey)) return;
 		const string xaml = """
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

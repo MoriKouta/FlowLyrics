@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Restore fixed English visual headings and Flow Dots independently of localized body fonts; keep the overlay's user-selected lyric font untouched.
+
 - Preserve existing sync points and lyric holds when nudging the global offset from the overlay's timing commands or the sync history window.
 
 - Unify technical UI fonts across all windows, load the bundled Flow Dots through a valid resource URI, and localize Personal Sync, search, settings headings and status labels in all ten languages. Keep provider values separate from UI labels and let longer actions wrap.

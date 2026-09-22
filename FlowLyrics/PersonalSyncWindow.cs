@@ -118,7 +118,7 @@ public sealed class PersonalSyncWindow : Window
 		header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 		header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 		StackPanel heading = new();
-		heading.Children.Add(new TextBlock { Text = T("Personal Sync"), FontSize = 23, FontWeight = FontWeights.Bold, Foreground = Accent() });
+		heading.Children.Add(LocalizedUiFont.Heading("PERSONAL SYNC", 23, Accent()));
 		heading.Children.Add(new TextBlock
 		{
 			Text = context.Track.Title + (string.IsNullOrWhiteSpace(context.Track.Artist) ? string.Empty : " — " + context.Track.Artist),
@@ -132,7 +132,7 @@ public sealed class PersonalSyncWindow : Window
 		header.Children.Add(heading);
 		_nowText = new TextBlock
 		{
-			FontFamily = FontFamily, FontSize = 12, TextAlignment = TextAlignment.Right,
+			FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 10, TextAlignment = TextAlignment.Right,
 			VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(224, 220, 223)
 		};
 		// A fixed drop target remains available even when the active lyric is offscreen.
@@ -156,8 +156,8 @@ public sealed class PersonalSyncWindow : Window
 
 		WrapPanel offset = new() { Margin = new Thickness(0, 0, 0, 10) };
 		StackPanel offsetHeading = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-		offsetHeading.Children.Add(SectionTitle(T("Global offset")));
-		_offsetText = new TextBlock { FontFamily = FontFamily, FontSize = 16, Foreground = Foreground, Margin = new Thickness(12, 0, 18, 0), VerticalAlignment = VerticalAlignment.Center };
+		offsetHeading.Children.Add(new TextBlock { Text = T("Global offset"), FontSize = 14, FontWeight = FontWeights.SemiBold });
+		_offsetText = new TextBlock { FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 16, Foreground = Foreground, Margin = new Thickness(12, 0, 18, 0), VerticalAlignment = VerticalAlignment.Center };
 		offsetHeading.Children.Add(_offsetText);
 		offset.Children.Add(offsetHeading);
 		_offsetNudges = CreateNudgeButtons(Nudge);
@@ -228,7 +228,7 @@ public sealed class PersonalSyncWindow : Window
 		details.Click += (_, _) => { _showInspector = !_showInspector; UpdateInspectorLayout(); };
 		SizeChanged += (_, _) => details.Visibility = ActualWidth >= 1080 ? Visibility.Collapsed : Visibility.Visible;
 		lyricsHeader.Children.Add(details);
-		lyricsHeader.Children.Add(SectionTitle(T("Timing editor")));
+		lyricsHeader.Children.Add(SectionTitle("TIMING EDITOR"));
 		lyricsPanel.Children.Add(lyricsHeader);
 		_lyricsList = new ListBox { Name = "SyncLyricsList", BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 		_lyricsList.SelectionChanged += LyricsList_SelectionChanged;
@@ -236,7 +236,7 @@ public sealed class PersonalSyncWindow : Window
 		Grid editingSurface = new();
 		editingSurface.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
 		editingSurface.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-		_rail = new PersonalSyncRail { Name = "PlaybackRail", LabelFont = FontFamily, Margin = new Thickness(0, 0, 6, 0), AllowDrop = true };
+		_rail = new PersonalSyncRail { Name = "PlaybackRail", LabelFont = LocalizedUiFont.EnglishDotFont, Margin = new Thickness(0, 0, 6, 0), AllowDrop = true };
 		_rail.DescribePosition = seconds => Format(seconds) + "\n" + NearestLyricText(PersonalSyncMapper.MapPlaybackToLyrics(seconds, _profile));
 		_rail.SeekRequested += seconds => SeekRequested?.Invoke(this, TimeSpan.FromSeconds(seconds));
 		_rail.InteractionStarted += SuspendFollow;
@@ -338,7 +338,7 @@ public sealed class PersonalSyncWindow : Window
 				try { DragDrop.DoDragDrop(marker, new DataObject("FlowLyrics.SyncLyric", _dragToken), DragDropEffects.Move); }
 				finally { _dragging = false; _dragLine = -1; RefreshLiveUi(); }
 			};
-			TextBlock time = new() { FontFamily = FontFamily, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = T("Seek to this lyric") };
+			TextBlock time = new() { FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 10, Foreground = Muted(), VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = T("Seek to this lyric") };
 			time.MouseLeftButtonUp += (_, e) => { SeekToLyric(i); e.Handled = true; };
 			TextBlock lyric = new() { Text = _lines[i].Text, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, ToolTip = _lines[i].Text };
 			TextBlock correction = new() { FontSize = 10, Foreground = Muted(), Visibility = Visibility.Hidden };
@@ -574,7 +574,7 @@ public sealed class PersonalSyncWindow : Window
 		DockPanel heading = new();
 		TextBlock value = new()
 		{
-			FontFamily = FontFamily, FontSize = 16, FontWeight = FontWeights.Bold,
+			FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 16, FontWeight = FontWeights.Bold,
 			Foreground = Accent(), HorizontalAlignment = HorizontalAlignment.Right
 		};
 		DockPanel.SetDock(value, Dock.Right);
@@ -826,7 +826,7 @@ public sealed class PersonalSyncWindow : Window
 		double playback = Math.Max(0, _playbackPositionProvider().TotalSeconds);
 		double lyrics = _pendingHoldStart.HasValue ? _pendingHoldLyricsTime : PersonalSyncMapper.MapPlaybackToLyrics(playback, _profile);
 		int active = FindActiveLine(lyrics);
-		_nowText.Text = (_rail.IsSeeking ? T("Seek") : _dragging ? T("Align to now") : T("Playback")) + "  " + Format(_rail.IsSeeking ? _rail.PreviewSeconds ?? playback : playback) + "\n" + T("Lyrics") + "  " + Format(lyrics);
+		_nowText.Text = (_rail.IsSeeking ? "SEEK" : _dragging ? "ALIGN" : "PLAY") + "  " + Format(_rail.IsSeeking ? _rail.PreviewSeconds ?? playback : playback) + "\nLYRICS  " + Format(lyrics);
 
 		if (active != _activeLineIndex)
 		{
@@ -1156,7 +1156,7 @@ public sealed class PersonalSyncWindow : Window
 		return grid;
 	}
 
-	private static TextBlock SectionTitle(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 15, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, Margin = new Thickness(0, 0, 0, 4) };
+	private static TextBlock SectionTitle(string text) => LocalizedUiFont.Heading(text);
 	private static StackPanel CardContent() => new() { Margin = new Thickness(14) };
 	private static Border Card() => new() { Background = Brush(36, 33, 37), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 0, 0, 11) };
 	private static Button Button(string text) => new() { Content = text };

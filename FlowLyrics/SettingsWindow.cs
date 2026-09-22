@@ -2512,22 +2512,29 @@ public class SettingsWindow : Window, IComponentConnector
 		if (element is TextBlock data && new[] { CurrentTrackTitleText, CurrentTrackArtistText, CurrentTrackAlbumText, CurrentTrackDurationText,
 			SpotifyTrackIdText, LyricsSourceText, LrclibIdText, LrclibTitleText, LrclibArtistText, LrclibAlbumText, LrclibDurationText,
 			SelectionModeText, LoadedFromCacheText, LocalLrcStateText, LyricsGuidanceText, LyricsActionStatusText }.Contains(data)) return;
-		// The shipped BAML marked whole heading/label styles as NoTranslate.
-		// Lift that flag for UI labels only; raw track values and user data remain data.
-		if (element is TabItem tab) tab.Tag = null;
+		// Visual headings and technical field labels are fixed English. Actions and
+		// explanatory text remain localized, independently of the DotFont resource.
+		if (element is TabItem tab && tab.Header is string caption)
+		{
+			tab.Header = caption.ToUpperInvariant(); tab.Tag = "NoTranslate"; LocalizedUiFont.Technical(tab);
+		}
 		if (element is TextBlock heading && (ReferenceEquals(heading.Style, TryFindResource("SectionTitle"))
-			|| ReferenceEquals(heading.Style, TryFindResource("LyricsFieldLabel")))) heading.Tag = null;
+			|| ReferenceEquals(heading.Style, TryFindResource("LyricsFieldLabel"))
+			|| heading.Text is "REVERSE COLORS" or "MY PALETTES" or "PERSONAL SYNC" or "RESET SETTINGS"))
+			LocalizedUiFont.Heading(heading, heading.Text);
+		if (element is TextBlock brand && (ReferenceEquals(brand, _versionText) || brand.Text is "Flow " or "Lyrics"))
+			LocalizedUiFont.Technical(brand);
 		if (element is FrameworkElement tip && tip.ToolTip is string text && !string.IsNullOrWhiteSpace(text))
 			_localizedTooltips.TryAdd(tip, text);
 		if (element is FrameworkElement staticLabel && staticLabel.ReadLocalValue(FrameworkElement.TagProperty) is string marker && marker == "NoTranslate")
 		{
 			string? label = element is TextBlock block ? block.Text : (element as ContentControl)?.Content as string;
-			if (label is "REVERSE COLORS" or "MY PALETTES" or "PLAYER" or "Not used by AUTO · Browser = all sessions" or "DIAGNOSTICS" or "PERSONAL SYNC" or "RESET SETTINGS" or "RESET" or "SAVE CURRENT" or "APPLY" or "DELETE" or "EXPORT" or "IMPORT") staticLabel.Tag = null;
+			if (label is "Not used by AUTO · Browser = all sessions" or "DIAGNOSTICS" or "RESET" or "SAVE CURRENT" or "APPLY" or "DELETE" or "EXPORT" or "IMPORT") staticLabel.Tag = null;
 		}
 		int num;
 		if (element is FrameworkElement { Tag: string tag })
 		{
-			num = (string.Equals(tag, "NoTranslate", StringComparison.Ordinal) ? 1 : 0);
+			num = (tag is "NoTranslate" or "VisualHeading" ? 1 : 0);
 			if (num != 0)
 			{
 				goto IL_0072;

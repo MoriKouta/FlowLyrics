@@ -76,7 +76,10 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			VerticalAlignment = VerticalAlignment.Center,
 			TextWrapping = TextWrapping.Wrap
 		};
-		header.Children.Add(_summaryText);
+		StackPanel summary = new();
+		summary.Children.Add(LocalizedUiFont.Heading("DIAGNOSTICS", 18));
+		summary.Children.Add(_summaryText);
+		header.Children.Add(summary);
 		Grid.SetColumnSpan(header, 3);
 		root.Children.Add(header);
 
