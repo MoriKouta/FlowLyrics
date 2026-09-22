@@ -223,6 +223,7 @@ public class MainWindow : Window, IComponentConnector
 	private bool _personalSyncUpdatingUi;
 
 	private PersonalSyncWindow? _personalSyncAdvancedWindow;
+	private bool _personalSyncUpdateQueued;
 
 	internal System.Windows.Controls.ContextMenu OverlayMenu;
 
@@ -630,6 +631,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		if (_metadataPending) return;
 		_metadataPending = true;
+		SuspendPersonalSync("LYRICS NOT READY");
 		_lyricsPerformance ??= new();
 		_lyricsCancellation?.Cancel();
 		_activeTrackKey = null;
@@ -688,7 +690,7 @@ public class MainWindow : Window, IComponentConnector
 				_speculativeCancellation?.Cancel();
 				_speculativeIdentity = null;
 				_lyricsPerformance = null;
-				ClosePersonalSyncEditor(save: true);
+				SuspendPersonalSync("WAITING FOR PLAYER");
 				_snapshot = null;
 				_personalSyncActiveProfile = null;
 				_personalSyncContextKey = string.Empty;
@@ -725,6 +727,8 @@ public class MainWindow : Window, IComponentConnector
 				if (_activeTrackKey != playbackSnapshot.Track.CacheKey) _lyricsPerformance?.Mark("METADATA_STABLE");
 				bool trackDisplayChanged = _snapshot?.Track.CacheKey != playbackSnapshot.Track.CacheKey
 					|| _snapshot?.Track.DisplayArtist != playbackSnapshot.Track.DisplayArtist;
+				if (_snapshot != null && (_snapshot.SessionId != playbackSnapshot.SessionId || _snapshot.SourceAppUserModelId != playbackSnapshot.SourceAppUserModelId))
+					SuspendPersonalSync("LYRICS NOT READY", playbackSnapshot);
 				_snapshot = playbackSnapshot;
 				if (trackDisplayChanged) _settingsWindow?.RefreshCurrentTrack();
 				if (_activeTrackKey == playbackSnapshot.Track.CacheKey) RefreshPersonalSyncResolution();
@@ -733,7 +737,7 @@ public class MainWindow : Window, IComponentConnector
 				RefreshWindowVisibility();
 				if (!string.Equals(_activeTrackKey, playbackSnapshot.Track.CacheKey, StringComparison.Ordinal))
 				{
-					ClosePersonalSyncEditor(save: true);
+					SuspendPersonalSync("LYRICS NOT READY", playbackSnapshot);
 					_activeTrackKey = playbackSnapshot.Track.CacheKey;
 					_activeEnrichedArtistCredit = playbackSnapshot.Track.EnrichedArtistCredit;
 					_personalSyncActiveProfile = null;
@@ -791,6 +795,7 @@ public class MainWindow : Window, IComponentConnector
 				if (!token.IsCancellationRequested && string.Equals(_activeTrackKey, track.CacheKey, StringComparison.Ordinal))
 				{
 					SetTrackStatus("SEARCHING LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
+					_personalSyncAdvancedWindow?.SuspendTrack("SEARCHING...", _snapshot);
 					SetStatus(T("Searching lyrics…"), T("The first lookup may take a moment. Saved results load faster next time."), animate: true);
 				}
 			}, trace);
@@ -863,6 +868,7 @@ public class MainWindow : Window, IComponentConnector
 					SetTrackStatus("NO SYNCED LYRICS", System.Windows.Media.Color.FromRgb(byte.MaxValue, 194, 103));
 					SetStatus(track.DisplayName, T("Only plain lyrics are available · Enable fallback in Settings"), animate: true);
 				}
+				QueuePersonalSyncTrackUpdate();
 			}
 		}
 		catch (OperationCanceledException)
@@ -1130,6 +1136,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private async Task ResolvePersonalSyncAsync(bool force = false)
 	{
+		if (_metadataPending) return;
 		if (_personalSyncEditingProfile != null || _snapshot == null || _lyricsLookup == null || _lyrics?.HasSyncedLyrics != true)
 		{
 			if (_lyrics?.HasSyncedLyrics != true)
@@ -1143,6 +1150,7 @@ public class MainWindow : Window, IComponentConnector
 		}
 		PersonalSyncContext personalSyncContext = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
 		string context = personalSyncContext.Track.StableTrackKey + "|" + personalSyncContext.Source.StableSourceKey + "|" + personalSyncContext.Lyrics.Key;
+		if (_personalSyncAdvancedWindow is { IsTrackReady: true } editor && editor.ContextKey == context) return;
 		if (!force && string.Equals(context, _personalSyncContextKey, StringComparison.Ordinal)) return;
 		_personalSyncContextKey = context;
 		PersonalSyncResolution resolution;
@@ -1166,11 +1174,12 @@ public class MainWindow : Window, IComponentConnector
 		{
 			resolution = new PersonalSyncResolution(null, false);
 		}
-		if (!string.Equals(context, _personalSyncContextKey, StringComparison.Ordinal) || _personalSyncEditingProfile != null) return;
+		if (_metadataPending || !string.Equals(context, _personalSyncContextKey, StringComparison.Ordinal) || _personalSyncEditingProfile != null) return;
 		_personalSyncResolution = resolution;
 		_personalSyncActiveProfile = _personalSyncResolution.Profile;
 		UpdatePersonalSyncButton();
 		InvalidatePersonalSyncRendering();
+		if (_lyricsReady) QueuePersonalSyncTrackUpdate();
 	}
 
 	private TimeSpan GetBasePlaybackPosition()
@@ -1337,6 +1346,27 @@ public class MainWindow : Window, IComponentConnector
 		}
 	}
 
+	private void SuspendPersonalSync(string status, PlaybackSnapshot? snapshot = null)
+	{
+		_personalSyncAdvancedWindow?.SuspendTrack(status, snapshot);
+		if (_personalSyncPopup?.IsOpen == true) _personalSyncPopup.IsOpen = false;
+	}
+
+	private void QueuePersonalSyncTrackUpdate()
+	{
+		if (_personalSyncAdvancedWindow == null || _personalSyncUpdateQueued) return;
+		_personalSyncUpdateQueued = true;
+		// Background priority is below Render/Loaded: editing UI never blocks first paint.
+		_ = Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(async () =>
+		{
+			_personalSyncUpdateQueued = false;
+			if (_personalSyncAdvancedWindow is not { } editor || _metadataPending || _snapshot == null) return;
+			if (_lyrics?.HasSyncedLyrics == true && _lyricsLookup != null && _lyricsReady)
+				await editor.UpdateTrackAsync(PersonalSyncIdentity.Create(_snapshot, _lyricsLookup), _lyrics.Lines);
+			else editor.SuspendTrack("NO SYNCED LYRICS", _snapshot);
+		}));
+	}
+
 	private void PersonalSyncLyricLine_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
 	{
 		if (_personalSyncEditingProfile == null || _personalSyncPopup?.IsOpen != true || _lyrics?.HasSyncedLyrics != true || sender is not OutlinedText line || line.Tag is not int index) return;
@@ -1376,12 +1406,12 @@ public class MainWindow : Window, IComponentConnector
 
 	private void OpenAdvancedPersonalSync_Click(object sender, RoutedEventArgs e)
 	{
-		if (_snapshot == null || _lyrics?.HasSyncedLyrics != true) return;
 		if (_personalSyncAdvancedWindow != null)
 		{
 			_personalSyncAdvancedWindow.Activate();
 			return;
 		}
+		if (_snapshot == null || _lyrics?.HasSyncedLyrics != true || _metadataPending) return;
 		if (_lyricsLookup == null) return;
 		PersonalSyncContext context = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
 		_personalSyncAdvancedWindow = new PersonalSyncWindow(
@@ -1392,7 +1422,7 @@ public class MainWindow : Window, IComponentConnector
 			() =>
 			{
 				int index = _personalSyncSelectedLineIndex >= 0 ? _personalSyncSelectedLineIndex : _activeLineIndex;
-				return index >= 0 && index < _lyrics.Lines.Count ? index : (int?)null;
+				return index >= 0 && index < (_lyrics?.Lines.Count ?? 0) ? index : (int?)null;
 			},
 			GetBasePlaybackPosition,
 			_settings.Language, () => _snapshot?.CanSeek == true && !_metadataPending)
@@ -1405,6 +1435,10 @@ public class MainWindow : Window, IComponentConnector
 			await RunPlaybackCommandAsync((service, token) => service.TryTogglePlayPauseAsync(token));
 		_personalSyncAdvancedWindow.PreviewChanged += delegate(object? _, PersonalSyncProfile? profile)
 		{
+			if (_metadataPending || _snapshot == null || _lyricsLookup == null || _lyrics?.HasSyncedLyrics != true
+				|| _personalSyncAdvancedWindow is not { IsTrackReady: true } editor) return;
+			var current = PersonalSyncIdentity.Create(_snapshot, _lyricsLookup);
+			if (editor.ContextKey != current.Track.StableTrackKey + "|" + current.Source.StableSourceKey + "|" + current.Lyrics.Key) return;
 			if (profile == null)
 			{
 				_personalSyncActiveProfile = null;

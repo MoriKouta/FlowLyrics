@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Keep Personal Sync open across track/source changes, preserve confirmed edits, discard unfinished gestures, and populate the next track after lyric rendering. Add contextual global alignment and nudges to the inspector.
+
 - Restore fixed English visual headings and Flow Dots independently of localized body fonts; keep the overlay's user-selected lyric font untouched.
 
 - Preserve existing sync points and lyric holds when nudging the global offset from the overlay's timing commands or the sync history window.

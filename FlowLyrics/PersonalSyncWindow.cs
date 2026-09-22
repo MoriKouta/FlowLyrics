@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -20,12 +21,27 @@ namespace FlowLyrics;
 public sealed class PersonalSyncWindow : Window
 {
 	private readonly PersonalSyncStore _store;
-	private readonly PersonalSyncContext _context;
-	private readonly IReadOnlyList<LyricLine> _lines;
+	private PersonalSyncContext _context;
+	private IReadOnlyList<LyricLine> _lines;
 	private readonly Func<int?> _initialLineProvider;
 	private readonly Func<TimeSpan> _playbackPositionProvider;
 	private readonly string _language;
-	private readonly bool _hadStoredProfile;
+	private bool _hadStoredProfile;
+	private bool _waitingForTrack;
+	private bool _closed;
+	private int _trackRevision;
+	private readonly Queue<PersonalSyncProfile> _pendingSaves = new();
+	private Task? _saveTask;
+	private readonly TextBlock _trackText;
+	private readonly TextBlock _sourceText;
+	private readonly TextBlock _waitingText;
+	private readonly Grid _editingSurface;
+	private readonly Grid _lyricNudges;
+	private readonly Button _resetButton;
+	private readonly Button _removeButton;
+	public bool IsTrackReady => !_waitingForTrack && !_closed;
+	public string ContextKey => ContextIdentity(_context);
+	private static string ContextIdentity(PersonalSyncContext context) => context.Track.StableTrackKey + "|" + context.Source.StableSourceKey + "|" + context.Lyrics.Key;
 	private readonly Stack<PersonalSyncProfile> _undo = new();
 	private readonly Stack<PersonalSyncProfile> _redo = new();
 	private readonly DispatcherTimer _previewTimer;
@@ -119,16 +135,18 @@ public sealed class PersonalSyncWindow : Window
 		header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 		StackPanel heading = new();
 		heading.Children.Add(LocalizedUiFont.Heading("PERSONAL SYNC", 23, Accent()));
-		heading.Children.Add(new TextBlock
+		_trackText = new TextBlock
 		{
 			Text = context.Track.Title + (string.IsNullOrWhiteSpace(context.Track.Artist) ? string.Empty : " — " + context.Track.Artist),
 			FontSize = 14, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0)
-		});
-		heading.Children.Add(new TextBlock
+		};
+		heading.Children.Add(_trackText);
+		_sourceText = new TextBlock
 		{
 			Text = SourceContext(context.Source) + "  ·  " + context.Lyrics.DisplayName,
 			Foreground = Muted(), Margin = new Thickness(0, 3, 0, 0)
-		});
+		};
+		heading.Children.Add(_sourceText);
 		header.Children.Add(heading);
 		_nowText = new TextBlock
 		{
@@ -181,6 +199,8 @@ public sealed class PersonalSyncWindow : Window
 		_resyncButton.Name = "ResyncFromHereButton";
 		_resyncButton.Click += (_, _) => { if (ValidSelectedLine(out int line)) AlignLineAt(line, Math.Max(0, _playbackPositionProvider().TotalSeconds)); };
 		timelinePanel.Children.Add(_resyncButton);
+		_lyricNudges = CreateNudgeButtons(Nudge, compact: true);
+		timelinePanel.Children.Add(_lyricNudges);
 		_resumeButton = Button(T("Resume here")); _resumeButton.Name = "ResumeSelectedHoldButton";
 		_resumeButton.Click += (_, _) => ResumeSelectedHold();
 		timelinePanel.Children.Add(_resumeButton);
@@ -233,7 +253,7 @@ public sealed class PersonalSyncWindow : Window
 		_lyricsList = new ListBox { Name = "SyncLyricsList", BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch };
 		_lyricsList.SelectionChanged += LyricsList_SelectionChanged;
 		_lyricsList.PreviewMouseWheel += delegate { SuspendFollow(); };
-		Grid editingSurface = new();
+		Grid editingSurface = _editingSurface = new();
 		editingSurface.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
 		editingSurface.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 		_rail = new PersonalSyncRail { Name = "PlaybackRail", LabelFont = LocalizedUiFont.EnglishDotFont, Margin = new Thickness(0, 0, 6, 0), AllowDrop = true };
@@ -249,12 +269,17 @@ public sealed class PersonalSyncWindow : Window
 		editingSurface.Children.Add(_rail);
 		Grid.SetColumn(_lyricsList, 1); editingSurface.Children.Add(_lyricsList);
 		Grid.SetRow(editingSurface, 1); lyricsPanel.Children.Add(editingSurface);
+		_waitingText = LocalizedUiFont.Heading("LYRICS NOT READY", 15, Muted());
+		_waitingText.Visibility = Visibility.Collapsed;
+		_waitingText.HorizontalAlignment = HorizontalAlignment.Center;
+		_waitingText.VerticalAlignment = VerticalAlignment.Center;
+		Grid.SetRow(_waitingText, 1); lyricsPanel.Children.Add(_waitingText);
 		_matchButton = Button(T("Align to now"));
 		_matchButton.HorizontalAlignment = HorizontalAlignment.Left;
 		_matchButton.MinHeight = 28; _matchButton.Padding = new Thickness(8, 4, 8, 4);
 		_matchButton.Name = "AlignSelectedLyricButton";
 		_matchButton.Click += MatchSelectedLine_Click;
-		// Primary alignment belongs to the lyric row; retained as the keyboard/hold command target.
+		timelinePanel.Children.Insert(2, _matchButton);
 		_holdButton = Button("+ " + T("Lyric hold"));
 		_holdButton.Name = "AddLyricHoldButton";
 		_holdButton.Click += AddHoldRange_Click;
@@ -281,8 +306,8 @@ public sealed class PersonalSyncWindow : Window
 		DockPanel.SetDock(bottomButtons, Dock.Right);
 		_undoButton = Button(T("Undo"));
 		_redoButton = Button(T("Redo"));
-		Button reset = Button(T("Reset timing"));
-		Button remove = DangerButton(T("Delete saved sync"));
+		Button reset = _resetButton = Button(T("Reset timing"));
+		Button remove = _removeButton = DangerButton(T("Delete saved sync"));
 		Button close = Button(T("Close"));
 		close.ToolTip = T("Changes are saved when you close.");
 		_undoButton.Click += delegate { Undo(); };
@@ -307,7 +332,109 @@ public sealed class PersonalSyncWindow : Window
 		_previewTimer.Tick += delegate { RefreshLiveUi(); };
 		Loaded += PersonalSyncWindow_Loaded;
 		Closing += PersonalSyncWindow_Closing;
-		Closed += delegate { _previewTimer.Stop(); };
+		Closed += delegate { _closed = true; _trackRevision++; _previewTimer.Stop(); };
+	}
+
+	// Suspend immediately, but defer disk work and repopulation so the lyric overlay
+	// can paint first. Queued edits always carry their original track/source/lyrics.
+	public void SuspendTrack(string status, PlaybackSnapshot? snapshot = null)
+	{
+		_trackRevision++;
+		if (!_waitingForTrack)
+		{
+			_waitingForTrack = true;
+			_rail.EndInteraction(cancel: true);
+			FinishRailEdit(cancel: true);
+			_pendingHoldStart = null;
+			_dragLine = -1;
+			QueueConfirmedEdits();
+		}
+		_trackText.Text = snapshot?.Track.DisplayName ?? string.Empty;
+		_sourceText.Text = snapshot?.SourceDisplayName ?? string.Empty;
+		_nowText.Text = string.Empty;
+		_waitingText.Text = status;
+		_waitingText.Visibility = Visibility.Visible;
+		_editingSurface.Visibility = Visibility.Collapsed;
+		_inspector.IsEnabled = false;
+		_inspector.Visibility = Visibility.Collapsed;
+		_offsetText.Text = "—";
+		_offsetNudges.IsEnabled = _trackScopeBox.IsEnabled = _resetButton.IsEnabled = _removeButton.IsEnabled = false;
+		_undoButton.IsEnabled = _redoButton.IsEnabled = _holdButton.IsEnabled = false;
+		_cancelHoldButton.Visibility = _workflowHint.Visibility = Visibility.Collapsed;
+		_ = SavePendingSafelyAsync();
+	}
+
+	public async Task UpdateTrackAsync(PersonalSyncContext context, IReadOnlyList<LyricLine> lines)
+	{
+		if (_closed || _saveOnClosePending || (IsTrackReady && ContextKey == ContextIdentity(context))) return;
+		if (!_waitingForTrack) SuspendTrack("LYRICS NOT READY");
+		int revision = ++_trackRevision;
+		try
+		{
+			await SavePendingAsync();
+			PersonalSyncResolution resolution = await _store.ResolveAsync(context);
+			if (_closed || revision != _trackRevision) return;
+			_refreshing = true;
+			try
+			{
+				_context = context;
+				_lyricsList.Items.Clear(); _lyricRows.Clear();
+				_lines = lines;
+				_profile = resolution.Profile?.Clone() ?? CreateProfile(context);
+				_hadStoredProfile = resolution.Profile != null;
+				_dirty = _deleted = false;
+				_undo.Clear(); _redo.Clear();
+				_selectedLineIndex = _activeLineIndex = _lastFollowedLine = -1;
+				_selectedHoldId = null; _pointsList.SelectedItem = null; _rail.SelectedId = null;
+				_followSuspendedUntil = default;
+				BuildLyricsList();
+			}
+			finally { _refreshing = false; }
+			_waitingForTrack = false;
+			_trackText.Text = context.Track.Title + (string.IsNullOrWhiteSpace(context.Track.Artist) ? "" : " — " + context.Track.Artist);
+			_sourceText.Text = SourceContext(context.Source) + "  ·  " + context.Lyrics.DisplayName;
+			_waitingText.Visibility = Visibility.Collapsed;
+			_editingSurface.Visibility = Visibility.Visible;
+			_inspector.IsEnabled = _trackScopeBox.IsEnabled = _resetButton.IsEnabled = _removeButton.IsEnabled = true;
+			RefreshAll();
+			PreviewChanged?.Invoke(this, resolution.Profile?.Clone());
+		}
+		catch (Exception) { if (!_closed && revision == _trackRevision) ShowSaveFailure(); }
+	}
+
+	private void QueueConfirmedEdits()
+	{
+		if (!_dirty || _deleted) return;
+		_pendingSaves.Enqueue(_profile.Clone());
+		_dirty = false;
+	}
+
+	private Task SavePendingAsync()
+	{
+		if (_saveTask is { IsCompleted: false }) return _saveTask;
+		return _saveTask = FlushPendingAsync();
+	}
+
+	private async Task FlushPendingAsync()
+	{
+		await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+		while (_pendingSaves.Count > 0)
+		{
+			await _store.UpsertAsync(_pendingSaves.Peek());
+			_pendingSaves.Dequeue(); // Retain a failed write for retry/close; never discard it.
+		}
+	}
+
+	private async Task SavePendingSafelyAsync()
+	{
+		try { await SavePendingAsync(); }
+		catch (Exception) { if (!_closed) ShowSaveFailure(); }
+	}
+
+	private void ShowSaveFailure()
+	{
+		_workflowHint.Text = T("Could not save Personal Sync.");
+		_workflowHint.Visibility = Visibility.Visible;
 	}
 
 	private void PersonalSyncWindow_Loaded(object sender, RoutedEventArgs e)
@@ -360,6 +487,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void ShowRowActions(int index, bool visible)
 	{
+		if (index < 0 || index >= _lyricRows.Count || index >= _lines.Count) return;
 		var row = _lyricRows[index];
 		row.Actions.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
 		double original = _lines[index].Time.TotalSeconds;
@@ -426,6 +554,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Change(Action<PersonalSyncProfile> mutation)
 	{
+		if (!IsTrackReady || _saveOnClosePending) return;
 		_undo.Push(_profile.Clone());
 		while (_undo.Count > 80) TrimStack(_undo, 80);
 		_redo.Clear();
@@ -448,7 +577,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Undo()
 	{
-		if (_undo.Count == 0) return;
+		if (!IsTrackReady || _undo.Count == 0) return;
 		CancelPendingHold();
 		_redo.Push(_profile.Clone());
 		_profile = _undo.Pop();
@@ -459,7 +588,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Redo()
 	{
-		if (_redo.Count == 0) return;
+		if (!IsTrackReady || _redo.Count == 0) return;
 		CancelPendingHold();
 		_undo.Push(_profile.Clone());
 		_profile = _redo.Pop();
@@ -482,6 +611,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Hold_Click(object sender, RoutedEventArgs e)
 	{
+		if (!IsTrackReady) return;
 		double playback = Math.Max(0, _playbackPositionProvider().TotalSeconds);
 		if (!_pendingHoldStart.HasValue)
 		{
@@ -599,6 +729,8 @@ public sealed class PersonalSyncWindow : Window
 		_deletePointButton.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
 		_matchButton.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
 		_resyncButton.Visibility = !has && ValidSelectedLine(out _) ? Visibility.Visible : Visibility.Collapsed;
+		_lyricNudges.Visibility = _resyncButton.Visibility;
+		_lyricNudges.IsEnabled = !_pendingHoldStart.HasValue;
 		_resumeButton.Visibility = _pointsList.SelectedItem is SyncPointListItem { IsAnchor: false } ? Visibility.Visible : Visibility.Collapsed;
 		_resumeButton.IsEnabled = ValidSelectedLine(out _);
 		_resumeButton.ToolTip = ValidSelectedLine(out int selectedLyric) ? _lines[selectedLyric].Text : T("Select a lyric");
@@ -742,7 +874,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Scope_Changed(object sender, RoutedEventArgs e)
 	{
-		if (!IsLoaded || _refreshing) return;
+		if (!IsLoaded || _refreshing || !IsTrackReady) return;
 		Change(profile => profile.Scope = _trackScopeBox.IsChecked == true ? PersonalSyncScope.Track : PersonalSyncScope.Source);
 	}
 
@@ -754,6 +886,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private async void Remove_Click(object sender, RoutedEventArgs e)
 	{
+		if (!IsTrackReady) return;
 		if (MessageBox.Show(this, T("Remove only this Personal Sync profile?"),
 			"FlowLyrics", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 		try
@@ -770,6 +903,7 @@ public sealed class PersonalSyncWindow : Window
 	private async void PersonalSyncWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
 	{
 		if (_closeAfterSave) return;
+		_trackRevision++;
 		_previewTimer.Stop();
 		// An unfinished pointer gesture is only a preview, including during close.
 		_rail.EndInteraction(cancel: true);
@@ -778,16 +912,17 @@ public sealed class PersonalSyncWindow : Window
 			_pendingHoldStart = null;
 			PreviewChanged?.Invoke(this, _dirty || _hadStoredProfile ? _profile.Clone() : null);
 		}
-		if (!_dirty || _deleted) return;
+		QueueConfirmedEdits();
+		if (_pendingSaves.Count == 0 && _saveTask is not { IsCompleted: false }) return;
 		// Cancel synchronously: setting Cancel after an awaited write is too late.
 		e.Cancel = true;
 		if (_saveOnClosePending) return;
 		_saveOnClosePending = true;
+		IsEnabled = false;
 		try
 		{
-			_profile = await _store.UpsertAsync(_profile);
-			_dirty = false;
-			PreviewChanged?.Invoke(this, _profile.Mode == PersonalSyncMode.None ? null : _profile.Clone());
+			await SavePendingAsync();
+			if (IsTrackReady) PreviewChanged?.Invoke(this, _profile.Mode == PersonalSyncMode.None ? null : _profile.Clone());
 			_closeAfterSave = true;
 			_ = Dispatcher.BeginInvoke(new Action(Close));
 		}
@@ -798,7 +933,7 @@ public sealed class PersonalSyncWindow : Window
 			MessageBox.Show(this, T("Could not save Personal Sync.") + "\n\n" + ex.Message,
 				"FlowLyrics", MessageBoxButton.OK, MessageBoxImage.Exclamation);
 		}
-		finally { _saveOnClosePending = false; }
+		finally { _saveOnClosePending = false; IsEnabled = true; }
 	}
 
 	private void RefreshAll()
@@ -822,6 +957,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void RefreshLiveUi()
 	{
+		if (_waitingForTrack) return;
 		if (_lines.Count == 0) { RefreshPendingWorkflow(); return; }
 		double playback = Math.Max(0, _playbackPositionProvider().TotalSeconds);
 		double lyrics = _pendingHoldStart.HasValue ? _pendingHoldLyricsTime : PersonalSyncMapper.MapPlaybackToLyrics(playback, _profile);
@@ -930,7 +1066,7 @@ public sealed class PersonalSyncWindow : Window
 	private void UpdateInspectorLayout()
 	{
 		bool wide = ActualWidth >= 1080;
-		bool visible = wide || _showInspector || _pointsList.SelectedItem != null;
+		bool visible = !_waitingForTrack && (wide || _showInspector || _pointsList.SelectedItem != null);
 		_inspector.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
 		_inspectorColumn.Width = new GridLength(wide ? 260 : 0);
 		Grid.SetRow(_inspector, wide ? 1 : 2); Grid.SetColumn(_inspector, wide ? 1 : 0); Grid.SetColumnSpan(_inspector, wide ? 1 : 2);
@@ -1004,7 +1140,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void PreviewRailEdit(SyncRailEdit edit)
 	{
-		if (_railEditBefore == null) return;
+		if (!IsTrackReady || _railEditBefore == null) return;
 		_railEditChanged = true;
 		if (edit.Field == SyncRailField.Anchor)
 		{
@@ -1043,6 +1179,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Editor_KeyDown(object sender, KeyEventArgs e)
 	{
+		if (!IsTrackReady) return;
 		if (e.OriginalSource is TextBox || e.OriginalSource == _rail) return;
 		if (e.Key == Key.Space && e.OriginalSource is not System.Windows.Controls.Button && e.OriginalSource is not CheckBox) { PlayPauseRequested?.Invoke(this, EventArgs.Empty); e.Handled = true; }
 		else if (e.Key == Key.Enter && e.OriginalSource is not System.Windows.Controls.Button) { MatchSelectedLine_Click(this, new RoutedEventArgs()); e.Handled = true; }
@@ -1110,7 +1247,7 @@ public sealed class PersonalSyncWindow : Window
 	private bool ValidSelectedLine(out int selected)
 	{
 		selected = _selectedLineIndex;
-		return selected >= 0 && selected < _lines.Count;
+		return IsTrackReady && selected >= 0 && selected < _lines.Count;
 	}
 
 	private void PlaceBesideOwner()

@@ -102,7 +102,11 @@ public sealed class PersonalSyncStore
 				}
 				changed = true;
 			}
-			if (changed) await SaveAsync(cancellationToken);
+			if (changed)
+			{
+				try { await SaveAsync(cancellationToken); }
+				catch { _profiles = null; throw; } // Reload disk before retrying a failed reset/save.
+			}
 		}
 		finally
 		{

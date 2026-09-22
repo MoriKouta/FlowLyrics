@@ -71,8 +71,10 @@ public sealed class TransitionPerformanceTests
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 
-    [Fact]
-    public async Task CachedTrackAlternation_RendersTheCorrectLyrics()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CachedTrackAlternation_RendersTheCorrectLyrics(bool editorOpen)
     {
         string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-transition-" + Guid.NewGuid().ToString("N"));
         TrackInfo[] tracks = [new("Cached A", "Artist", "Album", TimeSpan.FromSeconds(180)), new("Cached B", "Artist", "Album", TimeSpan.FromSeconds(200))];
@@ -92,6 +94,7 @@ public sealed class TransitionPerformanceTests
                 var provider = new TransitionProvider();
                 using MediaSessionService media = new(provider);
                 MainWindow window = new(new SettingsService(directory), media);
+                PersonalSyncWindow? editor = null;
                 try
                 {
                     window.ShowActivated = false; window.Show(); Pump();
@@ -104,6 +107,7 @@ public sealed class TransitionPerformanceTests
                         Pump();
                         Assert.True(Read<bool>(window, "_metadataPending"));
                         Assert.Null(Read<LyricsResult?>(window, "_lyrics"));
+						if (editor != null) { Assert.True(editor.IsVisible); Assert.False(editor.IsTrackReady); }
                         Assert.DoesNotContain("WAITING", Read<System.Windows.Controls.TextBlock>(window, "TrackStatusText").Text);
                         while (clock.Elapsed < TimeSpan.FromSeconds(5))
                         {
@@ -115,10 +119,23 @@ public sealed class TransitionPerformanceTests
                         Assert.Equal(track.Title, Read<LyricsResult?>(window, "_lyrics")?.Lines.FirstOrDefault()?.Text);
                         // Include actual WPF layout/render dispatch, not only lookup completion.
                         Pump(); samples.Add(clock.Elapsed.TotalMilliseconds);
+                        if (editorOpen)
+                        {
+                            if (editor == null)
+                            {
+                                Invoke(window, "OpenAdvancedPersonalSync_Click", window, new System.Windows.RoutedEventArgs());
+                                editor = Read<PersonalSyncWindow>(window, "_personalSyncAdvancedWindow");
+                            }
+                            PersonalSyncRuntimeTests.WaitUntil(() => editor.IsTrackReady);
+                            Assert.Same(editor, Read<PersonalSyncWindow>(window, "_personalSyncAdvancedWindow"));
+                            Assert.True(editor.IsVisible);
+                            Assert.Contains(track.Title, Read<System.Windows.Controls.TextBlock>(editor, "_trackText").Text);
+                        }
                     }
                 }
                 finally
                 {
+                    editor?.Close();
                     foreach (FieldInfo field in typeof(MainWindow).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
                         if (field.GetValue(window) is DispatcherTimer timer) timer.Stop();
                     Read<IDisposable?>(window, "_hotkeys")?.Dispose(); Read<IDisposable?>(window, "_tray")?.Dispose();
@@ -128,7 +145,7 @@ public sealed class TransitionPerformanceTests
                 }
             });
             string? report = Environment.GetEnvironmentVariable("FLOWLYRICS_PERF_REPORT");
-            if (!string.IsNullOrEmpty(report)) await File.WriteAllTextAsync(report,
+            if (!string.IsNullOrEmpty(report)) await File.WriteAllTextAsync(report + (editorOpen ? ".editor" : ""),
                 "Synthetic GSMTC + real WPF dispatch; not a live-player measurement.\n" + string.Join(", ", samples.Select(v => v.ToString("F1")))
                 + $"\nDisk first two: {string.Join(", ", samples.Take(2).Select(v => v.ToString("F1")))} ms\nHot median: {samples.Skip(2).Order().Skip(2).Take(2).Average():F1} ms; worst: {samples.Skip(2).Max():F1} ms\n");
         }
