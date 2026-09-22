@@ -117,13 +117,22 @@ public sealed class LyricsOverrideStore
 
 	private async Task SaveAsync(CancellationToken cancellationToken)
 	{
-		Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path));
-		string temporaryPath = _path + ".tmp";
-		await using (FileStream stream = File.Create(temporaryPath))
+		try
 		{
-			await JsonSerializer.SerializeAsync((Stream)stream, _selections, _jsonOptions, cancellationToken);
+			Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path));
+			string temporaryPath = _path + ".tmp";
+			await using (FileStream stream = File.Create(temporaryPath))
+			{
+				await JsonSerializer.SerializeAsync((Stream)stream, _selections, _jsonOptions, cancellationToken);
+			}
+			File.Move(temporaryPath, _path, overwrite: true);
 		}
-		File.Move(temporaryPath, _path, overwrite: true);
+		catch
+		{
+			// A rejected save must not become an applied selection or a later write.
+			_selections = null;
+			throw;
+		}
 	}
 
 	private static IEnumerable<string> GetIdentityKeys(TrackInfo track)

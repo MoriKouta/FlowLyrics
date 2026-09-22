@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Keep Personal Sync profiles and manual lyrics selections consistent with disk after a failed write; reject uncommitted edits on subsequent reads and saves.
+
 - Match neutral R/S icon brightness, compact Repeat/Settings dot geometry and utility button metrics; prevent overlapping player controls in narrow windows.
 - Reduce nested editor card/button rounding and share dark tooltip styling while keeping active states distinct.
 - Add compact PLAYER CONTROLS visibility toggles with live preview, saved choices, and an explicit Cancel action that restores the prior settings.

@@ -104,8 +104,7 @@ public sealed class PersonalSyncStore
 			}
 			if (changed)
 			{
-				try { await SaveAsync(cancellationToken); }
-				catch { _profiles = null; throw; } // Reload disk before retrying a failed reset/save.
+				await SaveAsync(cancellationToken);
 			}
 		}
 		finally
@@ -182,13 +181,22 @@ public sealed class PersonalSyncStore
 
 	private async Task SaveAsync(CancellationToken cancellationToken)
 	{
-		Directory.CreateDirectory(_directory);
-		string temporary = _path + ".tmp";
-		await using (FileStream stream = File.Create(temporary))
+		try
 		{
-			await JsonSerializer.SerializeAsync(stream, _profiles, _jsonOptions, cancellationToken);
+			Directory.CreateDirectory(_directory);
+			string temporary = _path + ".tmp";
+			await using (FileStream stream = File.Create(temporary))
+			{
+				await JsonSerializer.SerializeAsync(stream, _profiles, _jsonOptions, cancellationToken);
+			}
+			File.Move(temporary, _path, overwrite: true);
 		}
-		File.Move(temporary, _path, overwrite: true);
+		catch
+		{
+			// All callers hold _lock. Reload committed data before any later read or edit.
+			_profiles = null;
+			throw;
+		}
 	}
 
 	private static PersonalSyncProfile Normalize(PersonalSyncProfile profile, bool touchUpdatedAt)

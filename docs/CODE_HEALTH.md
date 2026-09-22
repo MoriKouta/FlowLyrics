@@ -34,7 +34,7 @@
 | P0 / Critical | 初期監査時点では再現確認した即時の重大障害なし | 「潜在不具合なし」の保証ではない |
 | H1 / P1 High | LyricsServiceがHTTP/cache gate/backoffと歌詞採用を所有。GetJsonWithRetryAsync/Core、ClearTrackCacheAsyncに通信詳細が漏れる | 通信方式の変更が歌詞判定に触れやすい。今回のbehavior-preserving抽出対象 |
 | H2 / P1 High | MainWindowは現在曲・歌詞・Sync・Settings・描画の進行管理を集中所有 | 同じfieldを多数のcallbackが更新。完全分割はせず、次回はSync lifecycleをテストで固定してから分離 |
-| H3 / P1 High | PersonalSyncStore.Upsertだけが失敗時にmemoryを無効化、Delete/DeleteForContextは同じ対処なし。LyricsOverrideStoreのSet/Removeにもmemory先行変更あり | 保存に失敗した変更がmemoryだけに残る可能性。今回、失敗注入テストで再現してから別fixにする |
+| H3 / P1 High（再現済みbug、修正） | PersonalSyncStore.Upsertだけが失敗時にmemoryを無効化、Delete/DeleteForContextは同じ対処なし。LyricsOverrideStoreのSet/Removeにもmemory先行変更あり | 書込先をロックした6ケース中5件で不一致を再現。各storeのSaveAsyncへ失敗時の無効化を集約し、次回操作でdiskの確定状態を再読込。失敗した選択や削除が別の保存へ混ざる問題を防止 |
 | H4 / P1 High | MainWindow.AdjustCurrentTrackOffset/ResetTrackOffset、SettingsWindow.RefreshPersonalSyncProfilesにはawait後のtrack/operation世代確認が一様ではない | 古い処理が次曲UIへ反映される可能性。未再現の構造リスク。UI移行のcharacterizationを伴う別作業へ |
 | H5 / P1 High | MainWindow.ExitApplicationとClosedでtimer/event/taskの片付け責務が分散。匿名store/watcher購読、Cancel後の完了待ちが一様ではない | 終了と保存・更新の競合をレビューしにくい。終了テストを先に追加してからlifetimeをまとめる。今回は終了仕様を変えない |
 | M1 / P2 Medium | LyricsServiceのcache→LrclibRecord変換がvalidationと表示用で重複 | field追加時のずれ。現在のmappingは等価。次のcache変更時に共通化を検討 |
@@ -78,6 +78,10 @@ provider固有処理はMetadataRepair/UIAに隔離され、曲名を使った新
 - 全261テスト成功、失敗0、skip 0。
 - EnableNETAnalyzers=true / AnalysisLevel=latest / AnalysisMode未指定 / TreatWarningsAsErrors=false / EnforceCodeStyleInBuild=false / Nullable=annotations。専用.editorconfig/ruleset/global.jsonなし。今回warning-as-errorやformatは導入しない。
 - analyzer警告が0でもasync寿命やUIの競合が安全とは限らない。まず既存警告を種類ごとに扱い、次に限定範囲でnullable/analysis ruleを試す。SDK固定はCI運用も含む別判断とする。
+
+## 実施結果
+
+- H3: 修正前の失敗注入は6件中5件失敗。修正後は6件成功、全267件成功（失敗0、skip 0）。Release build成功。コンパイル時の既存警告6件は増加なし、直後の増分buildは警告0件。
 
 ## 継続運用
 
