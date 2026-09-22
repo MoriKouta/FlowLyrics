@@ -959,20 +959,7 @@ public partial class MainWindow : Window, IComponentConnector
 	{
 		_personalSyncButton = new System.Windows.Controls.Button
 		{
-			Content = new TextBlock
-			{
-				Text = "S",
-				FontFamily = _englishDotFont,
-				FontSize = 16.5,
-				LineHeight = 16.5,
-				FontWeight = FontWeights.Bold,
-				Foreground = System.Windows.Media.Brushes.White,
-				TextAlignment = TextAlignment.Center,
-				HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-				VerticalAlignment = VerticalAlignment.Center,
-				RenderTransform = new TranslateTransform(1.2, 0.0),
-				IsHitTestVisible = false
-			},
+			Content = PlayerControlVisuals.Letter("S"),
 			FontFamily = _englishDotFont,
 			FontSize = 16.5,
 			FontWeight = FontWeights.SemiBold,
@@ -986,6 +973,8 @@ public partial class MainWindow : Window, IComponentConnector
 		};
 		if (_personalSyncButton.Content is TextBlock syncIcon) TextOptions.SetTextFormattingMode(syncIcon, TextFormattingMode.Display);
 		if (base.Resources["SmallMediaButton"] is Style syncButtonStyle) _personalSyncButton.Style = syncButtonStyle;
+		PlayerControlVisuals.Size(_personalSyncButton);
+		PlayerControlVisuals.TrackHover(_personalSyncButton, UpdatePersonalSyncButton);
 		_personalSyncButton.Click += PersonalSyncButton_Click;
 		int syncButtonIndex = Math.Max(0, RightControlGroup.Children.IndexOf(VolumeButton));
 		RightControlGroup.Children.Insert(syncButtonIndex, _personalSyncButton);
@@ -1301,6 +1290,7 @@ public partial class MainWindow : Window, IComponentConnector
 		if (_personalSyncButton == null) return;
 		_personalSyncButton.IsEnabled = _snapshot != null && _lyrics?.HasSyncedLyrics == true;
 		PersonalSyncProfile? profile = _personalSyncActiveProfile;
+		if (_personalSyncButton.Content is UIElement glyph) PlayerControlVisuals.IconState(_personalSyncButton, glyph, profile is { Mode: not PersonalSyncMode.None });
 		if (profile == null || profile.Mode == PersonalSyncMode.None)
 		{
 			_personalSyncButton.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(34, byte.MaxValue, byte.MaxValue, byte.MaxValue));
@@ -2093,7 +2083,7 @@ public partial class MainWindow : Window, IComponentConnector
 		foreach (System.Windows.Controls.Button button in GetPlayerButtons())
 		{
 			button.BorderBrush = accent;
-			button.BorderThickness = new Thickness(1.25);
+			button.BorderThickness = new Thickness(PlayerControlVisuals.BorderWidth);
 			button.Background = surface;
 			button.Foreground = icon;
 			foreach (Shape shape in FindVisualChildren<Shape>(button))
@@ -2184,6 +2174,22 @@ public partial class MainWindow : Window, IComponentConnector
 		bool flag3 = num >= 58.0 && num2 >= 210.0;
 		bool flag4 = num >= 58.0 && num2 >= 310.0;
 		bool flag5 = num >= 64.0;
+		bool compact = num < 260.0 || num2 < 320.0;
+		double panelPadding = Math.Min(_settings.PanelPadding, Math.Max(2.0, Math.Min(num2, num) * 0.06));
+		double available = num2 - 2 * (panelPadding + (compact ? 2 : 7)) - OverlayPanel.BorderThickness.Left - OverlayPanel.BorderThickness.Right;
+		double utilityWidth = PlayerControlVisuals.ButtonSize + 2 * PlayerControlVisuals.ButtonSpacing;
+		double playWidth = (num < 68.0 ? 34 : 50) + PlayPauseButton.Margin.Left + PlayPauseButton.Margin.Right;
+		double skipWidth = PreviousButton.Width + PreviousButton.Margin.Left + PreviousButton.Margin.Right
+			+ NextButton.Width + NextButton.Margin.Left + NextButton.Margin.Right;
+		flag3 &= available >= 2 * utilityWidth + playWidth + skipWidth + 8;
+		int optionalCount = (_settings.ShowRepeatButton ? 1 : 0) + (_settings.ShowReverseButton ? 1 : 0)
+			+ (_settings.ShowPersonalSyncButton ? 1 : 0) + (_settings.ShowVolumeButton ? 1 : 0);
+		flag4 &= available >= (2 + optionalCount) * utilityWidth + playWidth + (flag3 ? skipWidth : 0) + 8;
+		// Star columns keep the transport centered when possible; minimum widths
+		// protect the utility groups when there is less room on the right.
+		ControlBar.ColumnDefinitions[0].MinWidth = utilityWidth + 4;
+		ControlBar.ColumnDefinitions[2].MinWidth = utilityWidth * (1 + (flag4 ? optionalCount - (_settings.ShowRepeatButton ? 1 : 0) : 0)) + 4;
+		PlayPauseButton.Visibility = available >= 2 * utilityWidth + playWidth + 8 ? Visibility.Visible : Visibility.Collapsed;
 		bool lyricsOnly = _settings.LyricsOnlyMode;
 		TrackInfoPanel.Visibility = ((!(!lyricsOnly && _settings.ShowTrackInfo && flag)) ? Visibility.Collapsed : Visibility.Visible);
 		HeaderPanel.Visibility = TrackInfoPanel.Visibility;
@@ -2214,11 +2220,10 @@ public partial class MainWindow : Window, IComponentConnector
 		PlayPauseIcon.Width = (flag6 ? 14 : 17);
 		PlayPauseIcon.Height = (flag6 ? 15 : 18);
 		FooterPanel.Visibility = ((PlaybackSeekSlider.Visibility != Visibility.Visible && ControlBar.Visibility != Visibility.Visible) ? Visibility.Collapsed : Visibility.Visible);
-		bool flag7 = num < 260.0 || num2 < 320.0;
+		bool flag7 = compact;
 		HeaderPanel.Margin = ((HeaderPanel.Visibility == Visibility.Visible) ? new Thickness(0.0, 0.0, 0.0, flag7 ? 6 : 14) : new Thickness(0.0));
 		FooterPanel.Margin = ((FooterPanel.Visibility == Visibility.Visible) ? new Thickness(0.0, flag7 ? 5 : 14, 0.0, 0.0) : new Thickness(0.0));
-		double uniformLength = Math.Min(_settings.PanelPadding, Math.Max(2.0, Math.Min(num2, num) * 0.06));
-		OverlayPanel.Padding = new Thickness(uniformLength);
+		OverlayPanel.Padding = new Thickness(panelPadding);
 		OverlayPanel.Margin = (flag7 ? new Thickness(2.0) : new Thickness(7.0));
 	}
 
@@ -2433,27 +2438,25 @@ public partial class MainWindow : Window, IComponentConnector
 	{
 		foreach (System.Windows.Controls.Button button in new[] { LockButton, VolumeButton, SettingsButton })
 		{
-			button.Width = 30.0;
-			button.Height = 30.0;
-			button.Margin = new Thickness(2.0, 0.0, 2.0, 0.0);
+			PlayerControlVisuals.Size(button);
 		}
 		LockIcon.Width = 15.0;
 		LockIcon.Height = 16.0;
 		LockIcon.RenderTransform = new TranslateTransform(-1.0, 0.0);
 		if (SettingsButton.Content is Grid settingsGlyph)
 		{
-			settingsGlyph.Width = 15.0;
-			settingsGlyph.Height = 2.6;
-			settingsGlyph.RenderTransform = new TranslateTransform(-0.8, 0.0);
-			double[] columns = { 2.6, 3.6, 2.6, 3.6, 2.6 };
+			settingsGlyph.Width = 2 * PlayerControlVisuals.EllipsisPitch + PlayerControlVisuals.EllipsisDotDiameter;
+			settingsGlyph.Height = PlayerControlVisuals.EllipsisDotDiameter;
+			settingsGlyph.RenderTransform = Transform.Identity;
+			double dotSize = PlayerControlVisuals.EllipsisDotDiameter, gap = PlayerControlVisuals.EllipsisPitch - dotSize;
+			double[] columns = { dotSize, gap, dotSize, gap, dotSize };
 			for (int index = 0; index < Math.Min(columns.Length, settingsGlyph.ColumnDefinitions.Count); index++)
 			{
 				settingsGlyph.ColumnDefinitions[index].Width = new GridLength(columns[index]);
 			}
 			foreach (Ellipse dot in settingsGlyph.Children.OfType<Ellipse>())
 			{
-				dot.Width = 2.6;
-				dot.Height = 2.6;
+				dot.Width = dot.Height = dotSize;
 			}
 		}
 		VolumePopupSurface.Padding = new Thickness(7.0, 10.0, 7.0, 10.0);
@@ -2463,24 +2466,7 @@ public partial class MainWindow : Window, IComponentConnector
 		VolumeSlider.Width = 28.0;
 	}
 
-	private TextBlock CreateDotReverseIcon()
-	{
-		TextBlock icon = new TextBlock
-		{
-			Text = "R",
-			FontFamily = _englishDotFont,
-			FontSize = 16.5,
-			FontWeight = FontWeights.Bold,
-			LineHeight = 16.5,
-			TextAlignment = TextAlignment.Center,
-			HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-			VerticalAlignment = VerticalAlignment.Center,
-			RenderTransform = new TranslateTransform(1.2, 0.0),
-			IsHitTestVisible = false
-		};
-		TextOptions.SetTextFormattingMode(icon, TextFormattingMode.Display);
-		return icon;
-	}
+	private TextBlock CreateDotReverseIcon() => PlayerControlVisuals.Letter("R");
 
 	private void UpdateVolumeIcon(bool muted)
 	{
@@ -2511,6 +2497,8 @@ public partial class MainWindow : Window, IComponentConnector
 			_reverseColorsButton.Style = style;
 		}
 		_reverseColorsButton.Click += ReverseColorsButton_Click;
+		PlayerControlVisuals.Size(_reverseColorsButton);
+		PlayerControlVisuals.TrackHover(_reverseColorsButton, UpdateReverseColorsButtonVisual);
 		_reverseColorsButton.MouseEnter += delegate
 		{
 			CloseVolumePopup();
@@ -2539,7 +2527,7 @@ public partial class MainWindow : Window, IComponentConnector
 			return;
 		}
 		_reverseColorsButton.ToolTip = _settings.ReverseColors ? "Reverse Colors: On" : "Reverse Colors: Off";
-		_reverseColorsIcon.Opacity = _settings.ReverseColors ? 1.0 : 0.72;
+		PlayerControlVisuals.IconState(_reverseColorsButton, _reverseColorsIcon, _settings.ReverseColors);
 		_reverseColorsButton.Opacity = 1.0;
 		if (_settings.ReverseColors)
 		{

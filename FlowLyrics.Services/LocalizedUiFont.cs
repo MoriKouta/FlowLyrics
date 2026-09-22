@@ -16,6 +16,14 @@ internal static class LocalizedUiFont
 		window.Resources["DotFont"] = EnglishDotFont;
 		window.Resources["EnglishDotFont"] = EnglishDotFont;
 		window.Resources["UiFont"] = window.FontFamily;
+		Style tooltip = new(typeof(ToolTip));
+		tooltip.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(32, 30, 33))));
+		tooltip.Setters.Add(new Setter(Control.ForegroundProperty, new SolidColorBrush(Color.FromRgb(240, 237, 240))));
+		tooltip.Setters.Add(new Setter(Control.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(89, 83, 91))));
+		tooltip.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+		tooltip.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8, 5, 8, 5)));
+		tooltip.Setters.Add(new Setter(Control.FontFamilyProperty, window.FontFamily));
+		window.Resources[typeof(ToolTip)] = tooltip;
 		BindTechnicalFonts(window, englishDotFont);
 	}
 

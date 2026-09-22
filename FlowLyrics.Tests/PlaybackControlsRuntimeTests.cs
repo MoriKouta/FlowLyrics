@@ -47,7 +47,30 @@ public sealed class PlaybackControlsRuntimeTests
 					Assert.False(change.Result); Assert.Equal(Visibility.Visible, Read<TextBlock>(window, "_repeatOne").Visibility);
 					provider.Current = provider.Current with { RepeatMode = MediaRepeatMode.None }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
 					Assert.Equal(Visibility.Collapsed, Read<TextBlock>(window, "_repeatOne").Visibility);
+					Set("_snapshot", new PlaybackSnapshot(new("Control study", "Artist", "", TimeSpan.FromSeconds(180)), TimeSpan.FromSeconds(20), false, DateTimeOffset.UtcNow, SourceAppUserModelId: "player"));
+					Set("_lyrics", new LyricsResult([new(TimeSpan.Zero, "Control study")], null, "LRCLIB"));
+					Invoke(window, "UpdatePlaybackChrome"); Invoke(window, "UpdatePersonalSyncButton");
+					window.Width = 760; window.Height = 350; window.Background = System.Windows.Media.Brushes.Black; Pump();
+					foreach (var mode in new[] { MediaRepeatMode.None, MediaRepeatMode.List, MediaRepeatMode.Track })
+					{
+						provider.Current = provider.Current with { RepeatMode = mode }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current)); Pump();
+						UiUxRuntimeTests.Capture(window, "player-controls-" + mode); GlowOverlayTests.CaptureNative(window, "player-controls-" + mode);
+						foreach (double dpi in new[] { 120.0, 144 }) UiUxRuntimeTests.Capture(window, $"player-controls-{mode}-{dpi}dpi", dpi);
+					}
+					provider.Current = provider.Current with { RepeatMode = MediaRepeatMode.None }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
 					Assert.DoesNotContain(Logical<Button>(window), button => button.Name == "StopAfterTrackButton");
+					// Resize the actual BAML control bar, including the runtime-added buttons.
+					foreach (double width in new[] { 760.0, 500, 430, 390, 350, 310, 250, 216 })
+					{
+						window.Width = width; Pump(); Invoke(window, "UpdateChromeVisibility"); Pump();
+						var buttons = new[] { "LockButton", "PreviousButton", "PlayPauseButton", "NextButton", "_repeatButton",
+							"_reverseColorsButton", "_personalSyncButton", "VolumeButton", "SettingsButton" }.Select(field => Read<Button>(window, field))
+							.Where(button => button.IsVisible).Select(button => (button.Name, Bounds: new Rect(button.TranslatePoint(new Point(), window), button.RenderSize))).ToArray();
+						for (int i = 0; i < buttons.Length; i++)
+							for (int j = i + 1; j < buttons.Length; j++)
+								Assert.False(buttons[i].Bounds.IntersectsWith(buttons[j].Bounds), $"width={width}: {buttons[i].Name} overlaps {buttons[j].Name}");
+						UiUxRuntimeTests.Capture(window, "player-width-" + width);
+					}
 					PersonalSyncWindow editor = new(new(directory), new(new(), new(), new()), null, [], () => null, () => TimeSpan.Zero, "en-US");
 					try
 					{
@@ -69,6 +92,7 @@ public sealed class PlaybackControlsRuntimeTests
 					foreach (FieldInfo field in typeof(MainWindow).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
 						if (field.GetValue(window) is DispatcherTimer timer) timer.Stop();
 				}
+				void Set(string field, object value) => typeof(MainWindow).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, value);
 			});
 		}
 		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }

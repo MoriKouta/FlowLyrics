@@ -96,13 +96,14 @@ public sealed class UiUxRuntimeTests
 		});
 	}
 
-	internal static void Capture(Window window, string name)
+	internal static void Capture(Window window, string name, double dpi = 96)
 	{
 		string? output = Environment.GetEnvironmentVariable("FLOWLYRICS_UI_CAPTURE_DIR");
 		if (string.IsNullOrWhiteSpace(output)) return;
 		Directory.CreateDirectory(output);
 		window.UpdateLayout();
-		RenderTargetBitmap bitmap = new((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+		int width = (int)Math.Ceiling(window.ActualWidth * dpi / 96), height = (int)Math.Ceiling(window.ActualHeight * dpi / 96);
+		RenderTargetBitmap bitmap = new(width, height, dpi, dpi, PixelFormats.Pbgra32);
 		bitmap.Render(window);
 		// Composite transparent overlay captures on a known background. A PNG viewer
 		// that ignores alpha otherwise shows false colored contours in the glow.
@@ -113,7 +114,7 @@ public sealed class UiUxRuntimeTests
 			drawing.DrawRectangle(Brushes.Black, null, bounds);
 			drawing.DrawImage(bitmap, bounds);
 		}
-		bitmap = new((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+		bitmap = new(width, height, dpi, dpi, PixelFormats.Pbgra32);
 		bitmap.Render(backdrop);
 		PngBitmapEncoder encoder = new(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
 		using FileStream stream = File.Create(Path.Combine(output, name + ".png")); encoder.Save(stream);

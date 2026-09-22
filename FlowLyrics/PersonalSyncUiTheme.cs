@@ -30,8 +30,8 @@ internal static class PersonalSyncUiTheme
     <Setter Property="Background" Value="{StaticResource SyncControl}" />
     <Setter Property="BorderBrush" Value="{StaticResource SyncBorder}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="12,8" />
-    <Setter Property="MinHeight" Value="36" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="MinHeight" Value="32" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Margin" Value="3" />
@@ -41,7 +41,7 @@ internal static class PersonalSyncUiTheme
         <ControlTemplate TargetType="{x:Type Button}">
           <Border x:Name="Surface" Background="{TemplateBinding Background}"
                   BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                  CornerRadius="4" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
                               RecognizesAccessKey="True" />
@@ -105,7 +105,7 @@ internal static class PersonalSyncUiTheme
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type CheckBox}">
       <Grid x:Name="Toggle" Background="Transparent">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-        <Border x:Name="Box" Width="17" Height="17" CornerRadius="5" BorderThickness="1"
+        <Border x:Name="Box" Width="17" Height="17" CornerRadius="3" BorderThickness="1"
                 BorderBrush="{StaticResource SyncBorder}" Background="{StaticResource SyncControl}" VerticalAlignment="Center">
           <Path x:Name="Check" Data="M 3,7 L 6,10 L 12,3" Stroke="#FF1C191C" StrokeThickness="2" Visibility="Collapsed" />
         </Border>

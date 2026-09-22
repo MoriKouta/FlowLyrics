@@ -104,7 +104,13 @@ public sealed class GlowOverlayTests
 					Left = window.Left, Top = window.Top, Width = window.ActualWidth, Height = window.ActualHeight };
 				backdrop.Show(); window.Owner = backdrop;
 			}
-			window.Topmost = false; window.Topmost = true; window.Activate(); window.UpdateLayout(); Pump(); Thread.Sleep(100); Pump();
+			window.Topmost = false; window.Topmost = true; window.Activate(); window.UpdateLayout(); Pump();
+			// Keep dispatching while the compositor presents the window. Blocking the UI
+			// thread here can capture only the unpainted native window background.
+			var frame = new System.Windows.Threading.DispatcherFrame();
+			var present = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+			present.Tick += (_, _) => { present.Stop(); frame.Continue = false; };
+			present.Start(); System.Windows.Threading.Dispatcher.PushFrame(frame);
 			FrameworkElement surface = window.WindowStyle == WindowStyle.None ? window : (FrameworkElement)window.Content;
 			Point origin = surface.PointToScreen(new Point()); DpiScale dpi = VisualTreeHelper.GetDpi(surface);
 			using System.Drawing.Bitmap bitmap = new((int)(surface.ActualWidth * dpi.DpiScaleX), (int)(surface.ActualHeight * dpi.DpiScaleY));

@@ -75,6 +75,7 @@ public sealed class PersonalSyncWindow : Window
 	private readonly ListBox _lyricsList;
 	private readonly PersonalSyncRail _rail;
 	private readonly Border _inspector;
+	private readonly Border _pointEditorSurface;
 	private readonly TextBlock _inspectorSummary;
 	private readonly ColumnDefinition _inspectorColumn;
 	private readonly Func<bool> _canSeek;
@@ -201,7 +202,7 @@ public sealed class PersonalSyncWindow : Window
 		body.Children.Add(offset);
 
 		StackPanel timelinePanel = new();
-		_inspector = new Border { Background = Brush(30, 28, 31), Padding = new Thickness(12), Margin = new Thickness(12, 0, 0, 0), CornerRadius = new CornerRadius(8),
+		_inspector = new Border { Background = Brush(30, 28, 31), Padding = new Thickness(12), Margin = new Thickness(12, 0, 0, 0), CornerRadius = new CornerRadius(4),
 			Child = new ScrollViewer { Content = timelinePanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } };
 		Grid.SetRow(_inspector, 1); Grid.SetColumn(_inspector, 1); body.Children.Add(_inspector);
 		_selectionText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) };
@@ -224,10 +225,10 @@ public sealed class PersonalSyncWindow : Window
 		back.Click += (_, _) => { _pointsList.SelectedItem = null; _rail.SelectedId = null; RefreshPointEditor(); };
 		_backToLyric.Inlines.Add(back); timelinePanel.Children.Add(_backToLyric);
 
-		Border editCard = new()
+		Border editCard = _pointEditorSurface = new()
 		{
 			Background = Brush(30, 28, 31), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(8), Padding = new Thickness(11), Margin = new Thickness(0, 3, 0, 0)
+			CornerRadius = new CornerRadius(4), Padding = new Thickness(8), Margin = new Thickness(0, 3, 0, 0)
 		};
 		StackPanel editPanel = new();
 		editCard.Child = editPanel;
@@ -761,6 +762,7 @@ public sealed class PersonalSyncWindow : Window
 	{
 		RefreshInspectorSummary();
 		bool has = _pointsList.SelectedItem is SyncPointListItem;
+		_pointEditorSurface.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
 		_deletePointButton.IsEnabled = has;
 		_deletePointButton.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
 		_matchButton.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
@@ -1331,7 +1333,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private static TextBlock SectionTitle(string text) => LocalizedUiFont.Heading(text);
 	private static StackPanel CardContent() => new() { Margin = new Thickness(14) };
-	private static Border Card() => new() { Background = Brush(36, 33, 37), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Margin = new Thickness(0, 0, 0, 11) };
+	private static Border Card() => new() { Background = Brush(36, 33, 37), BorderBrush = Brush(69, 64, 70), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 0, 11) };
 	private static Button Button(string text) => new() { Content = text };
 	private static Button PrimaryButton(string text) => new() { Content = text, Background = Accent(), Foreground = Brush(28, 25, 28), BorderBrush = Accent(), FontWeight = FontWeights.SemiBold };
 	private static Button DangerButton(string text) => new() { Content = text, Foreground = Brush(238, 158, 157) };

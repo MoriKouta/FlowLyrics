@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Match neutral R/S icon brightness, compact Repeat/Settings dot geometry and utility button metrics; prevent overlapping player controls in narrow windows.
+- Reduce nested editor card/button rounding and share dark tooltip styling while keeping active states distinct.
 - Add compact PLAYER CONTROLS visibility toggles with live preview, saved choices, and an explicit Cancel action that restores the prior settings.
 
 - Add observed GSMTC Off/List/Track Repeat and a one-shot Stop After Track action in Personal Sync, with capability checks, repeat-off confirmation, conservative natural-end detection and pause/stop fallback.
