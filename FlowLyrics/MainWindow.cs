@@ -2195,15 +2195,16 @@ public partial class MainWindow : Window, IComponentConnector
 		ControlBar.Visibility = ((!(!lyricsOnly && _settings.ShowPlaybackControls && flag2)) ? Visibility.Collapsed : Visibility.Visible);
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
-		if (_repeatButton != null) _repeatButton.Visibility = flag4 ? Visibility.Visible : Visibility.Collapsed;
-		VolumeButton.Visibility = ((!flag4) ? Visibility.Collapsed : Visibility.Visible);
+		if (_repeatButton != null) _repeatButton.Visibility = flag4 && _settings.ShowRepeatButton ? Visibility.Visible : Visibility.Collapsed;
+		VolumeButton.Visibility = flag4 && _settings.ShowVolumeButton ? Visibility.Visible : Visibility.Collapsed;
+		if (VolumeButton.Visibility != Visibility.Visible) CloseVolumePopup();
 		if (_personalSyncButton != null)
 		{
-			_personalSyncButton.Visibility = VolumeButton.Visibility;
+			_personalSyncButton.Visibility = flag4 && _settings.ShowPersonalSyncButton ? Visibility.Visible : Visibility.Collapsed;
 		}
 		if (_reverseColorsButton != null)
 		{
-			_reverseColorsButton.Visibility = VolumeButton.Visibility;
+			_reverseColorsButton.Visibility = flag4 && _settings.ShowReverseButton ? Visibility.Visible : Visibility.Collapsed;
 		}
 		LockButton.Visibility = Visibility.Visible;
 		SettingsButton.Visibility = Visibility.Visible;

@@ -9,6 +9,10 @@ internal static class EditorUiTranslations
 	private static readonly string[] Languages = ["ja-JP", "zh-CN", "zh-TW", "ko-KR", "es-ES", "fr-FR", "de-DE", "pt-BR", "ru-RU"];
 	private static readonly IReadOnlyDictionary<string, string[]> Values = new Dictionary<string, string[]>(StringComparer.Ordinal)
 	{
+		["Show repeat control"] = ["リピートボタンを表示", "显示重复播放按钮", "顯示重複播放按鈕", "반복 버튼 표시", "Mostrar repetición", "Afficher la répétition", "Wiederholung anzeigen", "Mostrar repetição", "Показывать кнопку повтора"],
+		["Show reverse colors control"] = ["色反転ボタンを表示", "显示反色按钮", "顯示反色按鈕", "색상 반전 버튼 표시", "Mostrar inversión de colores", "Afficher l’inversion des couleurs", "Farbumkehr anzeigen", "Mostrar inversão de cores", "Показывать инверсию цветов"],
+		["Show Personal Sync control"] = ["Personal Syncボタンを表示", "显示个人同步按钮", "顯示個人同步按鈕", "개인 동기화 버튼 표시", "Mostrar sincronización personal", "Afficher la synchronisation personnelle", "Persönliche Synchronisation anzeigen", "Mostrar sincronização pessoal", "Показывать личную синхронизацию"],
+		["Show volume control"] = ["音量ボタンを表示", "显示音量按钮", "顯示音量按鈕", "음량 버튼 표시", "Mostrar volumen", "Afficher le volume", "Lautstärke anzeigen", "Mostrar volume", "Показывать громкость"],
 		["Repeat off"] = ["リピート：オフ", "重复播放：关", "重複播放：關", "반복 끄기", "Repetición desactivada", "Répétition désactivée", "Wiederholung aus", "Repetição desativada", "Повтор выключен"],
 		["Repeat list"] = ["リピート：全曲", "列表循环", "重複播放全部", "전체 반복", "Repetir lista", "Répéter la liste", "Liste wiederholen", "Repetir lista", "Повтор списка"],
 		["Repeat track"] = ["リピート：1曲", "单曲循环", "單曲重複", "한 곡 반복", "Repetir canción", "Répéter le morceau", "Titel wiederholen", "Repetir faixa", "Повтор трека"],

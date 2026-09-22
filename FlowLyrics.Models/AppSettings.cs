@@ -95,6 +95,10 @@ public sealed class AppSettings
 	public bool ShowTrackInfo { get; set; } = true;
 
 	public bool ShowPlaybackControls { get; set; } = true;
+	public bool ShowRepeatButton { get; set; } = true;
+	public bool ShowReverseButton { get; set; } = true;
+	public bool ShowPersonalSyncButton { get; set; } = true;
+	public bool ShowVolumeButton { get; set; } = true;
 
 	public bool ShowProgressBar { get; set; } = true;
 

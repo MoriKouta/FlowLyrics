@@ -683,6 +683,7 @@
       <DockPanel LastChildFill="False">
         <Button DockPanel.Dock="Left" Content="Reset" Click="Reset_Click" />
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="Cancel" Click="Cancel_Click" />
           <Button Content="Close" IsDefault="True" Background="{DynamicResource Orange}" Foreground="#FF111111" BorderBrush="{DynamicResource Orange}" Click="Save_Click" />
         </StackPanel>
       </DockPanel>

@@ -29,6 +29,11 @@ namespace FlowLyrics;
 public class SettingsWindow : Window, IComponentConnector
 {
 	private readonly AppSettings _originalSettings;
+	private bool _cancelRequested;
+	private System.Windows.Controls.CheckBox? _showRepeatButtonBox;
+	private System.Windows.Controls.CheckBox? _showReverseButtonBox;
+	private System.Windows.Controls.CheckBox? _showPersonalSyncButtonBox;
+	private System.Windows.Controls.CheckBox? _showVolumeButtonBox;
 
 	private readonly string _lrcDirectory;
 
@@ -305,6 +310,7 @@ public class SettingsWindow : Window, IComponentConnector
 		CurrentTrackHeader.ConfigureArtist(CurrentTrackArtistText, 22);
 		_englishDotFont = LocalizedUiFont.EnglishDotFont;
 		InitializeLyricsOnlyControl();
+		InitializePlayerControlOptions();
 		SettingsTabs.Items.Remove(LyricsTab);
 		SettingsTabs.Items.Insert(0, LyricsTab);
 		CaptureLocalizableContent(this);
@@ -398,6 +404,26 @@ public class SettingsWindow : Window, IComponentConnector
 		button.Tag = "NoTranslate";
 		button.ToolTip = "Show only lyrics without changing the saved component choices";
 		_lyricsOnlyButton = button;
+	}
+
+	private void InitializePlayerControlOptions()
+	{
+		if (ShowPanelBorderBox.Parent is not WrapPanel options || options.Parent is not StackPanel components) return;
+		TextBlock title = LocalizedUiFont.Heading("PLAYER CONTROLS", 12);
+		title.Margin = new Thickness(0, 12, 0, 6);
+		WrapPanel toggles = new() { Name = "PlayerControlOptions" };
+		components.Children.Insert(components.Children.IndexOf(options) + 1, title);
+		components.Children.Insert(components.Children.IndexOf(title) + 1, toggles);
+		_showRepeatButtonBox = Create("REPEAT", "Show repeat control");
+		_showReverseButtonBox = Create("REVERSE", "Show reverse colors control");
+		_showPersonalSyncButtonBox = Create("SYNC", "Show Personal Sync control");
+		_showVolumeButtonBox = Create("VOLUME", "Show volume control");
+		System.Windows.Controls.CheckBox Create(string name, string tooltip)
+		{
+			var box = new System.Windows.Controls.CheckBox { Content = name, Tag = "NoTranslate", ToolTip = tooltip,
+				FontSize = 10, Margin = new Thickness(0, 0, 18, 6), MinHeight = 24 };
+			LocalizedUiFont.Technical(box); toggles.Children.Add(box); return box;
+		}
 	}
 
 	private void RefreshLyricsOnlyControl()
@@ -2412,6 +2438,10 @@ public class SettingsWindow : Window, IComponentConnector
 				NotifyPreviewChanged();
 			};
 		}
+		foreach (var box in new[] { _showRepeatButtonBox, _showReverseButtonBox, _showPersonalSyncButtonBox, _showVolumeButtonBox }.OfType<System.Windows.Controls.CheckBox>())
+		{
+			box.Checked += (_, _) => NotifyPreviewChanged(); box.Unchecked += (_, _) => NotifyPreviewChanged();
+		}
 		System.Windows.Controls.TextBox[] array4 = new System.Windows.Controls.TextBox[7] { CurrentColorBox, NextColorBox, OutlineColorBox, ShadowColorBox, BackgroundColorBox, BorderColorBox, UiColorBox };
 		foreach (System.Windows.Controls.TextBox colorBox in array4)
 		{
@@ -2467,6 +2497,10 @@ public class SettingsWindow : Window, IComponentConnector
 		BorderThicknessSlider.Value = settings.BorderThickness;
 		ShowTrackInfoBox.IsChecked = settings.ShowTrackInfo;
 		ShowPlaybackControlsBox.IsChecked = settings.ShowPlaybackControls;
+		if (_showRepeatButtonBox != null) _showRepeatButtonBox.IsChecked = settings.ShowRepeatButton;
+		if (_showReverseButtonBox != null) _showReverseButtonBox.IsChecked = settings.ShowReverseButton;
+		if (_showPersonalSyncButtonBox != null) _showPersonalSyncButtonBox.IsChecked = settings.ShowPersonalSyncButton;
+		if (_showVolumeButtonBox != null) _showVolumeButtonBox.IsChecked = settings.ShowVolumeButton;
 		ShowProgressBarBox.IsChecked = settings.ShowProgressBar;
 		_lyricsOnlyMode = settings.LyricsOnlyMode;
 		AlwaysOnTopBox.IsChecked = settings.AlwaysOnTop;
@@ -2847,7 +2881,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		// Settings are applied live. Treat the title-bar close button exactly like Close
 		// so presentation-only options (including Show All Lyrics) are never rolled back.
-		if (!Accepted && TryBuildSettings(out AppSettings settings, showError: false))
+		if (!_cancelRequested && !Accepted && TryBuildSettings(out AppSettings settings, showError: false))
 		{
 			ResultSettings = settings;
 			Accepted = true;
@@ -2937,6 +2971,10 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.ShowUnlockedBadge = false;
 		appSettings.ShowTrackInfo = ShowTrackInfoBox.IsChecked == true;
 		appSettings.ShowPlaybackControls = ShowPlaybackControlsBox.IsChecked == true;
+		appSettings.ShowRepeatButton = _showRepeatButtonBox?.IsChecked ?? _originalSettings.ShowRepeatButton;
+		appSettings.ShowReverseButton = _showReverseButtonBox?.IsChecked ?? _originalSettings.ShowReverseButton;
+		appSettings.ShowPersonalSyncButton = _showPersonalSyncButtonBox?.IsChecked ?? _originalSettings.ShowPersonalSyncButton;
+		appSettings.ShowVolumeButton = _showVolumeButtonBox?.IsChecked ?? _originalSettings.ShowVolumeButton;
 		appSettings.ShowProgressBar = ShowProgressBarBox.IsChecked == true;
 		appSettings.LyricsOnlyMode = _lyricsOnlyMode;
 		appSettings.AlwaysOnTop = AlwaysOnTopBox.IsChecked == true;
@@ -2968,7 +3006,9 @@ public class SettingsWindow : Window, IComponentConnector
 
 	private void Cancel_Click(object sender, RoutedEventArgs e)
 	{
+		_cancelRequested = true;
 		Accepted = false;
+		ResultSettings = _originalSettings.Clone();
 		Close();
 	}
 
@@ -3370,7 +3410,8 @@ public class SettingsWindow : Window, IComponentConnector
 			((System.Windows.Controls.Button)target).Click += Reset_Click;
 			break;
 		case 82:
-			((System.Windows.Controls.Button)target).Visibility = Visibility.Collapsed;
+			((System.Windows.Controls.Button)target).Visibility = Visibility.Visible;
+			((System.Windows.Controls.Button)target).Click += Cancel_Click;
 			break;
 		case 83:
 			((System.Windows.Controls.Button)target).Click += Save_Click;
