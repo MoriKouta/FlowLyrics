@@ -17,6 +17,64 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class PersonalSyncGlobalAlignmentTests
 {
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task AlignNow_RepairsSelectedLegacyRewind_AndPersistsLikeFreshProfile(bool legacy)
+	{
+		string directory = Temp(); var context = Context(); var store = new PersonalSyncStore(directory);
+		try
+		{
+			var profile = new PersonalSyncProfile { Track = context.Track, Source = context.Source, Lyrics = context.Lyrics, Mode = PersonalSyncMode.Advanced };
+			if (legacy) profile.Anchors.Add(new() { PlaybackSeconds = 35, LyricsSeconds = 20 });
+			await store.UpsertAsync(profile);
+			Sta(() =>
+			{
+				LyricLine[] lines = [new(TimeSpan.FromSeconds(20), "A"), new(TimeSpan.FromSeconds(24), "B"), new(TimeSpan.FromSeconds(28), "C")];
+				var window = new PersonalSyncWindow(store, context, profile, lines, () => 0, () => TimeSpan.FromSeconds(35), "ja-JP");
+				try
+				{
+					window.Show(); Pump(); Invoke(window, "MatchSelectedLine_Click", window, new RoutedEventArgs());
+					Check(Read<PersonalSyncProfile>(window, "_profile"));
+				}
+				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
+			});
+			Check((await new PersonalSyncStore(directory).ResolveAsync(context)).Profile!);
+		}
+		finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+		static void Check(PersonalSyncProfile changed)
+		{
+			Assert.Equal(15, changed.OffsetSeconds); Assert.Empty(changed.Anchors);
+			Assert.Equal(35, PersonalSyncTimeline.PlaybackForLyric(20, changed));
+			Assert.True(PersonalSyncMapper.MapPlaybackToLyrics(20, changed) < 20);
+			Assert.True(PersonalSyncMapper.MapPlaybackToLyrics(34.9, changed) < 20);
+			Assert.Equal(20, PersonalSyncMapper.MapPlaybackToLyrics(35, changed));
+			Assert.Equal(24, PersonalSyncMapper.MapPlaybackToLyrics(39, changed));
+			Assert.Equal(28, PersonalSyncMapper.MapPlaybackToLyrics(43, changed));
+			Assert.Equal(55, PersonalSyncMapper.MapPlaybackToLyrics(70, changed));
+		}
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void GlobalAlign_PreservesResumeAnchorsHoldsAndUnrelatedResync(bool legacyHold)
+	{
+		var resume = new PersonalSyncAnchor { PlaybackSeconds = 35, LyricsSeconds = 20 };
+		var unrelated = new PersonalSyncAnchor { PlaybackSeconds = 100, LyricsSeconds = 70 };
+		var hold = new PersonalSyncSegment { Type = PersonalSyncSegmentType.Hold, PlaybackStartSeconds = 30, PlaybackEndSeconds = 35,
+			LyricsTimeSeconds = 19, ResumeAnchorId = legacyHold ? null : resume.Id };
+		var blank = new PersonalSyncSegment { Type = PersonalSyncSegmentType.Hold, PlaybackStartSeconds = 60, PlaybackEndSeconds = 65, LyricsTimeSeconds = 0 };
+		var profile = new PersonalSyncProfile { Mode = PersonalSyncMode.Advanced, Anchors = [resume, unrelated], Segments = [hold, blank] };
+		Assert.True(PersonalSyncTimeline.AlignGlobally(profile, 20, 35));
+		Assert.Equal(15, profile.OffsetSeconds); Assert.Equal(2, profile.Anchors.Count); Assert.Equal(2, profile.Segments.Count);
+		Assert.Equal(legacyHold ? null : (Guid?)resume.Id, hold.ResumeAnchorId); Assert.Equal(50, resume.PlaybackSeconds); Assert.Equal(50, hold.PlaybackEndSeconds);
+		Assert.Equal(115, unrelated.PlaybackSeconds); Assert.Equal(70, unrelated.LyricsSeconds);
+		Assert.Equal(0, PersonalSyncMapper.MapPlaybackToLyrics(77, profile));
+		Assert.Equal(19, PersonalSyncMapper.MapPlaybackToLyrics(47, profile));
+		Assert.False(PersonalSyncTimeline.AlignGlobally(profile, 20, 35));
+	}
+
 	[Fact]
 	public async Task HistoryGlobalNudge_MovesPointsAndHoldsAndPersistsTheWholeTimeline()
 	{

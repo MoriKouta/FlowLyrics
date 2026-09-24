@@ -549,16 +549,8 @@ public sealed class PersonalSyncWindow : Window
 	private void AlignProgressively(int index, double playback)
 	{
 		double lyric = _lines[index].Time.TotalSeconds;
-		double? current = _profile.Mode != PersonalSyncMode.Advanced
-			? lyric + (_profile.Mode == PersonalSyncMode.None ? 0 : _profile.OffsetSeconds)
-			: PersonalSyncTimeline.PlaybackForLyric(lyric, _profile);
-		if (!current.HasValue)
-		{
-			_workflowHint.Text = T("This line is skipped by the current edits. Use Re-sync from here.");
-			return;
-		}
-		double delta = playback - current.Value;
-		if (Math.Abs(delta) > .0001) Change(profile => ShiftWholeTrack(profile, delta));
+		if (PersonalSyncTimeline.AlignGlobally(_profile.Clone(), lyric, playback))
+			Change(profile => PersonalSyncTimeline.AlignGlobally(profile, lyric, playback));
 	}
 
 	private void AlignLineAt(int index, double playback)
@@ -814,7 +806,7 @@ public sealed class PersonalSyncWindow : Window
 		if (!visible) return;
 		row.Label.Text = label;
 		row.Value.Text = Format(seconds);
-		row.SetButton.Content = new TextBlock { Text = action, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+		row.SetButton.Content = action;
 		row.SetButton.IsEnabled = enabled;
 	}
 

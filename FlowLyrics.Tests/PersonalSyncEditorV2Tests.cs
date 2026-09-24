@@ -204,6 +204,7 @@ public sealed class PersonalSyncEditorV2Tests
 					Read<Button>(window, "_resyncButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					var profile = Read<PersonalSyncProfile>(window, "_profile");
 					Assert.Single(profile.Anchors); Assert.Equal(0, profile.OffsetSeconds);
+					AssertEditorLabels();
 					Assert.False(Read<Button>(window, "_resyncButton").IsVisible);
 					Assert.True(Read<Button>(window, "_deletePointButton").IsVisible);
 					now = 40;
@@ -213,9 +214,17 @@ public sealed class PersonalSyncEditorV2Tests
 					Assert.True(Read<Button>(window, "_resumeButton").IsVisible);
 					Read<Button>(window, "_resumeButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					var hold = profile.Segments.Single();
+					AssertEditorLabels();
 					Assert.Equal(28, profile.Anchors.Single(a => a.Id == hold.ResumeAnchorId).LyricsSeconds);
 					Pump(); UiUxRuntimeTests.Capture(window, "sync-context-" + width);
 					GlowOverlayTests.CaptureNative(window, "sync-context-" + width);
+					void AssertEditorLabels()
+					{
+						window.UpdateLayout(); Pump();
+						var panel = Read<Border>(window, "_pointEditorSurface");
+						Assert.Contains(CandidateRuntimeTests.Visuals<TextBlock>(panel), t => t.Text == "現在位置を使う");
+						Assert.DoesNotContain(CandidateRuntimeTests.Visuals<TextBlock>(panel), t => t.Text.Contains("System.Windows.Controls"));
+					}
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});

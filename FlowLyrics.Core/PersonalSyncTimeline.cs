@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FlowLyrics.Models;
 
@@ -19,7 +20,29 @@ public static class PersonalSyncTimeline
 		{ hold.PlaybackStartSeconds += applied; hold.PlaybackEndSeconds += applied; }
 	}
 
-	public static double? PlaybackForLyric(double lyric, PersonalSyncProfile profile)
+	public static bool AlignGlobally(PersonalSyncProfile profile, double lyric, double playback)
+	{
+		if (!double.IsFinite(lyric) || !double.IsFinite(playback) || lyric < 0 || playback < 0) return false;
+		double desired = Math.Clamp(playback - lyric, -3600, 3600);
+		// Repair only the selected line, on an explicit Align action. A schema-v2
+		// anchor's origin cannot safely be inferred during profile loading.
+		double[] occurrences = PlaybackOccurrences(lyric, profile).ToArray();
+		var conflicts = profile.Mode == PersonalSyncMode.Advanced ? profile.Anchors.Where(anchor =>
+			Math.Abs(anchor.LyricsSeconds - lyric) < .0001
+			&& occurrences.Any(time => time < anchor.PlaybackSeconds - .001)
+			&& !profile.Segments.Any(segment => segment.ResumeAnchorId == anchor.Id
+				|| (!segment.ResumeAnchorId.HasValue && Math.Abs(segment.PlaybackEndSeconds - anchor.PlaybackSeconds) < .15)))
+			.ToArray() : Array.Empty<PersonalSyncAnchor>();
+		double delta = desired - profile.OffsetSeconds;
+		if (conflicts.Length == 0 && Math.Abs(delta) < .0001 && profile.Mode != PersonalSyncMode.None) return false;
+		foreach (var anchor in conflicts) profile.Anchors.Remove(anchor);
+		ShiftWholeTrack(profile, delta);
+		return true;
+	}
+
+	public static double? PlaybackForLyric(double lyric, PersonalSyncProfile profile) => PlaybackOccurrences(lyric, profile).Cast<double?>().FirstOrDefault();
+
+	private static IEnumerable<double> PlaybackOccurrences(double lyric, PersonalSyncProfile profile)
 	{
 		// Each boundary starts a linear or held segment. A skipped lyric has no
 		// playback coordinate; do not invent a seek position for it.
@@ -31,15 +54,14 @@ public static class PersonalSyncTimeline
 		{
 			double start = boundaries[i], end = i + 1 < boundaries.Length ? boundaries[i + 1] : double.PositiveInfinity;
 			double mapped = PersonalSyncMapper.MapPlaybackToLyrics(start, profile);
-			if (Math.Abs(mapped - lyric) < .0001) return start;
+			if (Math.Abs(mapped - lyric) < .0001) { yield return start; continue; }
 			double probe = double.IsInfinity(end) ? start + 1 : (start + end) / 2;
 			if (PersonalSyncMapper.DescribeActiveSegment(probe, profile).StartsWith("Hold", StringComparison.Ordinal)) continue;
 			// Account for the mapper's clamp at the beginning of a positive offset.
 			double sample = Math.Max(probe, start + Math.Abs(profile.OffsetSeconds) + 1);
 			if (sample >= end) sample = probe;
 			double target = sample + lyric - PersonalSyncMapper.MapPlaybackToLyrics(sample, profile);
-			if (target >= start && target < end && Math.Abs(PersonalSyncMapper.MapPlaybackToLyrics(target, profile) - lyric) < .001) return target;
+			if (target >= start && target < end && Math.Abs(PersonalSyncMapper.MapPlaybackToLyrics(target, profile) - lyric) < .001) yield return target;
 		}
-		return null;
 	}
 }
