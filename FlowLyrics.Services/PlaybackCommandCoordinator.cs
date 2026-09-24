@@ -13,6 +13,7 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	private readonly Func<DateTimeOffset> _utcNow;
 	private readonly AppLogger? _logger;
 	private readonly StopAfterTrackReservation _reservation = new();
+	private readonly BrowserTrackRepeat _browserRepeat;
 	private CancellationTokenSource _reservationCancellation = new();
 	private MediaSessionUpdate? _latest;
 	private int _revision;
@@ -25,8 +26,10 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public bool ShuffleBusy { get; private set; }
 	public bool? ShuffleActive => _latest?.Session?.ShuffleActive;
 	public bool CanShuffle => _latest?.Session?.Capabilities.CanShuffle == true && ShuffleActive.HasValue;
-	public MediaRepeatMode? RepeatMode => _latest?.Session?.RepeatMode;
-	public bool CanRepeat => _latest?.Session?.Capabilities.CanRepeat == true && RepeatMode.HasValue;
+	public bool IsFallbackRepeat => _latest?.Session?.Capabilities.CanRepeat != true && _browserRepeat.Available(_latest?.Session);
+	public MediaRepeatMode? RepeatMode => IsFallbackRepeat ? (_browserRepeat.Enabled ? MediaRepeatMode.Track : MediaRepeatMode.None) : _latest?.Session?.RepeatMode;
+	public bool CanRepeat => (_latest?.Session?.Capabilities.CanRepeat == true && RepeatMode.HasValue)
+		|| (_latest?.State == MediaMetadataState.Stable && IsFallbackRepeat);
 	public bool CanArm => _latest is { State: MediaMetadataState.Stable, Session: { } session }
 		&& session.Metadata.Duration > TimeSpan.Zero && session.HasTimeline && (session.Capabilities.CanPause || session.Capabilities.CanStop);
 	public Task PendingStop { get; private set; } = Task.CompletedTask;
@@ -34,13 +37,17 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public PlaybackCommandCoordinator(MediaSessionService media, AppLogger? logger = null, Func<DateTimeOffset>? utcNow = null)
 	{
 		_media = media; _logger = logger; _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+		_browserRepeat = new(media, _utcNow);
+		_browserRepeat.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
+		_browserRepeat.Failed += (_, _) => { Log("BrowserRepeat", false); CommandFailed?.Invoke(this, EventArgs.Empty); };
 		_media.PlaybackNavigationRequested += NavigationRequested;
 	}
-	private void NavigationRequested(object? sender, EventArgs e) => Cancel();
+	private void NavigationRequested(object? sender, EventArgs e) { _browserRepeat.Cancel(); Cancel(); }
 
 	public void Observe(MediaSessionUpdate update)
 	{
 		_latest = update;
+		_browserRepeat.Observe(update);
 		if (update.State == MediaMetadataState.NoSession) Cancel();
 		MediaSessionInfo? stop = _reservation.Observe(update.Session, _utcNow());
 		if (stop != null) PendingStop = StopAsync(stop, _reservationCancellation.Token);
@@ -61,6 +68,13 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public async Task<bool> CycleRepeatAsync()
 	{
 		if (!CanRepeat || RepeatBusy || _arming || _latest?.Session is not { } session) return false;
+		if (IsFallbackRepeat)
+		{
+			Cancel();
+			if (_browserRepeat.Enabled) { _browserRepeat.Cancel(); return true; }
+			return _browserRepeat.Enable(session);
+		}
+		_browserRepeat.Cancel();
 		Cancel(); RepeatBusy = true; Changed?.Invoke(this, EventArgs.Empty);
 		try
 		{
@@ -90,6 +104,7 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	{
 		if (IsArmed || _arming) { Cancel(); return true; }
 		if (!CanArm || RepeatBusy || _latest?.Session is not { } original) return false;
+		_browserRepeat.Cancel();
 		Cancel(); int revision = _revision;
 		CancellationToken token = _reservationCancellation.Token;
 		_arming = true; Changed?.Invoke(this, EventArgs.Empty);
@@ -131,6 +146,7 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public void Dispose()
 	{
 		_media.PlaybackNavigationRequested -= NavigationRequested;
+		_browserRepeat.Dispose();
 		_reservationCancellation.Cancel(); _reservationCancellation.Dispose();
 	}
 }

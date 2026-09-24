@@ -138,6 +138,14 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsShuffleEnabled,
 			session => session.TryChangeShuffleActiveAsync(active).AsTask(cancellationToken), "shuffle " + active, cancellationToken);
 
+	public Task<bool> TryPlayAsync(string sessionId, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPlayEnabled,
+			session => session.TryPlayAsync().AsTask(cancellationToken), "play", cancellationToken);
+
+	public Task<bool> TrySeekNativeAsync(string sessionId, TimeSpan position, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPlaybackPositionEnabled,
+			session => session.TryChangePlaybackPositionAsync(Math.Max(0, position.Ticks)).AsTask(cancellationToken), "seek native", cancellationToken);
+
 	private async Task<bool> TryPlaybackCommandAsync(string sessionId, Func<GlobalSystemMediaTransportControlsSession, bool> supported,
 		Func<GlobalSystemMediaTransportControlsSession, Task<bool>> command, string name, CancellationToken cancellationToken)
 	{
@@ -375,7 +383,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 					controls.IsPlayPauseToggleEnabled,
 					controls.IsNextEnabled,
 					controls.IsPreviousEnabled,
-					controls.IsPlaybackPositionEnabled || duration > TimeSpan.Zero,
+					controls.IsPlaybackPositionEnabled,
 					controls.IsStopEnabled, controls.IsRepeatEnabled, controls.IsShuffleEnabled),
 				IsCurrentSession = ReferenceEquals(session, currentSession),
 				LastActivityUtc = lastActivity,

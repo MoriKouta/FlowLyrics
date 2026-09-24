@@ -237,6 +237,38 @@ public sealed class MediaSessionService : IDisposable
 		PlaybackNavigationRequested?.Invoke(this, EventArgs.Empty);
 		string sessionId = GetSelectedSessionId();
 		if (string.IsNullOrEmpty(sessionId) || !await _provider.TrySeekAsync(sessionId, position, cancellationToken)) return false;
+		RecordSeek(sessionId, position);
+		return true;
+	}
+
+	// Automatic repeat never invokes UI Automation or navigates a different track.
+	public async Task<bool> TryRestartTrackAsync(MediaSessionInfo expected, CancellationToken cancellationToken = default)
+	{
+		bool Same(MediaSessionInfo? s) => s != null && s.SessionId == expected.SessionId && BrowserTrackRepeat.Eligible(s)
+			&& StopAfterTrackReservation.TrackIdentity(s) == StopAfterTrackReservation.TrackIdentity(expected);
+		var selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(s => s.IsSelectedByFlowLyrics);
+		cancellationToken.ThrowIfCancellationRequested();
+		if (!Same(selected)) return false;
+		if (selected!.Position.TotalSeconds < 1) return true;
+		if ((selected.Metadata.Duration - selected.Position).TotalSeconds > .2) return false;
+		if (!await _provider.TrySeekNativeAsync(expected.SessionId, TimeSpan.Zero, cancellationToken)) return false;
+		for (int attempt = 0; attempt < 8; attempt++)
+		{
+			cancellationToken.ThrowIfCancellationRequested();
+			selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(s => s.IsSelectedByFlowLyrics);
+			if (!Same(selected)) return false;
+			if (selected!.Position.TotalSeconds < 1)
+			{
+				RecordSeek(expected.SessionId, selected.Position);
+				return await _provider.TryPlayAsync(expected.SessionId, cancellationToken);
+			}
+			await Task.Delay(60, cancellationToken);
+		}
+		return false;
+	}
+
+	private void RecordSeek(string sessionId, TimeSpan position)
+	{
 		DateTimeOffset nowUtc = _utcNow();
 		lock (_gate)
 		{
@@ -251,7 +283,6 @@ public sealed class MediaSessionService : IDisposable
 				_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
 			}
 		}
-		return true;
 	}
 
 	public void Dispose()

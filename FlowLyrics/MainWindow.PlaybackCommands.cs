@@ -58,6 +58,7 @@ public partial class MainWindow
 		PlayerControlVisuals.IconState(_repeatButton, _repeatDots, active);
 		_repeatOne.Foreground = ink; _repeatOne.Visibility = mode == MediaRepeatMode.Track ? Visibility.Visible : Visibility.Collapsed;
 		_repeatButton.ToolTip = !_playbackCommands.CanRepeat ? T("Repeat is not supported by this player.")
+			: _playbackCommands.IsFallbackRepeat ? (active ? "REPEAT ONE" : "REPEAT OFF") + " · FLOWLYRICS"
 			: mode == MediaRepeatMode.Track ? T("Repeat track") : mode == MediaRepeatMode.List ? T("Repeat list") : T("Repeat off");
 	}
 

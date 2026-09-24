@@ -282,6 +282,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		text.AppendLine("CanNext: " + YesNo(session.Capabilities.CanNext));
 		text.AppendLine("CanSeek: " + YesNo(session.Capabilities.CanSeek));
 		text.AppendLine("CanRepeat: " + YesNo(session.Capabilities.CanRepeat));
+		text.AppendLine("Repeat capability: " + BrowserTrackRepeat.Capability(session));
 		text.AppendLine("RepeatMode: " + (session.RepeatMode?.ToString() ?? "Unknown"));
 		text.AppendLine("CanShuffle: " + YesNo(session.Capabilities.CanShuffle));
 		text.AppendLine("ShuffleActive: " + (session.ShuffleActive?.ToString() ?? "Unknown"));

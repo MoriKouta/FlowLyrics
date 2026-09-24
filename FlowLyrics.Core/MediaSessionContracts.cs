@@ -106,6 +106,8 @@ public interface IMediaSessionProvider : IDisposable
 	Task<bool> TrySkipPreviousAsync(string sessionId, CancellationToken cancellationToken = default);
 
 	Task<bool> TrySeekAsync(string sessionId, TimeSpan position, CancellationToken cancellationToken = default);
+	Task<bool> TrySeekNativeAsync(string sessionId, TimeSpan position, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	Task<bool> TryPlayAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	Task<bool> TryPauseAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	Task<bool> TryStopAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	Task<bool> TrySetRepeatAsync(string sessionId, MediaRepeatMode mode, CancellationToken cancellationToken = default) => Task.FromResult(false);
