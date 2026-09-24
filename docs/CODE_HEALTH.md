@@ -119,3 +119,7 @@ UIイベントの寿命、await後の曲世代チェック（H4/H5）、大き�
 大きな機能群の後は `$code-health` を実行し、この記録を現在コードで更新する。仕組みはAGENTS（必須の短い原則）、skill（監査/検証/報告手順）、回帰テスト、既存Windows CI。根拠のないhealth scoreや行数上限ゲートは置かない。
 
 OpenAI一次資料: [AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[skills](https://learn.chatgpt.com/docs/build-skills)、[役割分担](https://learn.chatgpt.com/docs/customization/overview)。
+
+## 2026-09-25 scoped follow-up
+
+Repeat不具合に対して、timeline不連続の判定・revisionはMediaSessionService、表示の再開はMainWindowへ配置。LyricsServiceや保存処理に再生cycle状態を追加しない。新しいcontroller/frameworkは不要と判断。古いscroll callbackにはpresentation revisionを付け、現行cycleへ書き戻さない。詳細と検証は [dev.11 playback/UI記録](DEV11_PLAYBACK_UI_VALIDATION.md) を参照。Window全体の責務集中（H2/H4/H5）を解消したとは扱わない。

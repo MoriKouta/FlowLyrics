@@ -18,7 +18,9 @@ public sealed record PlaybackSnapshot(
 	string SourceDisplayName = "Media Session",
 	bool CanStop = false,
 	bool CanRepeat = false,
-	FlowLyrics.Core.MediaRepeatMode? RepeatMode = null)
+	FlowLyrics.Core.MediaRepeatMode? RepeatMode = null,
+	long TimelineRevision = 0,
+	FlowLyrics.Core.MediaTimelineChange TimelineChange = FlowLyrics.Core.MediaTimelineChange.None)
 {
 	public TimeSpan EstimatedPosition(DateTimeOffset nowUtc)
 	{

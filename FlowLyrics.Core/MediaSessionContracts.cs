@@ -39,6 +39,7 @@ public sealed record MediaTrackMetadata(
 
 public enum MediaMetadataState { NoSession, PendingMetadata, Stable }
 public enum MediaRepeatMode { None, List, Track }
+public enum MediaTimelineChange { None, Wrap, Seek }
 
 // Separate metadata changes from frequent position/playback notifications.
 public sealed class MediaMetadataChangedEventArgs(string sessionId) : EventArgs

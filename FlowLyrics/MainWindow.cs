@@ -91,6 +91,7 @@ public partial class MainWindow : Window, IComponentConnector
 	private bool _lyricsRetryScheduled;
 
 	private int _lastLineIndex = int.MinValue;
+	private long _presentationRevision;
 
 	private int _activeLineIndex = -1;
 
@@ -730,6 +731,10 @@ public partial class MainWindow : Window, IComponentConnector
 				if (_activeTrackKey != playbackSnapshot.Track.CacheKey) _lyricsPerformance?.Mark("METADATA_STABLE");
 				bool trackDisplayChanged = _snapshot?.Track.CacheKey != playbackSnapshot.Track.CacheKey
 					|| _snapshot?.Track.DisplayArtist != playbackSnapshot.Track.DisplayArtist;
+				bool timelineRestarted = _snapshot != null && _snapshot.SessionId == playbackSnapshot.SessionId
+					&& _snapshot.Track.StableIdentityKey == playbackSnapshot.Track.StableIdentityKey
+					&& _snapshot.TimelineRevision != playbackSnapshot.TimelineRevision
+					&& playbackSnapshot.TimelineChange != FlowLyrics.Core.MediaTimelineChange.None;
 				if (_snapshot != null && (_snapshot.SessionId != playbackSnapshot.SessionId || _snapshot.SourceAppUserModelId != playbackSnapshot.SourceAppUserModelId))
 					SuspendPersonalSync("LYRICS NOT READY", playbackSnapshot);
 				_snapshot = playbackSnapshot;
@@ -738,6 +743,11 @@ public partial class MainWindow : Window, IComponentConnector
 				_pauseHidden = _settings.HideWhenPaused && !playbackSnapshot.IsPlaying;
 				UpdatePlaybackChrome();
 				RefreshWindowVisibility();
+				if (timelineRestarted)
+				{
+					RestartPlaybackPresentation();
+					_ = _performanceLogger.WriteAsync($"TIMELINE change={playbackSnapshot.TimelineChange} revision={playbackSnapshot.TimelineRevision} position={playbackSnapshot.Position.TotalSeconds:0.000}");
+				}
 				if (!string.Equals(_activeTrackKey, playbackSnapshot.Track.CacheKey, StringComparison.Ordinal))
 				{
 					SuspendPersonalSync("LYRICS NOT READY", playbackSnapshot);
@@ -1477,7 +1487,9 @@ public partial class MainWindow : Window, IComponentConnector
 			PersonalSyncMapper.DescribeActiveSegment(playback.TotalSeconds, profile));
 	}
 
-	private void RenderLyrics()
+	private void RenderLyrics() => RenderLyricsCore(animate: true);
+
+	private void RenderLyricsCore(bool animate)
 	{
 		if (_metadataPending || !_lyricsReady) return;
 		UpdatePlaybackProgress();
@@ -1502,7 +1514,7 @@ public partial class MainWindow : Window, IComponentConnector
 			if (num2 != _lastLineIndex)
 			{
 				_lastLineIndex = num2;
-				DisplayLyricContext(lines, num2, animate: true);
+				DisplayLyricContext(lines, num2, animate);
 			}
 		}
 	}
@@ -1522,6 +1534,8 @@ public partial class MainWindow : Window, IComponentConnector
 
 	private void ResetLyricsPresentationState()
 	{
+		_presentationRevision++;
+		_scrollAnimationActive = false;
 		_showAllLyrics = _settings.ShowAllLyrics;
 		_plainLyricsScrollMode = false;
 		_plainLyricsUserScrollPaused = false;
@@ -1531,6 +1545,19 @@ public partial class MainWindow : Window, IComponentConnector
 		_lastFullLyricsActiveIndex = int.MinValue;
 		_lastLineIndex = int.MinValue;
 		DisableFullLyricsViewport();
+	}
+
+	private void RestartPlaybackPresentation()
+	{
+		_presentationRevision++;
+		_scrollAnimationActive = false;
+		_lastLineIndex = _lastFullLyricsActiveIndex = int.MinValue;
+		_plainLyricsUserScrollPaused = false;
+		_plainLyricsAutoScrollAnchorActive = false;
+		LyricsScrollViewer.ScrollToVerticalOffset(0);
+		// Reuse lyrics, selection and the current Sync mapping. No lookup or save.
+		UpdatePlaybackProgress();
+		RenderLyricsCore(animate: false);
 	}
 
 	private void EnsurePlainLyricsLayout()
@@ -1931,6 +1958,7 @@ public partial class MainWindow : Window, IComponentConnector
 
 	private void CenterActiveLine(int lineIndex, bool animate)
 	{
+		long presentationRevision = _presentationRevision;
 		int num = lineIndex - _visibleFirstLineIndex;
 		if (num < 0 || num >= _lineControls.Count)
 		{
@@ -1938,6 +1966,7 @@ public partial class MainWindow : Window, IComponentConnector
 		}
 		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
 		{
+			if (presentationRevision != _presentationRevision) return;
 			int num2 = lineIndex - _visibleFirstLineIndex;
 			if (num2 >= 0 && num2 < _lineControls.Count && !(LyricsScrollViewer.ViewportHeight <= 0.0))
 			{

@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Accept fresh same-track timeline wraps and large seeks promptly; restart lyric presentation without reloading lyrics or changing Personal Sync corrections.
+
 - Keep Personal Sync profiles and manual lyrics selections consistent with disk after a failed write; reject uncommitted edits on subsequent reads and saves.
 
 - Match neutral R/S icon brightness, compact Repeat/Settings dot geometry and utility button metrics; prevent overlapping player controls in narrow windows.

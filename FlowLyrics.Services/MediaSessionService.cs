@@ -16,6 +16,11 @@ public sealed class MediaSessionService : IDisposable
 	private static readonly TimeSpan PreferredReturnStability = TimeSpan.FromMilliseconds(850);
 
 	private static readonly TimeSpan MetadataStability = TimeSpan.FromMilliseconds(110);
+	private static readonly TimeSpan FreshTimelineAge = TimeSpan.FromSeconds(1.5);
+	private static readonly TimeSpan MinimumExternalSeekJump = TimeSpan.FromSeconds(5);
+	private long _timelineRevision;
+	private MediaTimelineChange _timelineChange;
+	private bool _timelineHasStableMetadata;
 	private DateTimeOffset? _missingSessionSince;
 	private long _metadataRevision;
 	private readonly Func<DateTimeOffset> _utcNow;
@@ -157,12 +162,12 @@ public sealed class MediaSessionService : IDisposable
 		}
 
 		MediaPlaybackCapabilities capabilities = selected.Capabilities;
-		(TimeSpan stablePosition, DateTimeOffset stableCapturedAtUtc) = StabilizeTimeline(selected, track, nowUtc);
+		var timeline = StabilizeTimeline(selected, track, nowUtc, stable);
 		PlaybackSnapshot snapshot = new(
 			track,
-			stablePosition,
+			timeline.Position,
 			selected.IsPlaying,
-			stableCapturedAtUtc,
+			timeline.CapturedAtUtc,
 			capabilities.CanTogglePlayPause || capabilities.CanPlay || capabilities.CanPause,
 			capabilities.CanPrevious,
 			capabilities.CanNext,
@@ -172,7 +177,7 @@ public sealed class MediaSessionService : IDisposable
 			selected.SessionId,
 			selected.SourceAppUserModelId,
 			selected.DisplaySourceName,
-			capabilities.CanStop, capabilities.CanRepeat, selected.RepeatMode);
+			capabilities.CanStop, capabilities.CanRepeat, selected.RepeatMode, timeline.Revision, timeline.Change);
 		return new(stable ? MediaMetadataState.Stable : MediaMetadataState.PendingMetadata, snapshot, selected);
 	}
 
@@ -223,7 +228,7 @@ public sealed class MediaSessionService : IDisposable
 		PlaybackNavigationRequested?.Invoke(this, EventArgs.Empty);
 		string sessionId = GetSelectedSessionId();
 		if (string.IsNullOrEmpty(sessionId) || !await _provider.TrySeekAsync(sessionId, position, cancellationToken)) return false;
-		DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+		DateTimeOffset nowUtc = _utcNow();
 		lock (_gate)
 		{
 			if (string.Equals(sessionId, _selectedSessionId, StringComparison.Ordinal))
@@ -231,6 +236,8 @@ public sealed class MediaSessionService : IDisposable
 				_stableTimelinePosition = position < TimeSpan.Zero ? TimeSpan.Zero : position;
 				_stableTimelineCapturedAtUtc = nowUtc;
 				_pendingSeekUntilUtc = nowUtc + TimeSpan.FromSeconds(2.5);
+				_timelineRevision++;
+				_timelineChange = MediaTimelineChange.Seek;
 				_pendingBackwardOffsetSeconds = null;
 				_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
 			}
@@ -340,14 +347,13 @@ public sealed class MediaSessionService : IDisposable
 		}
 	}
 
-	private (TimeSpan Position, DateTimeOffset CapturedAtUtc) StabilizeTimeline(
+	private (TimeSpan Position, DateTimeOffset CapturedAtUtc, long Revision, MediaTimelineChange Change) StabilizeTimeline(
 		MediaSessionInfo session,
 		TrackInfo track,
-		DateTimeOffset nowUtc)
+		DateTimeOffset nowUtc,
+		bool metadataStable)
 	{
-		string identity = session.SessionId + "|" + track.Title.Trim().ToLowerInvariant()
-			+ "|" + track.Artist.Trim().ToLowerInvariant()
-			+ "|" + track.Album.Trim().ToLowerInvariant();
+		string identity = session.SessionId + "|" + track.StableIdentityKey;
 		TimeSpan providerPosition = ClampPosition(session.Position, track.Duration);
 		lock (_gate)
 		{
@@ -359,11 +365,14 @@ public sealed class MediaSessionService : IDisposable
 				_stableTimelineCapturedAtUtc = nowUtc;
 				_stableTimelineWasPlaying = session.IsPlaying;
 				_lastProviderTimelineUpdatedAtUtc = session.TimelineUpdatedAtUtc;
+				_timelineHasStableMetadata = metadataStable;
+				_timelineChange = MediaTimelineChange.None;
 				_pendingSeekUntilUtc = DateTimeOffset.MinValue;
 				_pendingBackwardOffsetSeconds = null;
 				_pendingBackwardOffsetSinceUtc = DateTimeOffset.MinValue;
-				return (_stableTimelinePosition, _stableTimelineCapturedAtUtc);
+				return (_stableTimelinePosition, _stableTimelineCapturedAtUtc, _timelineRevision, _timelineChange);
 			}
+			_timelineHasStableMetadata |= metadataStable;
 
 			TimeSpan expected = _stableTimelinePosition;
 			TimeSpan elapsed = nowUtc - _stableTimelineCapturedAtUtc;
@@ -386,6 +395,21 @@ public sealed class MediaSessionService : IDisposable
 				{
 					result = expected;
 				}
+			}
+			else if (_timelineHasStableMetadata && IsFreshTimelineLocked(session, nowUtc)
+				&& Math.Abs(deltaSeconds) >= MinimumExternalSeekJump.TotalSeconds)
+			{
+				// Repeat state alone is not evidence of a new cycle. The provider must
+				// publish a fresh, large position discontinuity for the same identity.
+				double edgeSeconds = Math.Clamp(track.Duration.TotalSeconds * 0.02, 0.5, 3.0);
+				bool wrapped = _stableTimelineWasPlaying && session.IsPlaying && track.Duration > TimeSpan.Zero
+					&& track.Duration.TotalSeconds - _stableTimelinePosition.TotalSeconds <= edgeSeconds
+					&& providerPosition.TotalSeconds <= edgeSeconds
+					&& elapsed <= FreshTimelineAge + FreshTimelineAge;
+				_timelineRevision++;
+				_timelineChange = wrapped ? MediaTimelineChange.Wrap : MediaTimelineChange.Seek;
+				result = providerPosition;
+				ClearPendingBackwardCorrectionLocked();
 			}
 			else if (session.IsPlaying)
 			{
@@ -439,8 +463,16 @@ public sealed class MediaSessionService : IDisposable
 			{
 				_lastProviderTimelineUpdatedAtUtc = session.TimelineUpdatedAtUtc;
 			}
-			return (_stableTimelinePosition, _stableTimelineCapturedAtUtc);
+			return (_stableTimelinePosition, _stableTimelineCapturedAtUtc, _timelineRevision, _timelineChange);
 		}
+	}
+
+	private bool IsFreshTimelineLocked(MediaSessionInfo session, DateTimeOffset nowUtc)
+	{
+		TimeSpan age = nowUtc - session.TimelineUpdatedAtUtc;
+		return session.HasTimeline && _lastProviderTimelineUpdatedAtUtc != default
+			&& session.TimelineUpdatedAtUtc > _lastProviderTimelineUpdatedAtUtc
+			&& age >= TimeSpan.Zero && age <= FreshTimelineAge;
 	}
 
 	private bool IsStableBackwardCorrectionLocked(double offsetSeconds, DateTimeOffset nowUtc)
@@ -503,6 +535,8 @@ public sealed class MediaSessionService : IDisposable
 		_stableTimelineCapturedAtUtc = DateTimeOffset.MinValue;
 		_stableTimelineWasPlaying = false;
 		_lastProviderTimelineUpdatedAtUtc = DateTimeOffset.MinValue;
+		_timelineHasStableMetadata = false;
+		_timelineChange = MediaTimelineChange.None;
 		_pendingSeekUntilUtc = DateTimeOffset.MinValue;
 		ClearPendingBackwardCorrectionLocked();
 	}
