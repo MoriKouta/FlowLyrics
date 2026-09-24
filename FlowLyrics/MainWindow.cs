@@ -2881,7 +2881,7 @@ public partial class MainWindow : Window, IComponentConnector
 			flag = true;
 			if (NativeMethods.GetCursorPos(out var point))
 			{
-				flag = !IsPointOverPlaybackButton(new System.Windows.Point(point.X, point.Y));
+				flag = !IsPointOverInteractiveControl(new System.Windows.Point(point.X, point.Y));
 			}
 		}
 		if (_mousePassThroughEnabled == flag)
@@ -2929,7 +2929,7 @@ public partial class MainWindow : Window, IComponentConnector
 		System.Windows.Point logicalPoint = HitTestRoot.PointFromScreen(screenPoint);
 		if (!new Rect(HitTestRoot.RenderSize).Contains(logicalPoint)) { handled = true; return new IntPtr(-1); }
 		if (!_isLocked) return IntPtr.Zero;
-		if (IsPointOverPlaybackButton(screenPoint))
+		if (IsPointOverInteractiveControl(screenPoint))
 		{
 			return IntPtr.Zero;
 		}
@@ -2972,29 +2972,44 @@ public partial class MainWindow : Window, IComponentConnector
 		});
 	}
 
-	private bool IsPointOverPlaybackButton(System.Windows.Point screenPoint)
+	private bool IsPointOverInteractiveControl(System.Windows.Point screenPoint)
 	{
-		if (VolumePopup.IsOpen && IsPointOverElement(VolumePopupSurface, screenPoint))
+		return HitInteractive(HitTestRoot) || (VolumePopup.IsOpen && HitInteractive(VolumePopupSurface));
+
+		bool HitInteractive(FrameworkElement root)
 		{
-			return true;
+			if (!root.IsVisible || !root.IsEnabled || PresentationSource.FromVisual(root) == null) return false;
+			// Keep a slider/thumb drag alive even when the pointer leaves its bounds.
+			if (InteractiveAncestor(System.Windows.Input.Mouse.Captured as DependencyObject, root)) return true;
+			System.Windows.Point local = root.PointFromScreen(screenPoint);
+			if (!new Rect(root.RenderSize).Contains(local)) return false;
+			return InteractiveAncestor(root.InputHitTest(local) as DependencyObject, root);
 		}
-		if (!IsPointOverElement(PreviousButton, screenPoint) && !IsPointOverElement(PlayPauseButton, screenPoint) && !IsPointOverElement(NextButton, screenPoint) && (_reverseColorsButton == null || !IsPointOverElement(_reverseColorsButton, screenPoint)) && !IsPointOverElement(VolumeButton, screenPoint) && !IsPointOverElement(LockButton, screenPoint) && !IsPointOverElement(SettingsButton, screenPoint) && !IsPointOverElement(PlaybackSeekSlider, screenPoint))
+	}
+
+	private static bool InteractiveAncestor(DependencyObject? node, FrameworkElement root)
+	{
+		bool interactive = false;
+		while (node != null)
 		{
-			return IsPointOverElement(VolumeSlider, screenPoint);
+			if (node is UIElement element && (!element.IsVisible || !element.IsEnabled || !element.IsHitTestVisible)) return false;
+			interactive |= node is ButtonBase or System.Windows.Controls.Slider or Thumb;
+			if (ReferenceEquals(node, root)) return interactive;
+			node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node);
 		}
-		return true;
+		return false;
 	}
 
 	private static bool IsPointOverElement(FrameworkElement element, System.Windows.Point screenPoint)
 	{
-		if (element.Visibility != Visibility.Visible || !element.IsEnabled || element.ActualWidth <= 0.0 || element.ActualHeight <= 0.0)
+		if (!element.IsVisible || !element.IsEnabled || element.ActualWidth <= 0.0 || element.ActualHeight <= 0.0)
 		{
 			return false;
 		}
 		try
 		{
-			System.Windows.Point point = element.PointToScreen(new System.Windows.Point(0.0, 0.0));
-			return new Rect(point.X - 4.0, point.Y - 4.0, element.ActualWidth + 8.0, element.ActualHeight + 8.0).Contains(screenPoint);
+			System.Windows.Point local = element.PointFromScreen(screenPoint);
+			return new Rect(-4, -4, element.ActualWidth + 8, element.ActualHeight + 8).Contains(local);
 		}
 		catch (InvalidOperationException)
 		{
