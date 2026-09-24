@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Add capability-aware GSMTC Shuffle, using observed player state. Share compact dot geometry with a clearer Repeat icon; hide Shuffle/Repeat/Reverse/Sync by default only when settings are absent, preserving explicit choices and the player's playback modes.
+
 - Keep search actions, result metrics and technical status labels in English Flow Dots; preserve localized explanations and metadata. Settings now commits live changes through Close without a redundant Cancel button.
 
 - Accept fresh same-track timeline wraps and large seeks promptly; restart lyric presentation without reloading lyrics or changing Personal Sync corrections.

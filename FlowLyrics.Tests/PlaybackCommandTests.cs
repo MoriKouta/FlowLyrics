@@ -11,6 +11,57 @@ namespace FlowLyrics.Tests;
 
 public sealed class PlaybackCommandTests
 {
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(false, true)]
+	[InlineData(true, false)]
+	[InlineData(true, true)]
+	public async Task ShuffleAndRepeatCapabilities_AreIndependent(bool canShuffle, bool canRepeat)
+	{
+		using Fixture f = new();
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = false,
+			Capabilities = f.Provider.Current.Capabilities with { CanShuffle = canShuffle, CanRepeat = canRepeat } }; f.Observe();
+		Assert.Equal(canShuffle, f.Commands.CanShuffle); Assert.Equal(canRepeat, f.Commands.CanRepeat);
+		Assert.Null(f.Provider.RequestedRepeat); Assert.Null(f.Provider.RequestedShuffle);
+		var snapshot = (await f.Media.GetUpdateAsync()).Snapshot!;
+		Assert.Equal(canShuffle, snapshot.CanShuffle); Assert.Equal(false, snapshot.ShuffleActive);
+		Assert.Equal(canShuffle, await f.Commands.ToggleShuffleAsync());
+		Assert.Equal(canShuffle ? true : null, f.Provider.RequestedShuffle);
+		Assert.Null(f.Provider.RequestedRepeat);
+	}
+
+	[Fact]
+	public async Task Shuffle_AcceptedRequestWaitsForObservation_ExternalChangesAndRejectionKeepTruth()
+	{
+		using Fixture f = new();
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = false, Capabilities = f.Provider.Current.Capabilities with { CanShuffle = true } }; f.Observe();
+		Assert.True(await f.Commands.ToggleShuffleAsync());
+		Assert.True(f.Provider.RequestedShuffle); Assert.False(f.Commands.ShuffleActive);
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = true }; f.Observe();
+		Assert.True(f.Commands.ShuffleActive);
+		Assert.True(await f.Commands.ToggleShuffleAsync());
+		Assert.False(f.Provider.RequestedShuffle); Assert.True(f.Commands.ShuffleActive);
+		f.Provider.AcceptShuffle = false;
+		Assert.False(await f.Commands.ToggleShuffleAsync()); Assert.True(f.Commands.ShuffleActive);
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = false }; f.Observe();
+		Assert.False(f.Commands.ShuffleActive);
+	}
+
+	[Fact]
+	public async Task Shuffle_UnknownOrChangedSessionOrCapability_DoesNotSendCommand()
+	{
+		using Fixture f = new();
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = null, Capabilities = f.Provider.Current.Capabilities with { CanShuffle = true } }; f.Observe();
+		Assert.False(f.Commands.CanShuffle); Assert.False(await f.Commands.ToggleShuffleAsync());
+		Assert.Null((await f.Media.GetUpdateAsync()).Snapshot!.ShuffleActive);
+		f.Provider.Current = f.Provider.Current with { ShuffleActive = false }; f.Observe();
+		f.Provider.Current = f.Provider.Current with { SessionId = "different" };
+		Assert.False(await f.Commands.ToggleShuffleAsync());
+		f.Observe();
+		f.Provider.Current = f.Provider.Current with { Capabilities = f.Provider.Current.Capabilities with { CanShuffle = false } };
+		Assert.False(await f.Commands.ToggleShuffleAsync()); Assert.Null(f.Provider.RequestedShuffle);
+	}
+
 	[Fact]
 	public async Task RepeatCycle_UsesObservedState_AndRejectsFailureOrUnsupported()
 	{
@@ -160,6 +211,8 @@ public sealed class PlaybackCommandTests
 		public MediaSessionInfo Current = new();
 		public int Pauses, Stops;
 		public MediaRepeatMode? RequestedRepeat;
+		public bool? RequestedShuffle;
+		public bool AcceptShuffle = true;
 		public bool AcceptRepeat = true, AcceptPause = true;
 		public Action? OnPause;
 		public event EventHandler? SessionsChanged { add { } remove { } }
@@ -167,6 +220,8 @@ public sealed class PlaybackCommandTests
 		public Task<bool> TrySetRepeatAsync(string id, MediaRepeatMode mode, CancellationToken cancellationToken = default)
 		{ RequestedRepeat = mode; if (AcceptRepeat) Current = Current with { RepeatMode = mode }; return Task.FromResult(AcceptRepeat); }
 		public Task<bool> TryPauseAsync(string id, CancellationToken cancellationToken = default) { Pauses++; OnPause?.Invoke(); return Task.FromResult(AcceptPause); }
+		public Task<bool> TrySetShuffleAsync(string id, bool active, CancellationToken cancellationToken = default)
+		{ RequestedShuffle = active; return Task.FromResult(AcceptShuffle); }
 		public Task<bool> TryStopAsync(string id, CancellationToken cancellationToken = default) { Stops++; return Task.FromResult(true); }
 		public Task<bool> TryTogglePlayPauseAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(true);
 		public Task<bool> TrySkipNextAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult(true);

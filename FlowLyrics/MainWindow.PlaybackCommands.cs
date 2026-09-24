@@ -16,34 +16,34 @@ public partial class MainWindow
 	private Button? _repeatButton;
 	private Canvas? _repeatDots;
 	private TextBlock? _repeatOne;
+	private Button? _shuffleButton;
+	private Canvas? _shuffleDots;
 
 	private void InitializePlaybackCommands()
 	{
 		_playbackCommands = new(_mediaSessionService, new AppLogger(_settingsService.AppDataDirectory));
-		double extent = 6 * PlayerControlVisuals.DotPitch + PlayerControlVisuals.DotDiameter;
+		double extent = PlayerControlVisuals.DotIconExtent;
 		Grid icon = new() { Width = extent, Height = extent, IsHitTestVisible = false };
-		_repeatDots = new Canvas { Width = extent, Height = extent };
-		string[] rows = ["0000010", "0111111", "0100010", "0100010", "0100010", "1111110", "0100000"];
-		for (int y = 0; y < rows.Length; y++)
-			for (int x = 0; x < rows[y].Length; x++)
-				if (rows[y][x] == '1')
-				{
-					Ellipse dot = new() { Width = PlayerControlVisuals.DotDiameter, Height = PlayerControlVisuals.DotDiameter, Fill = Brushes.White };
-					Canvas.SetLeft(dot, x * PlayerControlVisuals.DotPitch); Canvas.SetTop(dot, y * PlayerControlVisuals.DotPitch); _repeatDots.Children.Add(dot);
-				}
+		_repeatDots = PlayerControlVisuals.RepeatIcon();
 		icon.Children.Add(_repeatDots);
-		_repeatOne = new TextBlock { Text = "1", FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 7,
+		_repeatOne = new TextBlock { Text = "1", FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 9,
 			HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 0, 0) };
 		LocalizedUiFont.Technical(_repeatOne); icon.Children.Add(_repeatOne);
-		_repeatButton = new Button { Name = "RepeatButton", Content = icon, Width = 30, Height = 30,
-			Margin = new Thickness(2, 0, 2, 0), Padding = new Thickness(0), Style = (Style)Resources["SmallMediaButton"] };
+		_repeatButton = new Button { Name = "RepeatButton", Content = icon, Style = (Style)Resources["SmallMediaButton"] };
 		_repeatButton.Click += async (_, _) => await RunPlaybackCommandAsync((_, _) => _playbackCommands.CycleRepeatAsync());
 		PlayerControlVisuals.Size(_repeatButton);
 		PlayerControlVisuals.TrackHover(_repeatButton, UpdateRepeatButton);
 		if (NextButton.Parent is Panel transport) transport.Children.Insert(transport.Children.IndexOf(NextButton) + 1, _repeatButton);
-		_playbackCommands.Changed += (_, _) => UpdateRepeatButton();
+		_shuffleDots = PlayerControlVisuals.ShuffleIcon();
+		_shuffleButton = new Button { Name = "ShuffleButton", Content = _shuffleDots, Style = (Style)Resources["SmallMediaButton"] };
+		_shuffleButton.Click += async (_, _) => await RunPlaybackCommandAsync((_, _) => _playbackCommands.ToggleShuffleAsync());
+		PlayerControlVisuals.Size(_shuffleButton);
+		PlayerControlVisuals.TrackHover(_shuffleButton, UpdateShuffleButton);
+		if (PreviousButton.Parent is Panel controls) controls.Children.Insert(controls.Children.IndexOf(PreviousButton), _shuffleButton);
+		_playbackCommands.Changed += (_, _) => { UpdateRepeatButton(); UpdateShuffleButton(); };
 		_playbackCommands.CommandFailed += (_, _) => _tray?.ShowMessage("FlowLyrics", T("Could not control the selected media player. Start playback and try again."));
 		UpdateRepeatButton();
+		UpdateShuffleButton();
 	}
 
 	private void UpdateRepeatButton()
@@ -59,5 +59,18 @@ public partial class MainWindow
 		_repeatOne.Foreground = ink; _repeatOne.Visibility = mode == MediaRepeatMode.Track ? Visibility.Visible : Visibility.Collapsed;
 		_repeatButton.ToolTip = !_playbackCommands.CanRepeat ? T("Repeat is not supported by this player.")
 			: mode == MediaRepeatMode.Track ? T("Repeat track") : mode == MediaRepeatMode.List ? T("Repeat list") : T("Repeat off");
+	}
+
+	private void UpdateShuffleButton()
+	{
+		if (_shuffleButton == null || _shuffleDots == null) return;
+		bool active = _playbackCommands.ShuffleActive == true;
+		_shuffleButton.IsEnabled = _playbackCommands.CanShuffle && !_playbackCommands.ShuffleBusy;
+		Brush ink = active ? CreateDisplayBrush(_settings.UiColor, 1, Colors.Orange, preservePlayerUi: true, ignoreSourceAlpha: true)
+			: _settings.ReverseColors ? new SolidColorBrush(Color.FromRgb(29, 32, 30)) : Brushes.White;
+		foreach (Shape dot in _shuffleDots.Children) dot.Fill = ink;
+		PlayerControlVisuals.IconState(_shuffleButton, _shuffleDots, active);
+		_shuffleButton.ToolTip = !_playbackCommands.CanShuffle ? T("Shuffle is unavailable for this player.")
+			: active ? T("Shuffle on") : T("Shuffle off");
 	}
 }

@@ -31,6 +31,7 @@ public class SettingsWindow : Window, IComponentConnector
 	private readonly AppSettings _originalSettings;
 	private System.Windows.Controls.Button _closeButton = null!;
 	private System.Windows.Controls.CheckBox? _showRepeatButtonBox;
+	private System.Windows.Controls.CheckBox? _showShuffleButtonBox;
 	private System.Windows.Controls.CheckBox? _showReverseButtonBox;
 	private System.Windows.Controls.CheckBox? _showPersonalSyncButtonBox;
 	private System.Windows.Controls.CheckBox? _showVolumeButtonBox;
@@ -417,6 +418,7 @@ public class SettingsWindow : Window, IComponentConnector
 		WrapPanel toggles = new() { Name = "PlayerControlOptions" };
 		components.Children.Insert(components.Children.IndexOf(options) + 1, title);
 		components.Children.Insert(components.Children.IndexOf(title) + 1, toggles);
+		_showShuffleButtonBox = Create("SHUFFLE", "Show shuffle control");
 		_showRepeatButtonBox = Create("REPEAT", "Show repeat control");
 		_showReverseButtonBox = Create("REVERSE", "Show reverse colors control");
 		_showPersonalSyncButtonBox = Create("SYNC", "Show Personal Sync control");
@@ -2441,7 +2443,7 @@ public class SettingsWindow : Window, IComponentConnector
 				NotifyPreviewChanged();
 			};
 		}
-		foreach (var box in new[] { _showRepeatButtonBox, _showReverseButtonBox, _showPersonalSyncButtonBox, _showVolumeButtonBox }.OfType<System.Windows.Controls.CheckBox>())
+		foreach (var box in new[] { _showShuffleButtonBox, _showRepeatButtonBox, _showReverseButtonBox, _showPersonalSyncButtonBox, _showVolumeButtonBox }.OfType<System.Windows.Controls.CheckBox>())
 		{
 			box.Checked += (_, _) => NotifyPreviewChanged(); box.Unchecked += (_, _) => NotifyPreviewChanged();
 		}
@@ -2500,6 +2502,7 @@ public class SettingsWindow : Window, IComponentConnector
 		BorderThicknessSlider.Value = settings.BorderThickness;
 		ShowTrackInfoBox.IsChecked = settings.ShowTrackInfo;
 		ShowPlaybackControlsBox.IsChecked = settings.ShowPlaybackControls;
+		if (_showShuffleButtonBox != null) _showShuffleButtonBox.IsChecked = settings.ShowShuffleButton;
 		if (_showRepeatButtonBox != null) _showRepeatButtonBox.IsChecked = settings.ShowRepeatButton;
 		if (_showReverseButtonBox != null) _showReverseButtonBox.IsChecked = settings.ShowReverseButton;
 		if (_showPersonalSyncButtonBox != null) _showPersonalSyncButtonBox.IsChecked = settings.ShowPersonalSyncButton;
@@ -2976,6 +2979,7 @@ public class SettingsWindow : Window, IComponentConnector
 		appSettings.ShowUnlockedBadge = false;
 		appSettings.ShowTrackInfo = ShowTrackInfoBox.IsChecked == true;
 		appSettings.ShowPlaybackControls = ShowPlaybackControlsBox.IsChecked == true;
+		appSettings.ShowShuffleButton = _showShuffleButtonBox?.IsChecked ?? _originalSettings.ShowShuffleButton;
 		appSettings.ShowRepeatButton = _showRepeatButtonBox?.IsChecked ?? _originalSettings.ShowRepeatButton;
 		appSettings.ShowReverseButton = _showReverseButtonBox?.IsChecked ?? _originalSettings.ShowReverseButton;
 		appSettings.ShowPersonalSyncButton = _showPersonalSyncButtonBox?.IsChecked ?? _originalSettings.ShowPersonalSyncButton;

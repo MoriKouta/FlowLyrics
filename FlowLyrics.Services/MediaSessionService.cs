@@ -177,7 +177,8 @@ public sealed class MediaSessionService : IDisposable
 			selected.SessionId,
 			selected.SourceAppUserModelId,
 			selected.DisplaySourceName,
-			capabilities.CanStop, capabilities.CanRepeat, selected.RepeatMode, timeline.Revision, timeline.Change);
+			capabilities.CanStop, capabilities.CanRepeat, selected.RepeatMode, timeline.Revision, timeline.Change,
+			capabilities.CanShuffle, selected.ShuffleActive);
 		return new(stable ? MediaMetadataState.Stable : MediaMetadataState.PendingMetadata, snapshot, selected);
 	}
 
@@ -187,6 +188,14 @@ public sealed class MediaSessionService : IDisposable
 		cancellationToken.ThrowIfCancellationRequested();
 		return selected?.SessionId == expectedSessionId && selected.Capabilities.CanRepeat
 			&& await _provider.TrySetRepeatAsync(expectedSessionId, mode, cancellationToken);
+	}
+
+	public async Task<bool> TrySetShuffleAsync(string expectedSessionId, bool active, CancellationToken cancellationToken = default)
+	{
+		var selected = (await GetSessionsAsync(cancellationToken)).FirstOrDefault(session => session.IsSelectedByFlowLyrics);
+		cancellationToken.ThrowIfCancellationRequested();
+		return selected?.SessionId == expectedSessionId && selected.Capabilities.CanShuffle && selected.ShuffleActive.HasValue
+			&& await _provider.TrySetShuffleAsync(expectedSessionId, active, cancellationToken);
 	}
 
 	public async Task<bool> TryPauseOrStopAsync(string expectedSessionId, CancellationToken cancellationToken = default, string? expectedTrack = null)

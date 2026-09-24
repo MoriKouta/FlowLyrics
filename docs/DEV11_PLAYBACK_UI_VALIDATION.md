@@ -24,3 +24,23 @@
 - Settingsの常設Cancelを除去。Closeとタイトルバーの×は有効なlive draftを確定。Hold編集の取り消しや確認dialogは維持。BAMLの接続後にCloseの表記を設定し、埋め込み属性の上書きを避ける。
 - 10言語のWPF画面、ID取得・Preview・Use、Closeでの保存を回帰検証。日本語の検索/Settingsを実desktopのnative captureで目視確認。実ネットワークへの投稿や歌詞選択の品質変更は行わない。
 - 全294テスト成功、失敗/skip 0。Release build成功、既存警告6件、新規警告/errorなし。
+
+## Shuffle・transport初期値
+
+- GSMTCのIsShuffleEnabled / nullable IsShuffleActive / TryChangeShuffleActiveAsyncを使用。provider→session→snapshotへ保持し、Coordinatorは観測状態のみを表示の根拠とする。未対応/不明/対象session変更は送信しない。command拒否時も表示を変更しない。アプリ名での分岐・独自playlist操作は追加しない。
+- Shuffle→Previous→Play/Pause→Next→Repeatの順。共通PlayerControlVisualsで7×7 dotの大きさ・間隔・17.1 DIPの外寸を統一。Repeatは向かい合う矢印と中央1、Shuffleは交差矢印。既存utility群とは間隔を維持し、狭幅では既存の段階的非表示へ統合。
+- 新規/欠落property時はShuffle/Repeat/Reverse/Sync非表示、Volumeは従来どおり。明示済みtrue/falseはsettings load/clone/normalize/saveで維持。schema17に破壊的migrationを追加せず、JSON既定値で互換を保つ。起動時にRepeat/Shuffle変更要求を送らない。
+- focused 41テスト成功。4通りのRepeat/Shuffle capability、unknown state、acceptedだが未観測、reject、external state、session/capability変更、JSON旧版と明示値、live preview/Close保存、10言語を含む。
+- WPF native captureでON/OFF/List/Trackと配置を確認。96/120/144 DPIはoffscreen render、実desktop captureはこのPCのDPI。216～760 DIPの8幅でbutton交差なし。別モニターへのDPI切替と他プレイヤーの実機動作は未検証。
+
+## 追加のSpotify実機確認
+
+- Shuffle要求accepted=Trueの直後は観測値Falseを維持。その後GSMTCのTrueを検出し、外部APIでFalseへ戻した際も追従。
+- 実MainWindow＋実Spotify timeline＋独立した検証用lyrics/SyncでRepeatを確認。0.036秒で先頭行、0:00、scroll=0へ同時更新。lyrics/lookup/cancellation/cache revision/profile参照を維持し、保存profileの内容も一致。実ユーザーの歌詞やprofileは使用しない。
+- 同じ構成の150→20秒外部seekは約80msで表示へ反映（20.016秒、行7、0:20）。
+- Repeat Listの自然な次曲遷移はserviceで別identityかつStable、TimelineChange=None（0.379秒）。同一曲Wrap扱いにならないことを確認。
+- 全probe終了後、元の曲・Paused・Track repeat・Shuffle=False・20.260秒への復帰を別の読み取りで確認。ログ/probe/画像はGit管理外の`.local/`のみ。
+
+最終検証: 全302テスト成功、failed/skipped 0（開始時278）。Release build成功。既存の再コンパイル警告CS4014×2、CS0649×4は増加なし、最後の増分buildはwarning/errorとも0。diff reviewと`git diff --check`を実施。
+
+API根拠: [Microsoft Shuffle command](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssession.trychangeshuffleactiveasync?view=winrt-28000)、[nullable Shuffle state](https://learn.microsoft.com/ja-jp/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessionplaybackinfo.isshuffleactive?view=winrt-28000)。

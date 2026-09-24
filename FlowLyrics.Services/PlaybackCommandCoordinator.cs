@@ -22,6 +22,9 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public bool IsArmed => _reservation.IsArmed;
 	public bool IsArming => _arming;
 	public bool RepeatBusy { get; private set; }
+	public bool ShuffleBusy { get; private set; }
+	public bool? ShuffleActive => _latest?.Session?.ShuffleActive;
+	public bool CanShuffle => _latest?.Session?.Capabilities.CanShuffle == true && ShuffleActive.HasValue;
 	public MediaRepeatMode? RepeatMode => _latest?.Session?.RepeatMode;
 	public bool CanRepeat => _latest?.Session?.Capabilities.CanRepeat == true && RepeatMode.HasValue;
 	public bool CanArm => _latest is { State: MediaMetadataState.Stable, Session: { } session }
@@ -67,6 +70,20 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 		}
 		catch (Exception) { return false; }
 		finally { RepeatBusy = false; Changed?.Invoke(this, EventArgs.Empty); }
+	}
+
+	public async Task<bool> ToggleShuffleAsync()
+	{
+		if (!CanShuffle || ShuffleBusy || _latest?.Session is not { } session) return false;
+		ShuffleBusy = true; Changed?.Invoke(this, EventArgs.Empty);
+		try
+		{
+			bool requested = !session.ShuffleActive!.Value;
+			bool accepted = await _media.TrySetShuffleAsync(session.SessionId, requested);
+			Log("Shuffle" + requested, accepted); return accepted;
+		}
+		catch (Exception) { Log("Shuffle", false); return false; }
+		finally { ShuffleBusy = false; Changed?.Invoke(this, EventArgs.Empty); }
 	}
 
 	public async Task<bool> ToggleStopAfterTrackAsync()

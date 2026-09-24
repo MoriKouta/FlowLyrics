@@ -123,3 +123,5 @@ OpenAI一次資料: [AGENTS.md](https://learn.chatgpt.com/docs/agent-configurati
 ## 2026-09-25 scoped follow-up
 
 Repeat不具合に対して、timeline不連続の判定・revisionはMediaSessionService、表示の再開はMainWindowへ配置。LyricsServiceや保存処理に再生cycle状態を追加しない。新しいcontroller/frameworkは不要と判断。古いscroll callbackにはpresentation revisionを付け、現行cycleへ書き戻さない。詳細と検証は [dev.11 playback/UI記録](DEV11_PLAYBACK_UI_VALIDATION.md) を参照。Window全体の責務集中（H2/H4/H5）を解消したとは扱わない。
+
+Shuffleは既存のprovider/service/coordinator境界へ追加し、MainWindowには配置と観測表示のみを追加。Repeat/Shuffleのdot生成をPlayerControlVisualsへ集約した。Searchのtechnical fontは実行時templateで設定し、metadata本文を分離。Settingsの不要なCancel経路はユーザー指定で廃止したが、設定draftの元値は残す。これは保守性だけのrefactorではなく、明示された機能/UI変更である。既存6警告は抑制せず維持。BAML依存とWindowの大きさは既存課題として継続し、無関係な全体分割は行わない。

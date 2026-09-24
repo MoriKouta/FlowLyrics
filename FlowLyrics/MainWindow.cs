@@ -2127,6 +2127,7 @@ public partial class MainWindow : Window, IComponentConnector
 		UpdateReverseColorsButtonVisual();
 		UpdateOverlayChromeColors();
 		UpdateRepeatButton();
+		UpdateShuffleButton();
 	}
 
 	private System.Windows.Media.Brush CreatePlayerSurfaceBrush()
@@ -2138,6 +2139,7 @@ public partial class MainWindow : Window, IComponentConnector
 
 	private IEnumerable<System.Windows.Controls.Button> GetPlayerButtons()
 	{
+		if (_shuffleButton != null) yield return _shuffleButton;
 		yield return PreviousButton;
 		yield return PlayPauseButton;
 		yield return NextButton;
@@ -2211,13 +2213,14 @@ public partial class MainWindow : Window, IComponentConnector
 		double skipWidth = PreviousButton.Width + PreviousButton.Margin.Left + PreviousButton.Margin.Right
 			+ NextButton.Width + NextButton.Margin.Left + NextButton.Margin.Right;
 		flag3 &= available >= 2 * utilityWidth + playWidth + skipWidth + 8;
-		int optionalCount = (_settings.ShowRepeatButton ? 1 : 0) + (_settings.ShowReverseButton ? 1 : 0)
+		int transportOptions = (_settings.ShowRepeatButton ? 1 : 0) + (_settings.ShowShuffleButton ? 1 : 0);
+		int optionalCount = transportOptions + (_settings.ShowReverseButton ? 1 : 0)
 			+ (_settings.ShowPersonalSyncButton ? 1 : 0) + (_settings.ShowVolumeButton ? 1 : 0);
 		flag4 &= available >= (2 + optionalCount) * utilityWidth + playWidth + (flag3 ? skipWidth : 0) + 8;
 		// Star columns keep the transport centered when possible; minimum widths
 		// protect the utility groups when there is less room on the right.
 		ControlBar.ColumnDefinitions[0].MinWidth = utilityWidth + 4;
-		ControlBar.ColumnDefinitions[2].MinWidth = utilityWidth * (1 + (flag4 ? optionalCount - (_settings.ShowRepeatButton ? 1 : 0) : 0)) + 4;
+		ControlBar.ColumnDefinitions[2].MinWidth = utilityWidth * (1 + (flag4 ? optionalCount - transportOptions : 0)) + 4;
 		PlayPauseButton.Visibility = available >= 2 * utilityWidth + playWidth + 8 ? Visibility.Visible : Visibility.Collapsed;
 		bool lyricsOnly = _settings.LyricsOnlyMode;
 		TrackInfoPanel.Visibility = ((!(!lyricsOnly && _settings.ShowTrackInfo && flag)) ? Visibility.Collapsed : Visibility.Visible);
@@ -2231,6 +2234,7 @@ public partial class MainWindow : Window, IComponentConnector
 		PreviousButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		NextButton.Visibility = ((!flag3) ? Visibility.Collapsed : Visibility.Visible);
 		if (_repeatButton != null) _repeatButton.Visibility = flag4 && _settings.ShowRepeatButton ? Visibility.Visible : Visibility.Collapsed;
+		if (_shuffleButton != null) _shuffleButton.Visibility = flag4 && _settings.ShowShuffleButton ? Visibility.Visible : Visibility.Collapsed;
 		VolumeButton.Visibility = flag4 && _settings.ShowVolumeButton ? Visibility.Visible : Visibility.Collapsed;
 		if (VolumeButton.Visibility != Visibility.Visible) CloseVolumePopup();
 		if (_personalSyncButton != null)

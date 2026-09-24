@@ -134,6 +134,10 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				_ => Windows.Media.MediaPlaybackAutoRepeatMode.None
 			}).AsTask(cancellationToken), "repeat " + mode, cancellationToken);
 
+	public Task<bool> TrySetShuffleAsync(string sessionId, bool active, CancellationToken cancellationToken = default) =>
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsShuffleEnabled,
+			session => session.TryChangeShuffleActiveAsync(active).AsTask(cancellationToken), "shuffle " + active, cancellationToken);
+
 	private async Task<bool> TryPlaybackCommandAsync(string sessionId, Func<GlobalSystemMediaTransportControlsSession, bool> supported,
 		Func<GlobalSystemMediaTransportControlsSession, Task<bool>> command, string name, CancellationToken cancellationToken)
 	{
@@ -357,6 +361,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 				TimelineUpdatedAtUtc = timeline.LastUpdatedTime,
 				HasTimeline = duration > TimeSpan.Zero || position > TimeSpan.Zero,
 				PlaybackState = MapPlaybackState(playback.PlaybackStatus),
+				ShuffleActive = playback.IsShuffleActive,
 				RepeatMode = playback.AutoRepeatMode switch
 				{
 					Windows.Media.MediaPlaybackAutoRepeatMode.None => MediaRepeatMode.None,
@@ -371,7 +376,7 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 					controls.IsNextEnabled,
 					controls.IsPreviousEnabled,
 					controls.IsPlaybackPositionEnabled || duration > TimeSpan.Zero,
-					controls.IsStopEnabled, controls.IsRepeatEnabled),
+					controls.IsStopEnabled, controls.IsRepeatEnabled, controls.IsShuffleEnabled),
 				IsCurrentSession = ReferenceEquals(session, currentSession),
 				LastActivityUtc = lastActivity,
 				CapturedAtUtc = capturedAt

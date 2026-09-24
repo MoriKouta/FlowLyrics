@@ -20,7 +20,9 @@ public sealed record PlaybackSnapshot(
 	bool CanRepeat = false,
 	FlowLyrics.Core.MediaRepeatMode? RepeatMode = null,
 	long TimelineRevision = 0,
-	FlowLyrics.Core.MediaTimelineChange TimelineChange = FlowLyrics.Core.MediaTimelineChange.None)
+	FlowLyrics.Core.MediaTimelineChange TimelineChange = FlowLyrics.Core.MediaTimelineChange.None,
+	bool CanShuffle = false,
+	bool? ShuffleActive = null)
 {
 	public TimeSpan EstimatedPosition(DateTimeOffset nowUtc)
 	{

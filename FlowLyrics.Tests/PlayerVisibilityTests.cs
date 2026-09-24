@@ -18,14 +18,41 @@ namespace FlowLyrics.Tests;
 public sealed class PlayerVisibilityTests
 {
 	[Fact]
-	public void ExistingSettings_DefaultToVisible_ExplicitChoicesRoundTrip()
+	public void MissingSettings_DefaultToHidden_VolumeUnchanged()
 	{
 		var legacy = JsonSerializer.Deserialize<AppSettings>("{\"SettingsSchemaVersion\":17,\"ShowPlaybackControls\":true}")!;
-		Assert.True(legacy.ShowRepeatButton && legacy.ShowReverseButton && legacy.ShowPersonalSyncButton && legacy.ShowVolumeButton);
-		legacy.ShowRepeatButton = legacy.ShowReverseButton = legacy.ShowPersonalSyncButton = legacy.ShowVolumeButton = false;
+		Assert.False(legacy.ShowShuffleButton || legacy.ShowRepeatButton || legacy.ShowReverseButton || legacy.ShowPersonalSyncButton);
+		Assert.True(legacy.ShowVolumeButton);
+		var fresh = new AppSettings();
+		Assert.False(fresh.ShowShuffleButton || fresh.ShowRepeatButton || fresh.ShowReverseButton || fresh.ShowPersonalSyncButton);
+		Assert.True(fresh.ShowVolumeButton);
+		legacy.ShowShuffleButton = legacy.ShowRepeatButton = legacy.ShowReverseButton = legacy.ShowPersonalSyncButton = true;
 		var copy = legacy.Clone(); copy.Normalize();
-		Assert.False(copy.ShowRepeatButton || copy.ShowReverseButton || copy.ShowPersonalSyncButton || copy.ShowVolumeButton);
+		Assert.True(copy.ShowShuffleButton && copy.ShowRepeatButton && copy.ShowReverseButton && copy.ShowPersonalSyncButton && copy.ShowVolumeButton);
 		Assert.Equal(17, copy.SettingsSchemaVersion); Assert.True(copy.ShowPlaybackControls);
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public async System.Threading.Tasks.Task ExplicitVisibility_SurvivesSettingsLoadSave(bool visible)
+	{
+		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-defaults-" + Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		try
+		{
+			SettingsService service = new(directory);
+			File.WriteAllText(service.SettingsPath, "{\"SettingsSchemaVersion\":16,\"ShowRepeatButton\":" + visible.ToString().ToLowerInvariant() +
+				",\"ShowReverseButton\":" + visible.ToString().ToLowerInvariant() + ",\"ShowPersonalSyncButton\":" + visible.ToString().ToLowerInvariant() + "}");
+			var settings = service.Load();
+			Assert.False(settings.ShowShuffleButton);
+			Assert.Equal(visible, settings.ShowRepeatButton); Assert.Equal(visible, settings.ShowReverseButton); Assert.Equal(visible, settings.ShowPersonalSyncButton);
+			settings.ShowShuffleButton = visible; await service.SaveAsync(settings);
+			var reopened = service.Load();
+			Assert.Equal(visible, reopened.ShowShuffleButton); Assert.Equal(visible, reopened.ShowRepeatButton);
+			Assert.Equal(visible, reopened.ShowReverseButton); Assert.Equal(visible, reopened.ShowPersonalSyncButton); Assert.True(reopened.ShowVolumeButton);
+		}
+		finally { Directory.Delete(directory, true); }
 	}
 
 	[Theory]
@@ -40,14 +67,15 @@ public sealed class PlayerVisibilityTests
 			{
 				using MediaSessionService media = new(new EmptyProvider());
 				SettingsService settingsService = new(directory);
+				System.Threading.Tasks.Task.Run(() => settingsService.SaveAsync(new() { ShowShuffleButton = true, ShowRepeatButton = true, ShowReverseButton = true, ShowPersonalSyncButton = true })).GetAwaiter().GetResult();
 				MainWindow main = new(settingsService, media);
 				try
 				{
 					main.ShowActivated = false; main.Show(); Pump(); StopTimers();
 					Invoke(main, "OpenSettings"); Pump();
 					var settings = Read<SettingsWindow>(main, "_settingsWindow");
-					string[] fields = ["_repeatButton", "_reverseColorsButton", "_personalSyncButton", "VolumeButton"];
-					string[] options = ["_showRepeatButtonBox", "_showReverseButtonBox", "_showPersonalSyncButtonBox", "_showVolumeButtonBox"];
+					string[] fields = ["_shuffleButton", "_repeatButton", "_reverseColorsButton", "_personalSyncButton", "VolumeButton"];
+					string[] options = ["_showShuffleButtonBox", "_showRepeatButtonBox", "_showReverseButtonBox", "_showPersonalSyncButtonBox", "_showVolumeButtonBox"];
 					for (int i = 0; i < fields.Length; i++)
 					{
 						Read<CheckBox>(settings, options[i]).IsChecked = false; Pump();

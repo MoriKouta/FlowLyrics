@@ -28,19 +28,43 @@ public sealed class PlaybackControlsRuntimeTests
 			{
 				PlaybackCommandTests.Provider provider = new();
 				using MediaSessionService media = new(provider);
-				MainWindow window = new(new SettingsService(directory), media);
+				SettingsService settings = new(directory);
+				Task.Run(() => settings.SaveAsync(new() { ShowShuffleButton = true, ShowRepeatButton = true, ShowReverseButton = true, ShowPersonalSyncButton = true })).GetAwaiter().GetResult();
+				MainWindow window = new(settings, media);
 				try
 				{
 					window.ShowActivated = false; window.Show(); Pump(); StopTimers();
 					var commands = Read<PlaybackCommandCoordinator>(window, "_playbackCommands");
 					var repeat = Read<Button>(window, "_repeatButton");
+					var shuffle = Read<Button>(window, "_shuffleButton");
+					Assert.False(shuffle.IsEnabled); Assert.Null(provider.RequestedShuffle); Assert.Null(provider.RequestedRepeat);
+					var transport = (Panel)repeat.Parent;
+					Assert.Equal(transport.Children.IndexOf(Read<Button>(window, "PreviousButton")) - 1, transport.Children.IndexOf(shuffle));
 					Assert.False(repeat.IsEnabled); Assert.NotNull(repeat.Parent);
 					provider.Current = new() { SessionId = "test", IsCurrentSession = true, SourceAppUserModelId = "player",
 						Metadata = new("Track", "Artist", "", TimeSpan.FromSeconds(180)), Position = TimeSpan.FromSeconds(10),
 						CapturedAtUtc = DateTimeOffset.UtcNow, HasTimeline = true, PlaybackState = MediaPlaybackState.Playing,
-						Capabilities = new(true, true, true, true, true, true, true, true), RepeatMode = MediaRepeatMode.List };
+						Capabilities = new(true, true, true, true, true, true, true, true, true), ShuffleActive = false, RepeatMode = MediaRepeatMode.List };
 					commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
 					Assert.True(repeat.IsEnabled); Assert.Equal(Visibility.Collapsed, Read<TextBlock>(window, "_repeatOne").Visibility);
+					Assert.True(shuffle.IsEnabled);
+					Assert.Null(provider.RequestedShuffle); Assert.Null(provider.RequestedRepeat);
+					Assert.Equal(repeat.BorderBrush.ToString(), shuffle.BorderBrush.ToString());
+					var shuffleIcon = Read<Canvas>(window, "_shuffleDots");
+					Assert.Equal(Read<Canvas>(window, "_repeatDots").Width, shuffleIcon.Width);
+					Assert.Equal(.72, shuffleIcon.Opacity);
+					Task<bool> shuffleRequest = commands.ToggleShuffleAsync(); WaitUntil(() => shuffleRequest.IsCompleted);
+					Assert.True(shuffleRequest.Result); Assert.Equal(.72, shuffleIcon.Opacity);
+					provider.Current = provider.Current with { ShuffleActive = true }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
+					Assert.Equal(1, shuffleIcon.Opacity);
+					provider.AcceptShuffle = false; shuffleRequest = commands.ToggleShuffleAsync(); WaitUntil(() => shuffleRequest.IsCompleted);
+					Assert.False(shuffleRequest.Result); Assert.Equal(1, shuffleIcon.Opacity);
+					provider.Current = provider.Current with { ShuffleActive = null }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
+					Assert.False(shuffle.IsEnabled); Assert.Equal(.72, shuffleIcon.Opacity);
+					provider.Current = provider.Current with { ShuffleActive = false, Capabilities = provider.Current.Capabilities with { CanShuffle = false } }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
+					Assert.False(shuffle.IsEnabled); Assert.True(repeat.IsEnabled);
+					UiUxRuntimeTests.Capture(window, "player-shuffle-disabled");
+					provider.Current = provider.Current with { Capabilities = provider.Current.Capabilities with { CanShuffle = true } }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
 					provider.Current = provider.Current with { RepeatMode = MediaRepeatMode.Track }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current));
 					Assert.Equal(Visibility.Visible, Read<TextBlock>(window, "_repeatOne").Visibility);
 					provider.AcceptRepeat = false; Task<bool> change = commands.CycleRepeatAsync(); WaitUntil(() => change.IsCompleted);
@@ -53,7 +77,7 @@ public sealed class PlaybackControlsRuntimeTests
 					window.Width = 760; window.Height = 350; window.Background = System.Windows.Media.Brushes.Black; Pump();
 					foreach (var mode in new[] { MediaRepeatMode.None, MediaRepeatMode.List, MediaRepeatMode.Track })
 					{
-						provider.Current = provider.Current with { RepeatMode = mode }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current)); Pump();
+						provider.Current = provider.Current with { RepeatMode = mode, ShuffleActive = mode != MediaRepeatMode.None }; commands.Observe(new(MediaMetadataState.Stable, Session: provider.Current)); Pump();
 						UiUxRuntimeTests.Capture(window, "player-controls-" + mode); GlowOverlayTests.CaptureNative(window, "player-controls-" + mode);
 						foreach (double dpi in new[] { 120.0, 144 }) UiUxRuntimeTests.Capture(window, $"player-controls-{mode}-{dpi}dpi", dpi);
 					}
@@ -63,7 +87,7 @@ public sealed class PlaybackControlsRuntimeTests
 					foreach (double width in new[] { 760.0, 500, 430, 390, 350, 310, 250, 216 })
 					{
 						window.Width = width; Pump(); Invoke(window, "UpdateChromeVisibility"); Pump();
-						var buttons = new[] { "LockButton", "PreviousButton", "PlayPauseButton", "NextButton", "_repeatButton",
+						var buttons = new[] { "LockButton", "_shuffleButton", "PreviousButton", "PlayPauseButton", "NextButton", "_repeatButton",
 							"_reverseColorsButton", "_personalSyncButton", "VolumeButton", "SettingsButton" }.Select(field => Read<Button>(window, field))
 							.Where(button => button.IsVisible).Select(button => (button.Name, Bounds: new Rect(button.TranslatePoint(new Point(), window), button.RenderSize))).ToArray();
 						for (int i = 0; i < buttons.Length; i++)

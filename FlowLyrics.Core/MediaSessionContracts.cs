@@ -55,7 +55,8 @@ public sealed record MediaPlaybackCapabilities(
 	bool CanPrevious,
 	bool CanSeek,
 	bool CanStop = false,
-	bool CanRepeat = false);
+	bool CanRepeat = false,
+	bool CanShuffle = false);
 
 public sealed record MediaSessionInfo
 {
@@ -75,6 +76,7 @@ public sealed record MediaSessionInfo
 
 	public MediaPlaybackState PlaybackState { get; init; }
 	public MediaRepeatMode? RepeatMode { get; init; }
+	public bool? ShuffleActive { get; init; }
 
 	public MediaPlaybackCapabilities Capabilities { get; init; } = new(false, false, false, false, false, false);
 
@@ -107,4 +109,5 @@ public interface IMediaSessionProvider : IDisposable
 	Task<bool> TryPauseAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	Task<bool> TryStopAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	Task<bool> TrySetRepeatAsync(string sessionId, MediaRepeatMode mode, CancellationToken cancellationToken = default) => Task.FromResult(false);
+	Task<bool> TrySetShuffleAsync(string sessionId, bool active, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
