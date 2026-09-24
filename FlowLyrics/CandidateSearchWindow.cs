@@ -113,6 +113,9 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		InitializeContributionFooter();
 		InitializeDirectIdControls();
 		ApplySearchActionChrome();
+		Style containers = new(typeof(ContentPresenter));
+		containers.Setters.Add(new EventSetter(LoadedEvent, new RoutedEventHandler(CandidateCard_Loaded)));
+		ResultsList.ItemContainerStyle = containers;
 		base.Loaded += async delegate
 		{
 			await SearchAsync(titleOnly: false);
@@ -138,14 +141,16 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		root.RowDefinitions.Insert(1, new RowDefinition { Height = GridLength.Auto });
 		StackPanel panel = new() { Name = "DirectIdPanel", Margin = new Thickness(0, 4, 0, 10) };
 		WrapPanel row = new();
-		row.Children.Add(new TextBlock { Text = T("LRCLIB ID"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
+		TextBlock idLabel = new() { Text = "LRCLIB ID", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), FontSize = 11 };
+		LocalizedUiFont.Technical(idLabel); row.Children.Add(idLabel);
 		_recordIdBox = new TextBox { Name = "LrclibIdBox", Width = 140, ToolTip = T("LRCLIB ID") };
+		LocalizedUiFont.Technical(_recordIdBox);
 		_recordIdBox.KeyDown += async (_, e) =>
 		{
 			if (e.Key == System.Windows.Input.Key.Enter) { e.Handled = true; await LoadIdAsync(); }
 		};
 		row.Children.Add(_recordIdBox);
-		_loadIdButton = new Button { Name = "LoadLrclibIdButton", Content = T("Load ID"), Margin = new Thickness(8, 0, 0, 0) };
+		_loadIdButton = new Button { Name = "LoadLrclibIdButton", Content = "LOAD ID", Margin = new Thickness(8, 0, 0, 0) };
 		_loadIdButton.FontFamily = SearchButton.FontFamily;
 		_loadIdButton.FontSize = SearchButton.FontSize;
 		_loadIdButton.Click += async (_, _) => await LoadIdAsync();
@@ -242,13 +247,13 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 	private void ApplyLanguage()
 	{
 		LocalizedUiFont.Apply(this, _language, _englishDotFont);
-		base.Title = T("Choose from LRCLIB");
-		TitleLabel.Text = T("Title");
-		ArtistLabel.Text = T("Artist");
-		AlbumLabel.Text = T("Album");
-		KeywordLabel.Text = T("Keyword");
-		SearchButton.Content = T("Search LRCLIB");
-		CloseButton.Content = T("Close");
+		base.Title = "LRCLIB Search";
+		LocalizedUiFont.Heading(TitleLabel, "TITLE");
+		LocalizedUiFont.Heading(ArtistLabel, "ARTIST");
+		LocalizedUiFont.Heading(AlbumLabel, "ALBUM");
+		LocalizedUiFont.Heading(KeywordLabel, "KEYWORD");
+		SearchButton.Content = "SEARCH";
+		CloseButton.Content = "CLOSE";
 	}
 
 	private async void Search_Click(object sender, RoutedEventArgs e)
@@ -266,9 +271,9 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		StackPanel buttons = new StackPanel { Orientation = Orientation.Horizontal };
 		_titleOnlyButton = new Button
 		{
-			Content = T("Title only"),
-			FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont),
-			FontSize = 9.0,
+			Content = "TITLE ONLY",
+			FontFamily = _englishDotFont,
+			FontSize = 11.0,
 			ToolTip = T("Search by title only")
 		};
 		_titleOnlyButton.Click += async delegate { await SearchAsync(titleOnly: true); };
@@ -283,19 +288,41 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		ControlTemplate template = CreateRoundedActionButtonTemplate();
 		Style shared = new(typeof(Button), TryFindResource(typeof(Button)) as Style);
 		shared.Setters.Add(new Setter(Control.TemplateProperty, template));
-		shared.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 36.0));
-		shared.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 8, 12, 8)));
+		shared.Setters.Add(new Setter(Control.FontFamilyProperty, _englishDotFont));
+		shared.Setters.Add(new Setter(Control.FontSizeProperty, 11.0));
+		shared.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 32.0));
+		shared.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 6, 12, 6)));
 		Resources[typeof(Button)] = shared;
 		foreach (Button button in new[] { _titleOnlyButton, SearchButton, _loadIdButton, CloseButton }.OfType<Button>())
 		{
 			button.Template = template;
-			button.MinHeight = 38.0;
-			button.Padding = new Thickness(15.0, 8.0, 15.0, 8.0);
+			button.MinHeight = 32.0;
+			button.Padding = new Thickness(12.0, 6.0, 12.0, 6.0);
+			button.FontSize = 11.0;
+			LocalizedUiFont.Technical(button);
 			button.BorderThickness = new Thickness(1.0);
 		}
 		if (_titleOnlyButton != null)
 		{
 			_titleOnlyButton.Margin = new Thickness(4.0, 4.0, 7.0, 4.0);
+		}
+	}
+
+	private void CandidateCard_Loaded(object sender, RoutedEventArgs e)
+	{
+		if (sender is not ContentPresenter presenter || presenter.Content is not CandidateCardViewModel) return;
+		Apply(presenter);
+		void Apply(DependencyObject node)
+		{
+			if (node is TextBlock text)
+			{
+				string? field = BindingOperations.GetBinding(text, TextBlock.TextProperty)?.Path.Path;
+				if (field is "Quality" or "Summary" or "Matches" or "Mismatches") LocalizedUiFont.Technical(text);
+				else if (field is "Title" or "Artist" or "Album") text.FontFamily = LocalizedUiFont.MetadataFont;
+				if (field == "Quality" && text.Parent is Border badge) badge.VerticalAlignment = VerticalAlignment.Top;
+			}
+			if (node is Border card && card.BorderThickness == new Thickness(2)) card.BorderThickness = new Thickness(1);
+			for (int i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++) Apply(VisualTreeHelper.GetChild(node, i));
 		}
 	}
 
@@ -350,12 +377,12 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		};
 		message.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
 		message.Inlines.Add(new Run(T("No good match? Try creating synchronized lyrics yourself and share them with the next listener.") + "  "));
-		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont), FontSize = 9.0, TextDecorations = null };
+		Hyperlink lrclib = new Hyperlink(new Run("LRCLIB")) { FontFamily = _englishDotFont, FontSize = 10.0, TextDecorations = null };
 		lrclib.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrclib.Click += delegate { OpenUrl(new Uri("https://lrclib.net/")); };
 		message.Inlines.Add(lrclib);
 		message.Inlines.Add(new Run("  ·  "));
-		Hyperlink lrcget = new Hyperlink(new Run("LRCGET")) { FontFamily = LocalizedUiFont.Resolve(_language, _englishDotFont), FontSize = 9.0, TextDecorations = null };
+		Hyperlink lrcget = new Hyperlink(new Run("LRCGET")) { FontFamily = _englishDotFont, FontSize = 10.0, TextDecorations = null };
 		lrcget.SetResourceReference(TextElement.ForegroundProperty, "Orange");
 		lrcget.Click += delegate { OpenUrl(new Uri("https://github.com/tranxuanthang/lrcget")); };
 		message.Inlines.Add(lrcget);
@@ -497,30 +524,30 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		LrclibRecord record = candidate.Record;
 		bool usable = record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || !string.IsNullOrWhiteSpace(record.PlainLyrics);
 		bool flag = usable && (record.Instrumental || !string.IsNullOrWhiteSpace(record.SyncedLyrics) || _plainFallbackEnabled);
-		string value = (record.Instrumental ? T("Instrumental") : ((!string.IsNullOrWhiteSpace(record.SyncedLyrics)) ? T("Synced") : T("Plain lyrics")));
-		string value2 = (candidate.DurationDifferenceSeconds.HasValue ? string.Format(T("difference {0:+0.0;-0.0;0.0} s"), candidate.DurationDifferenceSeconds.Value) : T("duration unavailable"));
+		string value = record.Instrumental ? "INSTRUMENTAL" : !string.IsNullOrWhiteSpace(record.SyncedLyrics) ? "SYNCED" : "PLAIN";
+		string value2 = candidate.DurationDifferenceSeconds.HasValue ? FormattableString.Invariant($"DIFF {candidate.DurationDifferenceSeconds.Value:0.0}s") : "DIFF —";
 		return new CandidateCardViewModel
 		{
 			Candidate = candidate,
 			Title = (record.TrackName ?? T("Unknown title")),
 			Artist = (record.ArtistName ?? T("Unknown artist")),
 			Album = (record.AlbumName ?? T("Unknown album")),
-			Quality = T(candidate.QualityKey),
+			Quality = candidate.QualityKey.ToUpperInvariant(),
 			QualityBrush = QualityBrush(candidate.QualityKey),
-			Summary = $"LRCLIB #{record.Id}  ·  {FormatDuration(record.Duration)}  ·  {value2}  ·  {value}  ·  {T("Score")} {candidate.Score}",
-			Matches = T("Matched") + ": " + JoinTranslated(candidate.MatchedFields),
-			Mismatches = T("Not matched") + ": " + ((candidate.MismatchedFields.Count == 0) ? T("None") : JoinTranslated(candidate.MismatchedFields)),
+			Summary = $"LRCLIB #{record.Id} · {FormatDuration(record.Duration)} · {value2} · {value} · SCORE {candidate.Score}",
+			Matches = "MATCH: " + JoinTechnical(candidate.MatchedFields),
+			Mismatches = "MISMATCH: " + (candidate.MismatchedFields.Count == 0 ? "NONE" : JoinTechnical(candidate.MismatchedFields)),
 			CanUse = flag,
 			DisabledReason = flag ? string.Empty : T(usable ? "Enable Plain Lyrics Fallback to use this result." : "The selected LRCLIB record has no usable lyrics."),
-			PreviewLabel = T("Preview"),
-			UseLabel = T("Use these lyrics"),
-			OpenLabel = T("Open in LRCLIB")
+			PreviewLabel = "PREVIEW",
+			UseLabel = "USE",
+			OpenLabel = "OPEN LRCLIB"
 		};
 	}
 
-	private string JoinTranslated(IEnumerable<string> keys)
+	private static string JoinTechnical(IEnumerable<string> keys)
 	{
-		return string.Join(", ", keys.Select(T));
+		return string.Join(" / ", keys.Select(key => key.ToUpperInvariant()));
 	}
 
 	private static string FormatDuration(double seconds)

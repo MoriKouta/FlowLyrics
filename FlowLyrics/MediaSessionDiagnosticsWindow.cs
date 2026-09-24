@@ -60,7 +60,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 
 		DockPanel header = new DockPanel { LastChildFill = true, Margin = new Thickness(0.0, 0.0, 0.0, 12.0) };
 		WrapPanel buttons = new WrapPanel { HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
-		Button refreshButton = CreateButton(T("Refresh"));
+		Button refreshButton = CreateButton("REFRESH"); LocalizedUiFont.Technical(refreshButton);
 		refreshButton.Click += async delegate { await RefreshAsync(); };
 		Button copyButton = CreateButton(T("Copy diagnostics"));
 		copyButton.Margin = new Thickness(7.0, 0.0, 0.0, 0.0);
@@ -111,6 +111,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			BorderThickness = new Thickness(1.0)
 		};
 		Grid.SetRow(_detailBox, 1);
+		LocalizedUiFont.Technical(_detailBox);
 		Grid.SetColumn(_detailBox, 2);
 		root.Children.Add(_detailBox);
 		Content = root;
@@ -192,7 +193,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		MediaSessionInfo? session = _sessions.FirstOrDefault(candidate => string.Equals(candidate.SessionId, id, StringComparison.Ordinal));
 		_detailBox.Text = session == null
 			? T("Select a Media Session to inspect it.") + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider())
-			: LocalizeMetadataLabels(BuildSessionDiagnostics(session)) + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider());
+			: BuildSessionDiagnostics(session) + Environment.NewLine + Environment.NewLine + BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider());
 	}
 
 	private void CopyDiagnostics_Click(object sender, RoutedEventArgs e)
@@ -208,7 +209,7 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 			text.AppendLine();
 			foreach (MediaSessionInfo session in _sessions)
 			{
-				text.AppendLine(LocalizeMetadataLabels(BuildSessionDiagnostics(session)));
+				text.AppendLine(BuildSessionDiagnostics(session));
 				text.AppendLine(new string('-', 72));
 			}
 			text.AppendLine(BuildPersonalSyncDiagnostics(_personalSyncDiagnosticsProvider()));
@@ -281,14 +282,6 @@ public sealed class MediaSessionDiagnosticsWindow : Window
 		text.AppendLine("CanNext: " + YesNo(session.Capabilities.CanNext));
 		text.AppendLine("CanSeek: " + YesNo(session.Capabilities.CanSeek));
 		return text.ToString().TrimEnd();
-	}
-
-	private string LocalizeMetadataLabels(string text)
-	{
-		foreach (string label in new[] { "DISPLAY TITLE", "TITLE ALIASES", "ARTIST SEARCH CANDIDATES",
-			"EDITION SIGNATURE", "RELEASE CONTEXT", "METADATA INFERENCE", "SPOTIFY WINDOW STATE" })
-			text = text.Replace(label + ":", T(label) + ":", StringComparison.Ordinal);
-		return text;
 	}
 
 	private static string BuildPersonalSyncDiagnostics(PersonalSyncDiagnosticSnapshot? snapshot)

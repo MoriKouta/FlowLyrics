@@ -324,7 +324,7 @@ public sealed class PersonalSyncWindow : Window
 		_redoButton = Button(T("Redo"));
 		Button reset = _resetButton = Button(T("Reset timing"));
 		Button remove = _removeButton = DangerButton(T("Delete saved sync"));
-		Button close = Button(T("Close"));
+		Button close = Button("CLOSE"); LocalizedUiFont.Technical(close);
 		close.ToolTip = T("Changes are saved when you close.");
 		_undoButton.Click += delegate { Undo(); };
 		_redoButton.Click += delegate { Redo(); };
@@ -1323,6 +1323,7 @@ public sealed class PersonalSyncWindow : Window
 		{
 			double delta = amounts[i];
 			Button button = Button(delta.ToString("+0.0;-0.0", CultureInfo.InvariantCulture) + "s");
+			LocalizedUiFont.Technical(button);
 			if (compact) { button.Content = delta.ToString("+0.0;-0.0", CultureInfo.InvariantCulture); button.Padding = new Thickness(2, 3, 2, 3); button.MinHeight = 28; button.FontSize = 11; button.Margin = new Thickness(2); }
 			button.Click += delegate { action(delta); };
 			Grid.SetColumn(button, i);

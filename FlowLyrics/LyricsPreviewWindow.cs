@@ -39,7 +39,10 @@ public class LyricsPreviewWindow : Window, IComponentConnector
 		LocalizedUiFont.Apply(this, _language, englishDotFont);
 		LrclibRecord record = candidate.Record;
 		base.Title = T("Lyrics preview");
-		CloseButton.Content = T("Close");
+		CloseButton.Content = "CLOSE";
+		LocalizedUiFont.Technical(CloseButton);
+		LocalizedUiFont.Technical(DurationText);
+		TitleText.FontFamily = ArtistText.FontFamily = AlbumText.FontFamily = LyricsText.FontFamily = LocalizedUiFont.MetadataFont;
 		CloseButton.Template = CandidateSearchWindow.CreateRoundedActionButtonTemplate();
 		CloseButton.MinHeight = 38;
 		CloseButton.Padding = new Thickness(15, 8, 15, 8);
@@ -47,7 +50,7 @@ public class LyricsPreviewWindow : Window, IComponentConnector
 		ArtistText.Text = record.ArtistName ?? T("Unknown artist");
 		AlbumText.Text = record.AlbumName ?? T("Unknown album");
 		string value = (candidate.DurationDifferenceSeconds.HasValue ? $"{candidate.DurationDifferenceSeconds.Value:+0.0;-0.0;0.0} s" : "--");
-		DurationText.Text = $"LRCLIB #{record.Id}  ·  {FormatDuration(record.Duration)}  ·  {T("Playback duration difference")}: {value}";
+		DurationText.Text = $"LRCLIB #{record.Id} · {FormatDuration(record.Duration)} · DIFF {value}";
 		if (record.Instrumental)
 		{
 			LyricsText.Text = T("Instrumental");

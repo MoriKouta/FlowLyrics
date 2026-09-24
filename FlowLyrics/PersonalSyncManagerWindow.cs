@@ -160,7 +160,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		Button reset = Button(T("Reset timing"));
 		Button delete = Button(T("Delete saved sync"));
 		delete.Foreground = Brush(238, 158, 157);
-		Button close = Button(T("Close"));
+		Button close = Button("CLOSE"); LocalizedUiFont.Technical(close);
 		reset.Click += Reset_Click;
 		delete.Click += Delete_Click;
 		close.Click += delegate { Close(); };
@@ -270,7 +270,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		StackPanel stack = new();
 		surface.Child = stack;
 		DockPanel heading = new();
-		TextBlock value = new() { FontFamily = FontFamily, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Accent() };
+		TextBlock value = new() { FontFamily = LocalizedUiFont.EnglishDotFont, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = Accent() };
 		DockPanel.SetDock(value, Dock.Right);
 		heading.Children.Add(value);
 		TextBlock label = new() { Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };

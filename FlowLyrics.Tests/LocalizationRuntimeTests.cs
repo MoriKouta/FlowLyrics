@@ -88,6 +88,7 @@ public sealed class LocalizationRuntimeTests
 					Assert.Equal(expected.Source, sync.FontFamily.Source);
 					Assert.Equal(LocalizationService.Translate(language, "Re-sync from here"), Read<Button>(sync, "_resyncButton").Content);
 					AssertHeading(sync, "PERSONAL SYNC"); AssertHeading(sync, "TIMING EDITOR");
+					Assert.Contains("Flow Dots", Logical<Button>(sync).First(button => Equals(button.Content, "+0.5s")).FontFamily.Source);
 					Assert.Contains(Logical<TextBlock>(sync), label => label.Text == LocalizationService.Translate(language, "Global offset"));
 					sync.Width = 760; Pump();
 					foreach (Button action in Visuals<Button>(sync).Where(button => button.Name == "AlignLyricButton")) Assert.InRange(action.ActualWidth, 1, 148);
@@ -107,6 +108,8 @@ public sealed class LocalizationRuntimeTests
 					AssertHeading(settings, "PLAYER"); AssertHeading(settings, "CURRENT TRACK"); AssertHeading(settings, "PERSONAL SYNC");
 					Assert.Equal(track.Title, Read<TextBlock>(settings, "CurrentTrackTitleText").Text);
 					Assert.Equal(track.Artist, Read<TextBlock>(settings, "CurrentTrackArtistText").Text);
+					Assert.Equal("AUTO", Read<TextBlock>(settings, "SelectionModeText").Text);
+					Assert.Contains("Flow Dots", Read<TextBlock>(settings, "SelectionModeText").FontFamily.Source);
 					var missing = new List<string>();
 					foreach (string field in new[] { "_localizedText", "_localizedContent", "_localizedHeaders" })
 					{
@@ -136,6 +139,11 @@ public sealed class LocalizationRuntimeTests
 					main.ShowActivated = false; main.Show(); Pump();
 					Read<AppSettings>(main, "_settings").Language = language; Invoke(main, "ApplyVisualSettings");
 					Assert.Equal("MEDIA SESSION / " + LocalizationService.Translate(language, "Waiting"), Read<TextBlock>(main, "TrackStatusText").Text);
+					foreach ((string status, string label) in new[] { ("LRCLIB — AUTO SELECTED", "LRCLIB — AUTO"), ("CACHE", "CACHE"), ("LRCLIB — MANUALLY SELECTED", "LRCLIB — MANUAL"), ("LRCLIB — BEST MATCH", "LRCLIB — BEST MATCH"), ("LOCAL LRC", "LOCAL LRC") })
+					{
+						Invoke(main, "SetTrackStatus", status, Colors.White);
+						Assert.Equal("MEDIA SESSION / " + label, Read<TextBlock>(main, "TrackStatusText").Text);
+					}
 					foreach (FieldInfo field in typeof(MainWindow).GetFields(BindingFlags.Instance | BindingFlags.NonPublic))
 						if (field.GetValue(main) is DispatcherTimer timer) timer.Stop();
 					main.WindowState = WindowState.Normal; main.Width = 856; main.Height = 616; main.Left = 80; main.Top = 80; main.Show(); Pump();

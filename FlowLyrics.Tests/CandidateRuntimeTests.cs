@@ -16,8 +16,10 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class CandidateRuntimeTests
 {
-	[Fact]
-	public void LoadedIdControls_PreviewAndManualUseWithoutSearch()
+	[Theory]
+	[InlineData("en-US")]
+	[InlineData("ja-JP")]
+	public void LoadedIdControls_PreviewAndManualUseWithoutSearch(string language)
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-id-runtime-" + Guid.NewGuid().ToString("N"));
 		try
@@ -26,34 +28,43 @@ public sealed class CandidateRuntimeTests
 			{
 				using var handler = new LrclibRefreshTests.Handler();
 				using LyricsService service = new(directory, handler);
-				CandidateSearchWindow window = new(new("Different title", "Artist", "Album", TimeSpan.FromSeconds(240)), service, "en-US", true, "#FFFF6B2C", false);
+				CandidateSearchWindow window = new(new("Different title", "Artist", "Album", TimeSpan.FromSeconds(240)), service, language, true, "#FFFF6B2C", false);
 				window.ShowActivated = false; window.Show(); Pump();
 				try
 				{
 					WaitUntil(() => !Read<bool>(window, "_isSearching"));
-					Assert.Contains(Visuals<TextBlock>(window), item => item.Text.StartsWith("LRCLIB search results may remain cached"));
+					Assert.Contains(Visuals<TextBlock>(window), item => item.Text.Contains(LocalizationService.Translate(language, "LRCLIB search results may remain cached after a new submission. If you know the LRCLIB ID, load it directly.")));
 					TextBox id = Read<TextBox>(window, "_recordIdBox"); Button load = Read<Button>(window, "_loadIdButton");
 					Assert.True(id.IsVisible); Assert.True(load.IsVisible);
 					Assert.Same(Read<Button>(window, "SearchButton").Template, load.Template);
 					Assert.Equal(Read<Button>(window, "SearchButton").MinHeight, load.MinHeight);
 					int requests = handler.Urls.Count;
 					id.Text = "invalid"; load.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					Assert.Equal("Enter a positive LRCLIB ID.", Read<TextBlock>(window, "StatusText").Text);
+					Assert.Equal(LocalizationService.Translate(language, "Enter a positive LRCLIB ID."), Read<TextBlock>(window, "StatusText").Text);
 					Assert.Equal(requests, handler.Urls.Count);
 					id.Text = "123"; load.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					WaitUntil(() => load.IsEnabled);
 					Assert.Equal("/api/get/123", Assert.Single(handler.Urls.Skip(requests)));
 					ItemsControl results = Read<ItemsControl>(window, "ResultsList");
 					Assert.Single(results.Items); Pump();
-					UiUxRuntimeTests.Capture(window, "lrclib-direct-id");
-					Button preview = Visuals<Button>(window).Single(button => button.Content?.ToString() == "Preview");
+					foreach (string label in new[] { "SEARCH", "LOAD ID", "PREVIEW", "USE", "OPEN LRCLIB", "CLOSE" })
+						Assert.Contains("Flow Dots", Visuals<Button>(window).Single(button => button.Content?.ToString() == label).FontFamily.Source);
+					foreach (var text in Visuals<TextBlock>(results))
+					{
+						string? path = text.GetBindingExpression(TextBlock.TextProperty)?.ParentBinding.Path?.Path;
+						if (path is "Quality" or "Summary" or "Matches" or "Mismatches") Assert.Contains("Flow Dots", text.FontFamily.Source);
+						if (path is "Title" or "Artist" or "Album") Assert.DoesNotContain("Flow Dots", text.FontFamily.Source);
+					}
+					UiUxRuntimeTests.Capture(window, "lrclib-direct-id-" + language);
+					GlowOverlayTests.CaptureNative(window, "lrclib-direct-id-" + language);
+					Button preview = Visuals<Button>(window).Single(button => button.Content?.ToString() == "PREVIEW");
 					Assert.Same(load.Template, preview.Template);
 					Assert.DoesNotContain(Visuals<TextBlock>(window), item => item.Text.Contains("System.Windows.Documents.Run"));
 					preview.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
 					Window previewWindow = Assert.Single(window.OwnedWindows.Cast<Window>());
 					Assert.IsType<LyricsPreviewWindow>(previewWindow); Assert.True(previewWindow.IsVisible);
 					UiUxRuntimeTests.Capture(previewWindow, "lyrics-preview"); previewWindow.Close();
-					Button use = Visuals<Button>(window).Single(button => button.Content?.ToString() == "Use these lyrics");
+					Button use = Visuals<Button>(window).Single(button => button.Content?.ToString() == "USE");
 					Assert.True(use.IsEnabled); use.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					WaitUntil(() => !window.IsVisible);
 					Assert.True(window.SelectedResult!.SelectedManually);

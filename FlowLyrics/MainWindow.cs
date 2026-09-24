@@ -2713,7 +2713,14 @@ public partial class MainWindow : Window, IComponentConnector
 
 	private void SetTrackStatus(string status, System.Windows.Media.Color color)
 	{
-		string label = status == "LRCLIB — BEST MATCH" ? "LRCLIB — " + T("Best match") : T(status switch
+		string label = status switch
+		{
+			"LRCLIB — BEST MATCH" => "LRCLIB — BEST MATCH",
+			"LRCLIB — AUTO SELECTED" => "LRCLIB — AUTO",
+			"LRCLIB — MANUALLY SELECTED" => "LRCLIB — MANUAL",
+			"CACHE" or "LOCAL LRC" or "INSTRUMENTAL" => status,
+			"PLAIN LYRICS" => "PLAIN",
+			_ => T(status switch
 		{
 			"SEARCHING LYRICS" or "SEARCHING" => "Searching",
 			"LRCLIB CANDIDATES FOUND" => "LRCLIB candidates found",
@@ -2724,11 +2731,9 @@ public partial class MainWindow : Window, IComponentConnector
 			"CONNECTING" => "Connecting",
 			"ERROR" => "Error",
 			"RECONNECTING" => "Reconnecting",
-			"CACHE" => "Loaded from cache",
-			"LRCLIB — AUTO SELECTED" => "LRCLIB — Auto selected",
-			"LRCLIB — MANUALLY SELECTED" => "LRCLIB — Manually selected",
 			_ => status
-		});
+		})
+		};
 		TrackStatusText.Text = GetPlaybackSourceLabel(_snapshot) + " / " + label;
 		UpdateCurrentTrackHeader(_snapshot?.Track);
 		_trackStatusColor = color;

@@ -31,7 +31,7 @@ public sealed class PlayerVisibilityTests
 	[Theory]
 	[InlineData(false)]
 	[InlineData(true)]
-	public void UtilityControls_PreviewIndependently_ThenCancelOrSave(bool save)
+	public void UtilityControls_PreviewIndependently_ThenCommitOnButtonOrTitleBarClose(bool save)
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-visibility-" + Guid.NewGuid().ToString("N"));
 		try
@@ -57,16 +57,15 @@ public sealed class PlayerVisibilityTests
 						Assert.True(Read<AppSettings>(main, "_settings").ShowPlaybackControls);
 					}
 					Assert.Contains(Logical<TextBlock>(settings), text => text.Text == "PLAYER CONTROLS");
-					if (save) settings.ApplyAndClose();
+					Assert.DoesNotContain(Logical<Button>(settings), button => button.IsVisible && button.Content?.ToString() == LocalizationService.Translate(settings.ResultSettings.Language, "Cancel"));
+					if (save) Assert.Single(Logical<Button>(settings), button => button.Content?.ToString() == "CLOSE").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					else
 					{
-						string cancelText = LocalizationService.Translate(settings.ResultSettings.Language, "Cancel");
-						Button cancel = Assert.Single(Logical<Button>(settings), button => button.Content is string content && content == cancelText);
-						Assert.True(cancel.IsVisible); cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+						settings.Close();
 					}
-					Pump(); Assert.Equal(save, settings.Accepted);
-					foreach (string field in fields) Assert.Equal(save ? Visibility.Collapsed : Visibility.Visible, Read<Button>(main, field).Visibility);
-					if (save) WaitUntil(() => !settingsService.Load().ShowVolumeButton);
+					Pump(); Assert.True(settings.Accepted);
+					foreach (string field in fields) Assert.Equal(Visibility.Collapsed, Read<Button>(main, field).Visibility);
+					WaitUntil(() => !settingsService.Load().ShowVolumeButton);
 				}
 				finally
 				{

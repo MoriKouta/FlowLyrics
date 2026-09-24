@@ -29,7 +29,7 @@ namespace FlowLyrics;
 public class SettingsWindow : Window, IComponentConnector
 {
 	private readonly AppSettings _originalSettings;
-	private bool _cancelRequested;
+	private System.Windows.Controls.Button _closeButton = null!;
 	private System.Windows.Controls.CheckBox? _showRepeatButtonBox;
 	private System.Windows.Controls.CheckBox? _showReverseButtonBox;
 	private System.Windows.Controls.CheckBox? _showPersonalSyncButtonBox;
@@ -311,6 +311,9 @@ public class SettingsWindow : Window, IComponentConnector
 		_englishDotFont = LocalizedUiFont.EnglishDotFont;
 		InitializeLyricsOnlyControl();
 		InitializePlayerControlOptions();
+		_closeButton.Content = "CLOSE";
+		_closeButton.Tag = "NoTranslate";
+		LocalizedUiFont.Technical(_closeButton);
 		SettingsTabs.Items.Remove(LyricsTab);
 		SettingsTabs.Items.Insert(0, LyricsTab);
 		CaptureLocalizableContent(this);
@@ -2605,6 +2608,8 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		_currentLanguage = LocalizationService.NormalizeLanguage(language);
 		LocalizedUiFont.Apply(this, _currentLanguage, _englishDotFont);
+		foreach (TextBlock technical in new[] { CurrentTrackDurationText, LrclibDurationText, LrclibIdText, LyricsSourceText, SelectionModeText, LoadedFromCacheText })
+			LocalizedUiFont.Technical(technical);
 		base.Title = T("FlowLyrics Settings");
 		foreach (var tooltip in _localizedTooltips) tooltip.Key.ToolTip = T(tooltip.Value);
 		RefreshLyricsOnlyControl();
@@ -2683,9 +2688,9 @@ public class SettingsWindow : Window, IComponentConnector
 			SelectionModeText.Text = ((lyricsLookupResult == null || lyricsLookupResult.Status == LyricsLookupStatus.NoLyrics || lyricsLookupResult.Status == LyricsLookupStatus.CandidatesFound)
 				? "—"
 				: lyricsLookupResult.Status == LyricsLookupStatus.LrclibBestMatch
-					? T("Best match")
-					: T(lyricsLookupResult.SelectedManually ? "Manually selected" : "Auto selected"));
-			LoadedFromCacheText.Text = T((lyricsLookupResult != null && lyricsLookupResult.LoadedFromCache) ? "Yes" : "No");
+					? "BEST MATCH"
+					: lyricsLookupResult.SelectedManually ? "MANUAL" : "AUTO");
+			LoadedFromCacheText.Text = lyricsLookupResult?.LoadedFromCache == true ? "CACHE" : "—";
 			LocalLrcStateText.Text = ((lyricsLookupResult != null && lyricsLookupResult.Status == LyricsLookupStatus.LocalLrc) ? (T("Yes") + " · " + ValueOrDash(lyricsLookupResult.LocalLrcPath)) : T("No"));
 			bool flag2 = lyricsLookupResult != null && lyricsLookupResult.Lyrics?.HasPlainLyrics == true && !lyricsLookupResult.Lyrics.HasSyncedLyrics;
 			TextBlock lyricsGuidanceText = LyricsGuidanceText;
@@ -2719,11 +2724,11 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		return lookup.Status switch
 		{
-			LyricsLookupStatus.LrclibAuto => T("LRCLIB — Auto selected"),
-			LyricsLookupStatus.LrclibBestMatch => "LRCLIB — " + T("Best match"),
-			LyricsLookupStatus.LrclibManual => T("LRCLIB — Manually selected"),
-			LyricsLookupStatus.LocalLrc => "Local LRC", 
-			LyricsLookupStatus.Cache => T("Loaded from cache") + (lookup.SelectedManually ? " · " + T("Manually selected") : string.Empty),
+			LyricsLookupStatus.LrclibAuto => "LRCLIB — AUTO",
+			LyricsLookupStatus.LrclibBestMatch => "LRCLIB — BEST MATCH",
+			LyricsLookupStatus.LrclibManual => "LRCLIB — MANUAL",
+			LyricsLookupStatus.LocalLrc => "LOCAL LRC",
+			LyricsLookupStatus.Cache => "CACHE" + (lookup.SelectedManually ? " · MANUAL" : string.Empty),
 			LyricsLookupStatus.CandidatesFound => T("LRCLIB candidates found"),
 			_ => T("No lyrics"),
 		};
@@ -2881,7 +2886,7 @@ public class SettingsWindow : Window, IComponentConnector
 	{
 		// Settings are applied live. Treat the title-bar close button exactly like Close
 		// so presentation-only options (including Show All Lyrics) are never rolled back.
-		if (!_cancelRequested && !Accepted && TryBuildSettings(out AppSettings settings, showError: false))
+		if (!Accepted && TryBuildSettings(out AppSettings settings, showError: false))
 		{
 			ResultSettings = settings;
 			Accepted = true;
@@ -3002,14 +3007,6 @@ public class SettingsWindow : Window, IComponentConnector
 		_lyricsOnlyMode = !_lyricsOnlyMode;
 		RefreshLyricsOnlyControl();
 		NotifyPreviewChanged();
-	}
-
-	private void Cancel_Click(object sender, RoutedEventArgs e)
-	{
-		_cancelRequested = true;
-		Accepted = false;
-		ResultSettings = _originalSettings.Clone();
-		Close();
 	}
 
 	private void Reset_Click(object sender, RoutedEventArgs e)
@@ -3410,10 +3407,14 @@ public class SettingsWindow : Window, IComponentConnector
 			((System.Windows.Controls.Button)target).Click += Reset_Click;
 			break;
 		case 82:
-			((System.Windows.Controls.Button)target).Visibility = Visibility.Visible;
-			((System.Windows.Controls.Button)target).Click += Cancel_Click;
+			// The recovered BAML still contains this legacy rollback button.
+			((System.Windows.Controls.Button)target).Visibility = Visibility.Collapsed;
+			((System.Windows.Controls.Button)target).IsCancel = false;
 			break;
 		case 83:
+			_closeButton = (System.Windows.Controls.Button)target;
+			((System.Windows.Controls.Button)target).Tag = "NoTranslate";
+			LocalizedUiFont.Technical((System.Windows.Controls.Button)target);
 			((System.Windows.Controls.Button)target).Click += Save_Click;
 			break;
 		case 84:

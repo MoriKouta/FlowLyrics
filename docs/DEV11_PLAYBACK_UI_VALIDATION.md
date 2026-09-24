@@ -16,3 +16,11 @@
 - checkpoint検証: 全293テスト成功、失敗/skip 0。Release build成功。再コンパイル時の既存警告6件は増加なし、最後の増分buildは警告0件、error 0。
 
 公式APIのtimestamp意味は [Microsoft LastUpdatedTime](https://learn.microsoft.com/en-us/uwp/api/windows.media.control.globalsystemmediatransportcontrolssessiontimelineproperties.lastupdatedtime) で確認。
+
+## 検索・設定のtechnical UI
+
+- SearchのTITLE/ARTIST/ALBUM/KEYWORD、ID入力、操作、候補評価とMATCH/DIFF/SCOREを固定英語＋Flow Dotsへ統一。曲名・歌手・歌詞本文は通常font、説明・エラーは選択言語を維持。候補カードの細い枠とcompact badge/actionを実行時BAMLへ適用。
+- AUTO/CACHE/MANUAL/BEST MATCH/LOCAL LRCをMainとSettingsで固定表記。Sync/履歴/PreviewのCloseと数値、Diagnosticsのtechnical dumpもfontを整合。
+- Settingsの常設Cancelを除去。Closeとタイトルバーの×は有効なlive draftを確定。Hold編集の取り消しや確認dialogは維持。BAMLの接続後にCloseの表記を設定し、埋め込み属性の上書きを避ける。
+- 10言語のWPF画面、ID取得・Preview・Use、Closeでの保存を回帰検証。日本語の検索/Settingsを実desktopのnative captureで目視確認。実ネットワークへの投稿や歌詞選択の品質変更は行わない。
+- 全294テスト成功、失敗/skip 0。Release build成功、既存警告6件、新規警告/errorなし。

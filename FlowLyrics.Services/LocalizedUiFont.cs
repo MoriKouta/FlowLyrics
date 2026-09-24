@@ -9,6 +9,7 @@ internal static class LocalizedUiFont
 {
 	private static readonly DependencyProperty TechnicalFontProperty = DependencyProperty.RegisterAttached("TechnicalFont", typeof(bool), typeof(LocalizedUiFont), new PropertyMetadata(false));
 	public static FontFamily EnglishDotFont { get; } = new FontFamily(new System.Uri("pack://application:,,,/"), "./FlowLyrics;component/assets/fonts/#Flow Dots, Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic");
+	public static FontFamily MetadataFont { get; } = new("Segoe UI, Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic");
 
 	public static void Apply(Window window, string? language, FontFamily englishDotFont)
 	{
