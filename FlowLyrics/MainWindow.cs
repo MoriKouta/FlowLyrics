@@ -354,6 +354,9 @@ public partial class MainWindow : Window, IComponentConnector
 		_systemVolumeService = new(message => { _ = audioLogger.WriteAsync(message); });
 		_mediaSessionService = mediaSessionService;
 		InitializeComponent();
+		PlayPauseButton.Style = PlayerControlVisuals.PlaybackButtonStyle;
+		PlayPauseIcon.Data = PlayerControlVisuals.PlayGeometry;
+		PauseEyes.Children.Clear(); PauseEyes.Children.Add(PlayerControlVisuals.PauseIcon());
 		// Enlarge the native surface, not the logical lyric viewport. This fixed
 		// transparent perimeter is independent of glow strength, including zero.
 		FrameworkElement logicalRoot = (FrameworkElement)Content;

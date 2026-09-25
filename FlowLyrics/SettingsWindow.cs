@@ -2006,7 +2006,7 @@ public class SettingsWindow : Window, IComponentConnector
 		base.Resources["FaderAccentBrush"] = accent;
 		base.Resources["FaderTrackBrush"] = trackBrush;
 		base.Resources["FaderGripBrush"] = gripBrush;
-		Style style = _faderScrollBarStyle ??= CreateFaderScrollBarStyle();
+		Style style = _faderScrollBarStyle ??= EditorControlChrome.CreateFaderScrollBarStyle();
 		base.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = style;
 		base.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, (Action)delegate
 		{
@@ -2017,50 +2017,6 @@ public class SettingsWindow : Window, IComponentConnector
 		});
 	}
 
-	private static Style CreateFaderScrollBarStyle()
-	{
-		const string xaml = """
-<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-       TargetType="{x:Type ScrollBar}">
-  <Setter Property="Width" Value="16" />
-  <Setter Property="Orientation" Value="Vertical" />
-  <Setter Property="Template">
-    <Setter.Value>
-      <ControlTemplate TargetType="{x:Type ScrollBar}">
-        <Grid Width="16" Background="Transparent">
-          <Border Width="2" HorizontalAlignment="Center" Background="{DynamicResource FaderTrackBrush}" CornerRadius="1" />
-          <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True">
-            <Track.DecreaseRepeatButton>
-              <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Background="Transparent" BorderThickness="0" Opacity="0.01" />
-            </Track.DecreaseRepeatButton>
-            <Track.IncreaseRepeatButton>
-              <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Background="Transparent" BorderThickness="0" Opacity="0.01" />
-            </Track.IncreaseRepeatButton>
-            <Track.Thumb>
-              <Thumb Width="12" MinHeight="34">
-                <Thumb.Template>
-                  <ControlTemplate TargetType="{x:Type Thumb}">
-                    <Border Background="{DynamicResource FaderAccentBrush}" CornerRadius="3">
-                      <Grid Width="7" Height="9" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Rectangle Height="1" VerticalAlignment="Top" Fill="{DynamicResource FaderGripBrush}" />
-                        <Rectangle Height="1" VerticalAlignment="Center" Fill="{DynamicResource FaderGripBrush}" />
-                        <Rectangle Height="1" VerticalAlignment="Bottom" Fill="{DynamicResource FaderGripBrush}" />
-                      </Grid>
-                    </Border>
-                  </ControlTemplate>
-                </Thumb.Template>
-              </Thumb>
-            </Track.Thumb>
-          </Track>
-        </Grid>
-      </ControlTemplate>
-    </Setter.Value>
-  </Setter>
-</Style>
-""";
-		return (Style)System.Windows.Markup.XamlReader.Parse(xaml);
-	}
 
 	private void ApplySoftSettingsTheme()
 	{
@@ -2145,7 +2101,7 @@ public class SettingsWindow : Window, IComponentConnector
 			}
 		}
 
-		ControlTemplate softButtonTemplate = CreateSoftButtonTemplate(accent);
+		ControlTemplate softButtonTemplate = EditorControlChrome.CreateButtonTemplate(accent);
 		foreach (System.Windows.Controls.Button button in FindVisualChildren<System.Windows.Controls.Button>(this))
 		{
 			button.Template = softButtonTemplate;
@@ -2224,6 +2180,7 @@ public class SettingsWindow : Window, IComponentConnector
 		}
 		StylePresetLabels();
 		ApplySliderChrome();
+		EditorControlChrome.ConfigureClose(_closeButton, accent);
 		ApplyFaderScrollBars(accent, controlBorderBrush, darkTheme ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Black);
 		RefreshReverseColorsButton();
 		RefreshLyricsOnlyControl();
@@ -2231,34 +2188,6 @@ public class SettingsWindow : Window, IComponentConnector
 		_candidateSearchWindow?.SetAppearance(UiColorBox.Text, _reverseColors);
 	}
 
-	private ControlTemplate CreateSoftButtonTemplate(System.Windows.Media.Brush accent)
-	{
-		FrameworkElementFactory surface = new FrameworkElementFactory(typeof(Border), "Surface");
-		surface.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		surface.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		surface.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		surface.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(8.0));
-		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-		presenter.SetBinding(ContentPresenter.ContentProperty, new System.Windows.Data.Binding("Content") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		presenter.SetBinding(ContentPresenter.ContentTemplateProperty, new System.Windows.Data.Binding("ContentTemplate") { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-		presenter.SetValue(System.Windows.FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
-		presenter.SetValue(System.Windows.FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		surface.AppendChild(presenter);
-
-		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button)) { VisualTree = surface };
-		Trigger hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-		hover.Setters.Add(new Setter(Border.BorderBrushProperty, accent, "Surface"));
-		hover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.86, "Surface"));
-		template.Triggers.Add(hover);
-		Trigger pressed = new Trigger { Property = System.Windows.Controls.Button.IsPressedProperty, Value = true };
-		pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.68, "Surface"));
-		template.Triggers.Add(pressed);
-		Trigger disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false };
-		disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.38, "Surface"));
-		template.Triggers.Add(disabled);
-		return template;
-	}
 
 	private static ControlTemplate CreatePlainToggleTemplate()
 	{

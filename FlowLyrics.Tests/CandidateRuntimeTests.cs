@@ -33,6 +33,10 @@ public sealed class CandidateRuntimeTests
 				try
 				{
 					WaitUntil(() => !Read<bool>(window, "_isSearching"));
+					var scroll = Visuals<System.Windows.Controls.Primitives.ScrollBar>(window).First(b => b.Orientation == Orientation.Vertical);
+					Assert.Same(window.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)], scroll.Style);
+					scroll.ApplyTemplate(); // A short result list leaves the bar collapsed.
+					Assert.Contains(Visuals<Grid>(scroll), g => g.Width == 16);
 					Assert.Contains(Visuals<TextBlock>(window), item => item.Text.Contains(LocalizationService.Translate(language, "LRCLIB search results may remain cached after a new submission. If you know the LRCLIB ID, load it directly.")));
 					TextBox id = Read<TextBox>(window, "_recordIdBox"); Button load = Read<Button>(window, "_loadIdButton");
 					Assert.True(id.IsVisible); Assert.True(load.IsVisible);

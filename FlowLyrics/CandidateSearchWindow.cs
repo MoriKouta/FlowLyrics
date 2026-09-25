@@ -113,6 +113,8 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 		InitializeContributionFooter();
 		InitializeDirectIdControls();
 		ApplySearchActionChrome();
+		EditorControlChrome.ConfigureClose(CloseButton, (Brush)FindResource("Orange"));
+		EditorControlChrome.ApplyScrollBars(this, (Brush)FindResource("Orange"), (Brush)FindResource("ControlBorder"), _reverseColors ? Brushes.Black : Brushes.White);
 		Style containers = new(typeof(ContentPresenter));
 		containers.Setters.Add(new EventSetter(LoadedEvent, new RoutedEventHandler(CandidateCard_Loaded)));
 		ResultsList.ItemContainerStyle = containers;
@@ -238,6 +240,10 @@ public class CandidateSearchWindow : Window, IComponentConnector, IStyleConnecto
 			base.Resources["Input"] = new SolidColorBrush(darkTheme
 				? Color.FromRgb(42, 39, 43)
 				: Color.FromRgb(250, 250, 248));
+			base.Resources["FaderAccentBrush"] = base.Resources["Orange"];
+			base.Resources["FaderTrackBrush"] = base.Resources["ControlBorder"];
+			base.Resources["FaderGripBrush"] = darkTheme ? Brushes.White : Brushes.Black;
+			if (IsLoaded) EditorControlChrome.ConfigureClose(CloseButton, (Brush)base.Resources["Orange"]);
 		}
 		catch
 		{

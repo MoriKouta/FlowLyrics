@@ -59,6 +59,9 @@ public sealed class PersonalSyncWindow : Window
 	private int _activeLineIndex = -1;
 	private double? _pendingHoldStart;
 	private double _pendingHoldLyricsTime;
+	// Only a witnessed ALIGN NOW establishes a reference; offsets loaded/nudged alone do not.
+	private int? _globalAlignmentLine;
+	private readonly Border _holdWorkflow;
 
 	private readonly TextBlock _offsetText;
 	private readonly Grid _offsetNudges;
@@ -157,8 +160,10 @@ public sealed class PersonalSyncWindow : Window
 		// A fixed drop target remains available even when the active lyric is offscreen.
 		Border nowTarget = new() { Name = "CurrentPositionDropTarget", Child = _nowText, Background = Brushes.Transparent, Padding = new Thickness(12, 8, 0, 8) };
 		ConfigureAlignmentDropTarget(nowTarget);
-		Grid.SetColumn(nowTarget, 1);
-		header.Children.Add(nowTarget);
+		StackPanel playbackPanel = new() { HorizontalAlignment = HorizontalAlignment.Right };
+		playbackPanel.Children.Add(nowTarget);
+		Grid.SetColumn(playbackPanel, 1);
+		header.Children.Add(playbackPanel);
 		root.Children.Add(header);
 
 		Grid body = new();
@@ -181,13 +186,16 @@ public sealed class PersonalSyncWindow : Window
 		_offsetNudges.MaxWidth = 420;
 		_offsetNudges.HorizontalAlignment = HorizontalAlignment.Left;
 		offset.Children.Add(_offsetNudges);
-		_playPauseButton = Button("PLAY / PAUSE"); _playPauseButton.Name = "SyncPlayPauseButton";
-		LocalizedUiFont.Technical(_playPauseButton);
+		_playPauseButton = new Button { Name = "SyncPlayPauseButton", Style = PlayerControlVisuals.PlaybackButtonStyle,
+			Width = 34, Height = 34, Content = PlayerControlVisuals.PlaybackIcon(false), ToolTip = T("Play / Pause") };
+		_playPauseButton.Resources["UiAccentBrush"] = Accent();
 		_playPauseButton.Click += (_, _) => PlayPauseRequested?.Invoke(this, EventArgs.Empty);
-		offset.Children.Add(_playPauseButton);
-		_stopAfterTrackButton = Button(T("Stop after track"));
+		StackPanel playbackControls = new() { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+		playbackControls.Children.Add(_playPauseButton);
+		_stopAfterTrackButton = Button("STOP PLAYBACK AFTER TRACK"); LocalizedUiFont.Technical(_stopAfterTrackButton);
+		_stopAfterTrackButton.FontSize = 9;
 		_stopAfterTrackButton.Name = "StopAfterTrackButton";
-		_stopAfterTrackButton.Margin = new Thickness(16, 0, 0, 0);
+		_stopAfterTrackButton.Margin = new Thickness(6, 0, 0, 0);
 		_stopAfterTrackButton.IsEnabled = false;
 		_stopAfterTrackButton.Click += async (_, _) =>
 		{
@@ -197,7 +205,8 @@ public sealed class PersonalSyncWindow : Window
 				_workflowHint.Visibility = Visibility.Visible;
 			}
 		};
-		offset.Children.Add(_stopAfterTrackButton);
+		playbackControls.Children.Add(_stopAfterTrackButton);
+		playbackPanel.Children.Add(playbackControls);
 		Grid.SetColumnSpan(offset, 2);
 		body.Children.Add(offset);
 
@@ -211,7 +220,9 @@ public sealed class PersonalSyncWindow : Window
 		_pointsList = new ListBox(); // Selection model only; the rail replaces the duplicate visible point list.
 		_pointsList.SelectionChanged += delegate { RefreshPointEditor(); };
 		SizeChanged += (_, _) => UpdateInspectorLayout();
-		_resyncButton = Button(T("Re-sync from here"));
+		_resyncButton = Button("ALIGN FROM HERE"); LocalizedUiFont.Technical(_resyncButton);
+		_resyncButton.ToolTip = _language.StartsWith("ja", StringComparison.OrdinalIgnoreCase)
+			? "この位置から先の歌詞だけタイミングを合わせ直します" : "Align only the lyrics from this position onward";
 		_resyncButton.Name = "ResyncFromHereButton";
 		_resyncButton.Click += (_, _) => { if (ValidSelectedLine(out int line)) AlignLineAt(line, Math.Max(0, _playbackPositionProvider().TotalSeconds)); };
 		timelinePanel.Children.Add(_resyncButton);
@@ -284,14 +295,19 @@ public sealed class PersonalSyncWindow : Window
 		_holdButton = Button("HOLD"); LocalizedUiFont.Technical(_holdButton);
 		_holdButton.Name = "AddLyricHoldButton";
 		_holdButton.Click += Hold_Click;
-		lyricsHeader.Children.Insert(0, _holdButton);
 		_workflowHint = new TextBlock { Foreground = Muted(), TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-		_cancelHoldButton = Button("CANCEL"); LocalizedUiFont.Technical(_cancelHoldButton);
+		_cancelHoldButton = Button("CANCEL HOLD"); LocalizedUiFont.Technical(_cancelHoldButton);
 		_cancelHoldButton.Visibility = Visibility.Collapsed;
 		_cancelHoldButton.Click += delegate { CancelPendingHold(); };
 		_workflowHint.VerticalAlignment = VerticalAlignment.Center; _workflowHint.Margin = new Thickness(0, 0, 8, 0);
-		WrapPanel workflow = new(); workflow.Children.Add(_workflowHint); workflow.Children.Add(_cancelHoldButton);
-		Grid.SetRow(workflow, 2); lyricsPanel.Children.Add(workflow);
+		StackPanel workflow = new();
+		StackPanel holdActions = new() { Orientation = Orientation.Horizontal };
+		holdActions.Children.Add(_holdButton); holdActions.Children.Add(_cancelHoldButton);
+		workflow.Children.Add(holdActions); workflow.Children.Add(_workflowHint);
+		_holdWorkflow = new Border { Child = workflow, Padding = new Thickness(8), Margin = new Thickness(0, 8, 0, 0),
+			BorderThickness = new Thickness(1), BorderBrush = Muted(), CornerRadius = new CornerRadius(4) };
+		// This workflow stays beside the current playback position, even with the inspector collapsed.
+		playbackPanel.Children.Add(_holdWorkflow);
 
 		StackPanel footer = new() { Margin = new Thickness(0, 14, 0, 0) };
 		Grid.SetRow(footer, 2);
@@ -310,7 +326,7 @@ public sealed class PersonalSyncWindow : Window
 		_redoButton = Button(T("Redo"));
 		Button reset = _resetButton = Button(T("Reset timing"));
 		Button remove = _removeButton = DangerButton(T("Delete saved sync"));
-		Button close = Button("CLOSE"); LocalizedUiFont.Technical(close);
+		Button close = Button("CLOSE"); EditorControlChrome.ConfigureClose(close, Accent());
 		close.ToolTip = T("Changes are saved when you close.");
 		_undoButton.Click += delegate { Undo(); };
 		_redoButton.Click += delegate { Redo(); };
@@ -351,13 +367,19 @@ public sealed class PersonalSyncWindow : Window
 	private void PlaybackCommandsChanged(object? sender, EventArgs e)
 	{
 		if (_playbackCommands == null) return;
-		_playPauseButton.Content = _playbackCommands.IsPlaying ? "PAUSE" : "PLAY";
+		if (_playPauseButton.Tag is not bool showingPause || showingPause != _playbackCommands.IsPlaying)
+		{
+			_playPauseButton.Content = PlayerControlVisuals.PlaybackIcon(_playbackCommands.IsPlaying);
+			_playPauseButton.Tag = _playbackCommands.IsPlaying;
+		}
 		_playPauseButton.IsEnabled = _playbackCommands.CanTogglePlayPause;
 		_stopAfterTrackButton.IsEnabled = _playbackCommands.CanArm || _playbackCommands.IsArmed || _playbackCommands.IsArming;
 		_stopAfterTrackButton.Foreground = _playbackCommands.IsArmed ? Accent() : Foreground;
 		_stopAfterTrackButton.BorderBrush = _playbackCommands.IsArmed ? Accent() : Muted();
 		_stopAfterTrackButton.ToolTip = _playbackCommands.IsArming ? T("Turning repeat off…")
-			: _playbackCommands.IsArmed ? T("Stop after track armed") : T("Stop playback when this track ends");
+			: (_playbackCommands.IsArmed ? "ARMED · " : "") + (_language.StartsWith("ja", StringComparison.OrdinalIgnoreCase)
+				? "この曲の再生が終わったら、プレイヤーを一時停止します"
+				: "Pause the media player when this track finishes");
 	}
 
 	// Suspend immediately, but defer disk work and repopulation so the lyric overlay
@@ -409,6 +431,7 @@ public sealed class PersonalSyncWindow : Window
 				_hadStoredProfile = resolution.Profile != null;
 				_dirty = _deleted = false;
 				_undo.Clear(); _redo.Clear();
+				_globalAlignmentLine = null;
 				_selectedLineIndex = _activeLineIndex = _lastFollowedLine = -1;
 				_selectedHoldId = null; _pointsList.SelectedItem = null; _rail.SelectedId = null;
 				_followSuspendedUntil = default;
@@ -522,7 +545,7 @@ public sealed class PersonalSyncWindow : Window
 	{
 		if (index < 0 || index >= _lyricRows.Count || index >= _lines.Count) return;
 		var row = _lyricRows[index];
-		row.Actions.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
+		row.Actions.Visibility = visible && !_pendingHoldStart.HasValue ? Visibility.Visible : Visibility.Hidden;
 		double original = _lines[index].Time.TotalSeconds;
 		double? mapped = PersonalSyncTimeline.PlaybackForLyric(original, _profile);
 		row.Correction.Visibility = visible ? Visibility.Visible : Visibility.Hidden;
@@ -563,8 +586,10 @@ public sealed class PersonalSyncWindow : Window
 	private void AlignProgressively(int index, double playback)
 	{
 		double lyric = _lines[index].Time.TotalSeconds;
+		_globalAlignmentLine = index;
 		if (PersonalSyncTimeline.AlignGlobally(_profile.Clone(), lyric, playback))
 			Change(profile => PersonalSyncTimeline.AlignGlobally(profile, lyric, playback));
+		else RefreshAll();
 	}
 
 	private void AlignLineAt(int index, double playback)
@@ -588,7 +613,7 @@ public sealed class PersonalSyncWindow : Window
 		if (playback.HasValue) SeekRequested?.Invoke(this, TimeSpan.FromSeconds(playback.Value));
 	}
 
-	private void Nudge(double delta) => Change(profile => ShiftWholeTrack(profile, delta));
+	private void Nudge(double delta) { _globalAlignmentLine = null; Change(profile => ShiftWholeTrack(profile, delta)); }
 
 	private static void ShiftWholeTrack(PersonalSyncProfile profile, double delta)
 	{
@@ -621,6 +646,7 @@ public sealed class PersonalSyncWindow : Window
 	private void Undo()
 	{
 		if (!IsTrackReady || _undo.Count == 0) return;
+		_globalAlignmentLine = null;
 		CancelPendingHold();
 		_redo.Push(_profile.Clone());
 		_profile = _undo.Pop();
@@ -632,6 +658,7 @@ public sealed class PersonalSyncWindow : Window
 	private void Redo()
 	{
 		if (!IsTrackReady || _redo.Count == 0) return;
+		_globalAlignmentLine = null;
 		CancelPendingHold();
 		_undo.Push(_profile.Clone());
 		_profile = _redo.Pop();
@@ -919,6 +946,7 @@ public sealed class PersonalSyncWindow : Window
 
 	private void Reset_Click(object sender, RoutedEventArgs e)
 	{
+		_globalAlignmentLine = null;
 		CancelPendingHold();
 		Change(profile => { profile.OffsetSeconds = 0; profile.Mode = PersonalSyncMode.None; profile.Anchors.Clear(); profile.Segments.Clear(); });
 	}
@@ -1023,13 +1051,17 @@ public sealed class PersonalSyncWindow : Window
 		_resyncButton.IsEnabled = !pending;
 		_resumeButton.IsEnabled = !pending && ValidSelectedLine(out _);
 		_cancelHoldButton.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
-		_holdButton.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
-		_holdButton.IsEnabled = _context.Track.DurationSeconds > 0;
-		_holdButton.ToolTip = _activeLineIndex < 0 ? "HOLD · BLANK" : "HOLD · " + _lines[_activeLineIndex].Text;
+		_holdButton.Content = pending ? "RESUME HERE" : "HOLD LYRICS";
+		_holdButton.ToolTip = pending ? T("Hold in progress. Choose the lyric to resume.")
+			: _language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "歌詞を止めます。プレイヤーの再生は続きます" : "Hold lyrics while the music keeps playing";
+		_holdButton.IsEnabled = pending ? ValidSelectedLine(out _) && _playbackPositionProvider().TotalSeconds > _pendingHoldStart!.Value + .05 : _context.Track.DurationSeconds > 0;
+		_holdButton.BorderBrush = pending ? Accent() : Muted();
+		_holdWorkflow.BorderBrush = pending ? Brushes.LightBlue : Muted();
+		_holdWorkflow.Background = pending ? Brush(33, 44, 50) : Brushes.Transparent;
 		foreach (var row in _lyricRows) row.Align.IsEnabled = !pending || _playbackPositionProvider().TotalSeconds > _pendingHoldStart!.Value + .05;
 		_workflowHint.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
-		_workflowHint.Text = (_lines.Count > 0 && _pendingHoldLyricsTime < _lines[0].Time.TotalSeconds ? "BLANK" : "HOLD") + " → RESUME";
-		_workflowHint.ToolTip = T("Hold in progress. Choose the lyric to resume.");
+		_workflowHint.Text = pending ? "HOLD ACTIVE · " + Format(_pendingHoldStart!.Value) + "\n" +
+			(_language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "再開する歌詞を選び、RESUME HERE" : "Select a lyric, then RESUME HERE") : "";
 		_workflowHint.Foreground = pending ? Brush(168, 205, 223) : Muted();
 	}
 
@@ -1041,12 +1073,13 @@ public sealed class PersonalSyncWindow : Window
 			bool active = index == _activeLineIndex;
 			double lyric = _lines[index].Time.TotalSeconds;
 			bool held = (active && _pendingHoldStart.HasValue) || _profile.Segments.Any(h => Math.Abs(h.LyricsTimeSeconds - lyric) < .05);
-			row.Marker.Text = held ? "Ⅱ" : _profile.Anchors.Any(a => Math.Abs(a.LyricsSeconds - lyric) < .05) ? "◆" : active ? "▶" : "○";
+			row.Marker.Text = held ? "Ⅱ" : _globalAlignmentLine == index || _profile.Anchors.Any(a => Math.Abs(a.LyricsSeconds - lyric) < .05) ? "◆" : active ? "▶" : "○";
 			row.Time.Foreground = active ? Accent() : Muted();
 			row.Lyric.Foreground = active ? Brushes.White : Brush(210, 206, 210);
 			row.Lyric.FontWeight = active ? FontWeights.Bold : FontWeights.Normal;
 			row.Marker.Foreground = active ? Accent() : held ? Brushes.LightBlue : Muted();
-			row.Align.Content = _pendingHoldStart.HasValue ? "RESUME" : "ALIGN NOW";
+			row.Align.BorderBrush = Accent();
+			row.Align.Content = "ALIGN NOW";
 			ShowRowActions(index, row.Item.IsSelected || row.Item.IsMouseOver || row.Item.IsKeyboardFocusWithin);
 		}
 	}
@@ -1082,7 +1115,7 @@ public sealed class PersonalSyncWindow : Window
 		{
 			double offset = anchor.PlaybackSeconds - anchor.LyricsSeconds;
 			SyncPointListItem item = new(anchor.Id, true,
-				$"●  {T("Align to now")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}  ({offset:+0.0;-0.0;0.0}s)\n    {NearestLyricText(anchor.LyricsSeconds)}");
+				$"◆  {T("Align to now")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}  ({offset:+0.0;-0.0;0.0}s)\n    {NearestLyricText(anchor.LyricsSeconds)}");
 			_pointsList.Items.Add(item);
 			if (selectedId == anchor.Id) _pointsList.SelectedItem = item;
 		}
@@ -1235,6 +1268,8 @@ public sealed class PersonalSyncWindow : Window
 		_rail.CanSeek = _canSeek();
 		_rail.SetCurrent(_playbackPositionProvider().TotalSeconds);
 		_rail.SetPendingHold(_pendingHoldStart);
+		_rail.SetGlobalAlignment(_globalAlignmentLine is int reference && reference < _lines.Count
+			? PersonalSyncTimeline.PlaybackForLyric(_lines[reference].Time.TotalSeconds, _profile) : null);
 		RefreshInspectorSummary();
 		if (!_timelineCoordinatesDirty) return;
 		_timelineCoordinatesDirty = false;

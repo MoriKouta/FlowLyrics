@@ -36,6 +36,9 @@ public sealed class PersonalSyncGlobalAlignmentTests
 				{
 					window.Show(); Pump(); Invoke(window, "MatchSelectedLine_Click", window, new RoutedEventArgs());
 					Check(Read<PersonalSyncProfile>(window, "_profile"));
+					var first = (Grid)((ListBoxItem)Read<ListBox>(window, "_lyricsList").Items[0]).Content;
+					Assert.Equal("◆", ((TextBlock)first.Children[0]).Text);
+					Assert.Equal("0:35.0", ((TextBlock)first.Children[1]).Text);
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});

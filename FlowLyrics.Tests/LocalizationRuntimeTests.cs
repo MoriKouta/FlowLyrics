@@ -86,7 +86,7 @@ public sealed class LocalizationRuntimeTests
 				Show(sync, "sync", () =>
 				{
 					Assert.Equal(expected.Source, sync.FontFamily.Source);
-					Assert.Equal(LocalizationService.Translate(language, "Re-sync from here"), Read<Button>(sync, "_resyncButton").Content);
+					Assert.Equal("ALIGN FROM HERE", Read<Button>(sync, "_resyncButton").Content);
 					AssertHeading(sync, "PERSONAL SYNC"); AssertHeading(sync, "TIMING EDITOR");
 					Assert.Contains("Flow Dots", Logical<Button>(sync).First(button => Equals(button.Content, "+0.5s")).FontFamily.Source);
 					Assert.Contains(Logical<TextBlock>(sync), label => label.Text == LocalizationService.Translate(language, "Global offset"));

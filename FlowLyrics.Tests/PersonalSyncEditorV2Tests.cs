@@ -53,6 +53,7 @@ public sealed class PersonalSyncEditorV2Tests
 					Align(first).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
 					var profile = Read<PersonalSyncProfile>(window, "_profile");
 					Assert.Equal(2.9, profile.OffsetSeconds, 6); Assert.Empty(profile.Anchors);
+					Assert.Equal("◆", ((TextBlock)((Grid)first.Content).Children[0]).Text);
 					Assert.Contains("+2.9", Read<TextBlock>(window, "_offsetText").Text);
 					Assert.Equal(58.2, PersonalSyncMapper.MapPlaybackToLyrics(61.1, profile), 6);
 					double before = PersonalSyncMapper.MapPlaybackToLyrics(60, profile);
@@ -66,6 +67,8 @@ public sealed class PersonalSyncEditorV2Tests
 					UiUxRuntimeTests.Capture(window, "sync-v2-" + language + "-" + width);
 					Invoke(window, "Undo"); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
 					Invoke(window, "Redo"); Assert.Equal(5, Read<PersonalSyncProfile>(window, "_profile").OffsetSeconds);
+					Invoke(window, "Nudge", .1);
+					Assert.DoesNotContain(list.Items.Cast<ListBoxItem>(), r => ((TextBlock)((Grid)r.Content).Children[0]).Text == "◆");
 					var marker = (TextBlock)((Grid)first.Content).Children[0];
 					marker.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
 					Assert.Same(marker, Mouse.Captured); // ListBox selection must not steal the lyric drag.
@@ -205,6 +208,7 @@ public sealed class PersonalSyncEditorV2Tests
 					Assert.DoesNotContain(Logical<Button>(window), b => Equals(b.Content, "⋯"));
 					Assert.DoesNotContain(Logical<Button>(Read<Border>(window, "_inspector")), b => Equals(b.Content, "ALIGN NOW"));
 					int playbackRequests = 0; window.PlayPauseRequested += (_, _) => playbackRequests++;
+					Assert.IsType<Grid>(Read<Button>(window, "_playPauseButton").Content);
 					Read<Button>(window, "_playPauseButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					Assert.Equal(1, playbackRequests);
 					Assert.False(Read<Button>(window, "_resumeButton").IsVisible);

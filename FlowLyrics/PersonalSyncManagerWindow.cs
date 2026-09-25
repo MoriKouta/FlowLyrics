@@ -123,7 +123,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		flowPanel.Children.Add(SectionTitle("TIMELINE"));
 		flowPanel.Children.Add(new TextBlock
 		{
-			Text = T("The song flows top to bottom. Bands are holds and ● marks lyric switches."),
+			Text = T("The song flows top to bottom. Bands are holds and ● marks lyric switches.").Replace("●", "◆"),
 			Foreground = Muted(), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 8)
 		});
 		_timeline = new Canvas { Height = 250, Background = Brush(31, 29, 32), ClipToBounds = true };
@@ -160,7 +160,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		Button reset = Button(T("Reset timing"));
 		Button delete = Button(T("Delete saved sync"));
 		delete.Foreground = Brush(238, 158, 157);
-		Button close = Button("CLOSE"); LocalizedUiFont.Technical(close);
+		Button close = Button("CLOSE"); EditorControlChrome.ConfigureClose(close, Accent());
 		reset.Click += Reset_Click;
 		delete.Click += Delete_Click;
 		close.Click += delegate { Close(); };
@@ -252,7 +252,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		}
 		foreach (PersonalSyncAnchor anchor in profile.Anchors.OrderBy(item => item.PlaybackSeconds))
 		{
-			PointItem item = new(anchor.Id, true, $"● {T("Sync point")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}");
+			PointItem item = new(anchor.Id, true, $"◆ {T("Sync point")}  {Format(anchor.PlaybackSeconds)} → {Format(anchor.LyricsSeconds)}");
 			_points.Items.Add(item);
 			if (selectedPointId == anchor.Id) _points.SelectedItem = item;
 		}
@@ -435,7 +435,7 @@ public sealed class PersonalSyncManagerWindow : Window
 		foreach (PersonalSyncAnchor anchor in profile.Anchors.OrderBy(value => value.PlaybackSeconds))
 		{
 			double markerY = Y(anchor.PlaybackSeconds, duration, top, bottom);
-			Ellipse point = new() { Width = 13, Height = 13, Fill = Accent(), Stroke = Brushes.White, StrokeThickness = 1 };
+			Polygon point = new() { Points = new PointCollection { new(6.5, 0), new(13, 6.5), new(6.5, 13), new(0, 6.5) }, Width = 13, Height = 13, Fill = Accent(), Stroke = Brushes.White, StrokeThickness = 1 };
 			Canvas.SetLeft(point, axisX - 6.5); Canvas.SetTop(point, markerY - 6.5); _timeline.Children.Add(point);
 			double y = Math.Min(Math.Max(markerY - 12, labelY), Math.Max(8, height - 35));
 			_timeline.Children.Add(new Line { X1 = axisX + 7, X2 = 67, Y1 = markerY, Y2 = y + 10, Stroke = Brush(166, 158, 166), StrokeThickness = 1 });

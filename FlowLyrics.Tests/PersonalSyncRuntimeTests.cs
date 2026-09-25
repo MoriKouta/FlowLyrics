@@ -38,13 +38,21 @@ public sealed class PersonalSyncRuntimeTests
 				try
 				{
 					Button hold = Read<Button>(window, "_holdButton");
+					PersonalSyncProfile? preview = null;
+					window.PreviewChanged += (_, value) => preview = value;
 					hold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.NotNull(preview);
+					Assert.Equal(blankIntro ? 5 : 10, PersonalSyncMapper.MapPlaybackToLyrics(12, preview));
+					Assert.Equal(blankIntro ? 5 : 10, PersonalSyncMapper.MapPlaybackToLyrics(31, preview));
+					Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Segments); // Pending is preview-only.
+					Assert.Contains("HOLD ACTIVE", Read<TextBlock>(window, "_workflowHint").Text);
 					Assert.Equal(blankIntro ? 5 : 12, Read<double?>(window, "_pendingHoldStart"));
 					Read<ListBox>(window, "_lyricsList").SelectedIndex = 1;
 					position = TimeSpan.FromSeconds(32);
 					Invoke(window, "RefreshLiveUi");
-					Assert.False(hold.IsVisible);
-					Logical<Button>((ListBoxItem)Read<ListBox>(window, "_lyricsList").Items[1]).Single(b => b.Name == "AlignLyricButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.True(hold.IsVisible); Assert.Equal("RESUME HERE", hold.Content);
+					Assert.False(Logical<Button>((ListBoxItem)Read<ListBox>(window, "_lyricsList").Items[1]).Single(b => b.Name == "AlignLyricButton").IsVisible);
+					hold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					PersonalSyncProfile profile = Read<PersonalSyncProfile>(window, "_profile");
 					PersonalSyncSegment segment = Assert.Single(profile.Segments);
 					Assert.Equal(blankIntro ? 5 : 10, segment.LyricsTimeSeconds); Assert.Equal(32, segment.PlaybackEndSeconds);
@@ -79,6 +87,8 @@ public sealed class PersonalSyncRuntimeTests
 				{
 					history.ShowActivated = false; history.Show(); Pump();
 					WaitUntil(() => Read<ListBox>(history, "_list").Items.Count == 1);
+					Assert.All(CandidateRuntimeTests.Visuals<System.Windows.Controls.Primitives.ScrollBar>(history).Where(b => b.Orientation == Orientation.Vertical),
+						bar => Assert.Same(history.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)], bar.Style));
 					Assert.Contains("BAD", Read<TextBlock>(history, "_details").Text);
 					Assert.NotEmpty(Read<Canvas>(history, "_timeline").Children.Cast<UIElement>());
 					Read<TextBox>(history, "_searchBox").Text = "No matching track";

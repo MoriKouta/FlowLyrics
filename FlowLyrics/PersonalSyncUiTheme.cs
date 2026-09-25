@@ -162,58 +162,12 @@ internal static class PersonalSyncUiTheme
     </Setter>
   </Style>
 
-  <Style x:Key="SyncScrollThumb" TargetType="{x:Type Thumb}">
-    <Setter Property="Background" Value="{StaticResource SyncBorder}" />
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="{x:Type Thumb}">
-          <Border Background="{TemplateBinding Background}" CornerRadius="4" Margin="1" />
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
-
-  <Style TargetType="{x:Type ScrollBar}">
-    <Setter Property="Background" Value="#FF201E21" />
-    <Style.Triggers>
-      <Trigger Property="Orientation" Value="Vertical">
-        <Setter Property="Width" Value="10" />
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollBar}">
-              <Grid Width="10" HorizontalAlignment="Center" Background="{TemplateBinding Background}">
-                <Track x:Name="PART_Track" IsDirectionReversed="True">
-                  <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageUpCommand}" Opacity="0" /></Track.DecreaseRepeatButton>
-                  <Track.Thumb><Thumb MinHeight="24" Style="{StaticResource SyncScrollThumb}" /></Track.Thumb>
-                  <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageDownCommand}" Opacity="0" /></Track.IncreaseRepeatButton>
-                </Track>
-              </Grid>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Trigger>
-      <Trigger Property="Orientation" Value="Horizontal">
-        <Setter Property="Height" Value="10" />
-        <Setter Property="Template">
-          <Setter.Value>
-            <ControlTemplate TargetType="{x:Type ScrollBar}">
-              <Grid Background="{TemplateBinding Background}">
-                <Track x:Name="PART_Track">
-                  <Track.DecreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageLeftCommand}" Opacity="0" /></Track.DecreaseRepeatButton>
-                  <Track.Thumb><Thumb MinWidth="24" Style="{StaticResource SyncScrollThumb}" /></Track.Thumb>
-                  <Track.IncreaseRepeatButton><RepeatButton Command="{x:Static ScrollBar.PageRightCommand}" Opacity="0" /></Track.IncreaseRepeatButton>
-                </Track>
-              </Grid>
-            </ControlTemplate>
-          </Setter.Value>
-        </Setter>
-      </Trigger>
-    </Style.Triggers>
-  </Style>
 </ResourceDictionary>
 """;
 		ResourceDictionary dictionary = (ResourceDictionary)XamlReader.Parse(xaml);
 		window.Resources.MergedDictionaries.Add(dictionary);
+		EditorControlChrome.ApplyScrollBars(window, (System.Windows.Media.Brush)dictionary["SyncAccent"],
+			(System.Windows.Media.Brush)dictionary["SyncBorder"], System.Windows.Media.Brushes.White);
 		window.Resources[AppliedKey] = true;
 	}
 }
