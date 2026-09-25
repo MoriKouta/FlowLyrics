@@ -52,7 +52,8 @@ public sealed class RuntimeSettingsTests : IDisposable
 				Slider blur = Read<Slider>(window, "_glowStrengthSlider"), opacity = Read<Slider>(window, "_glowOpacitySlider");
 				Assert.True(blur.IsVisible); Assert.True(opacity.IsVisible);
 				UiUxRuntimeTests.Capture(window, "settings-color-" + language);
-				Assert.Contains(Logical<TextBlock>(window), item => item.Text == LocalizationService.Translate(language, "Glow Blur"));
+				Assert.Contains(Logical<TextBlock>(window), item => item.Text == "Glow Size");
+				Assert.Contains(Logical<TextBlock>(window), item => item.Text == "Glow Opacity");
 				var glow = Read<TextBox>(window, "_glowColorBox");
 				glow.Text = "#FF123456"; blur.Value = 17.5; opacity.Value = 0.65;
 				Assert.Equal(17.5, window.ResultSettings.GlowStrength);

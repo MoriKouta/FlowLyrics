@@ -1067,8 +1067,10 @@ public class SettingsWindow : Window, IComponentConnector
 		Grid textEffectsGrid = CreateThreeColumnGrid();
 		MoveSettingsRow(effectsGrid, Grid.GetRow(OutlineSlider), textEffectsGrid, 0);
 		MoveSettingsRow(effectsGrid, Grid.GetRow(ShadowSlider), textEffectsGrid, 1);
-		AddSettingsRow(textEffectsGrid, 2, "Glow Blur", _glowStrengthSlider, "{0:0.0}px");
+		AddSettingsRow(textEffectsGrid, 2, "Glow Size", _glowStrengthSlider, "{0:0.0}px");
 		AddSettingsRow(textEffectsGrid, 3, "Glow Opacity", _glowOpacitySlider, "{0:P0}");
+		foreach (TextBlock label in textEffectsGrid.Children.OfType<TextBlock>().Where(t => t.Text.StartsWith("Glow", StringComparison.Ordinal))) label.Tag = "NoTranslate";
+		glowColorLabel.Tag = "NoTranslate";
 
 		Grid surfaceGrid = CreateThreeColumnGrid();
 		MoveSettingsRow(effectsGrid, Grid.GetRow(BackgroundOpacitySlider), surfaceGrid, 0);
