@@ -1203,10 +1203,11 @@ public partial class MainWindow : Window, IComponentConnector
 	private void PersonalSyncAlign_Click(object sender, RoutedEventArgs e)
 	{
 		if (_personalSyncEditingProfile == null || _lyrics?.HasSyncedLyrics != true || _personalSyncSelectedLineIndex < 0 || _personalSyncSelectedLineIndex >= _lyrics.Lines.Count) return;
-		double? current = PersonalSyncTimeline.PlaybackForLyric(_lyrics.Lines[_personalSyncSelectedLineIndex].Time.TotalSeconds, _personalSyncEditingProfile);
-		if (!current.HasValue) return;
+		double lyric = _lyrics.Lines[_personalSyncSelectedLineIndex].Time.TotalSeconds;
+		double playback = GetBasePlaybackPosition().TotalSeconds;
+		if (!PersonalSyncTimeline.AlignGlobally(_personalSyncEditingProfile.Clone(), lyric, playback)) return;
 		PushPersonalSyncUndo();
-		PersonalSyncTimeline.ShiftWholeTrack(_personalSyncEditingProfile, GetBasePlaybackPosition().TotalSeconds - current.Value);
+		PersonalSyncTimeline.AlignGlobally(_personalSyncEditingProfile, lyric, playback);
 		ApplyPersonalSyncEdit();
 	}
 

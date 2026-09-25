@@ -105,6 +105,7 @@ public sealed class PersonalSyncGlobalAlignmentTests
 	[InlineData("menu-nudge", .5)]
 	[InlineData("editing-nudge", .5)]
 	[InlineData("legacy-align", 11)]
+	[InlineData("legacy-rewind", 10)]
 	public void OverlayTimingCommands_PreserveAdvancedEdits(string command, double delta)
 	{
 		string directory = Temp();
@@ -120,8 +121,9 @@ public sealed class PersonalSyncGlobalAlignmentTests
 					TrackInfo track = new("Study", "Artist", "", TimeSpan.FromSeconds(150));
 					LyricsResult lyrics = new([new(TimeSpan.FromSeconds(20), "A"), new(TimeSpan.FromSeconds(24), "B")], null, "LRCLIB");
 					LyricsLookupResult lookup = new() { Lyrics = lyrics, LrclibRecord = new() { Id = 321 }, Status = LyricsLookupStatus.LrclibAuto };
-					PlaybackSnapshot snapshot = new(track, TimeSpan.FromSeconds(36), false, DateTimeOffset.UtcNow);
+					PlaybackSnapshot snapshot = new(track, TimeSpan.FromSeconds(command == "legacy-rewind" ? 35 : 36), false, DateTimeOffset.UtcNow);
 					var profile = Advanced(PersonalSyncIdentity.Create(snapshot, lookup));
+					if (command == "legacy-rewind") profile.Anchors.Add(new() { PlaybackSeconds = 35, LyricsSeconds = 20 });
 					Set("_snapshot", snapshot); Set("_lyrics", lyrics); Set("_lyricsLookup", lookup); Set("_personalSyncActiveProfile", profile);
 					Read<AppSettings>(window, "_settings").GlobalLyricsOffsetMs = 0;
 					if (command == "menu-nudge")
