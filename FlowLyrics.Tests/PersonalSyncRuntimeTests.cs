@@ -18,8 +18,10 @@ namespace FlowLyrics.Tests;
 [Collection("WPF UI")]
 public sealed class PersonalSyncRuntimeTests
 {
-	[Fact]
-	public async Task LoadedHoldWorkflow_LinksResumeEditingAndPersistsBeforeClose()
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public async Task LoadedHoldWorkflow_LinksResumeEditingAndPersistsBeforeClose(bool blankIntro)
 	{
 		string directory = Path.Combine(Path.GetTempPath(), "FlowLyrics-hold-runtime-" + Guid.NewGuid().ToString("N"));
 		PersonalSyncStore store = new(directory);
@@ -30,25 +32,25 @@ public sealed class PersonalSyncRuntimeTests
 		{
 			Sta(() =>
 			{
-				TimeSpan position = TimeSpan.FromSeconds(12);
+				TimeSpan position = TimeSpan.FromSeconds(blankIntro ? 5 : 12);
 				PersonalSyncWindow window = new(store, context, null, lines, () => 0, () => position, "en-US");
 				window.ShowActivated = false; window.Show(); Pump();
 				try
 				{
 					Button hold = Read<Button>(window, "_holdButton");
-					Invoke(window, "Hold_Click", window, new RoutedEventArgs());
-					Assert.Equal(12, Read<double?>(window, "_pendingHoldStart"));
+					hold.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.Equal(blankIntro ? 5 : 12, Read<double?>(window, "_pendingHoldStart"));
 					Read<ListBox>(window, "_lyricsList").SelectedIndex = 1;
 					position = TimeSpan.FromSeconds(32);
 					Invoke(window, "RefreshLiveUi");
 					Assert.False(hold.IsVisible);
-					Read<Button>(window, "_matchButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Logical<Button>((ListBoxItem)Read<ListBox>(window, "_lyricsList").Items[1]).Single(b => b.Name == "AlignLyricButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					PersonalSyncProfile profile = Read<PersonalSyncProfile>(window, "_profile");
 					PersonalSyncSegment segment = Assert.Single(profile.Segments);
-					Assert.Equal(10, segment.LyricsTimeSeconds); Assert.Equal(32, segment.PlaybackEndSeconds);
+					Assert.Equal(blankIntro ? 5 : 10, segment.LyricsTimeSeconds); Assert.Equal(32, segment.PlaybackEndSeconds);
 					Assert.Equal(segment.ResumeAnchorId, Assert.Single(profile.Anchors).Id);
 					Assert.Equal(20, profile.Anchors[0].LyricsSeconds);
-					Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(25, profile));
+					Assert.Equal(blankIntro ? 5 : 10, PersonalSyncMapper.MapPlaybackToLyrics(25, profile));
 					Assert.Equal(20, PersonalSyncMapper.MapPlaybackToLyrics(32, profile));
 					Type field = typeof(PersonalSyncWindow).GetNestedType("TimeField", BindingFlags.NonPublic)!;
 					Invoke(window, "AdjustSelectedPoint", Enum.Parse(field, "B"), 0.5);

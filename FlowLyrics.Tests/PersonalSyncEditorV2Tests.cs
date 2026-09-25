@@ -66,6 +66,11 @@ public sealed class PersonalSyncEditorV2Tests
 					UiUxRuntimeTests.Capture(window, "sync-v2-" + language + "-" + width);
 					Invoke(window, "Undo"); Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
 					Invoke(window, "Redo"); Assert.Equal(5, Read<PersonalSyncProfile>(window, "_profile").OffsetSeconds);
+					var marker = (TextBlock)((Grid)first.Content).Children[0];
+					marker.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+					Assert.Same(marker, Mouse.Captured); // ListBox selection must not steal the lyric drag.
+					marker.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent });
+					Assert.Null(Mouse.Captured);
 				}
 				finally { window.Close(); PersonalSyncRuntimeTests.WaitUntil(() => !window.IsVisible); }
 			});
@@ -82,11 +87,13 @@ public sealed class PersonalSyncEditorV2Tests
 		{
 			Sta(() =>
 			{
-				PersonalSyncWindow window = new(store, context, null, lines, () => 0, () => TimeSpan.FromSeconds(20), "en-US") { ShowActivated = false };
+				double position = 20;
+				PersonalSyncWindow window = new(store, context, null, lines, () => 0, () => TimeSpan.FromSeconds(position), "en-US") { ShowActivated = false };
 				window.Show(); Pump();
 				try
 				{
 					Read<Button>(window, "_holdButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					position = 25; Invoke(window, "Hold_Click", window, new RoutedEventArgs());
 					var profile = Read<PersonalSyncProfile>(window, "_profile");
 					var hold = Assert.Single(profile.Segments); var anchor = Assert.Single(profile.Anchors);
 					Assert.Equal(hold.ResumeAnchorId, anchor.Id); Assert.Equal(10, PersonalSyncMapper.MapPlaybackToLyrics(22, profile));
@@ -196,6 +203,10 @@ public sealed class PersonalSyncEditorV2Tests
 					var list = Read<ListBox>(window, "_lyricsList");
 					Assert.All(list.Items.Cast<ListBoxItem>(), row => { Assert.Null(row.ContextMenu); Assert.Single(Logical<Button>(row)); });
 					Assert.DoesNotContain(Logical<Button>(window), b => Equals(b.Content, "⋯"));
+					Assert.DoesNotContain(Logical<Button>(Read<Border>(window, "_inspector")), b => Equals(b.Content, "ALIGN NOW"));
+					int playbackRequests = 0; window.PlayPauseRequested += (_, _) => playbackRequests++;
+					Read<Button>(window, "_playPauseButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+					Assert.Equal(1, playbackRequests);
 					Assert.False(Read<Button>(window, "_resumeButton").IsVisible);
 					Assert.False(Read<Button>(window, "_deletePointButton").IsVisible);
 					if (width < 1080) Logical<Button>(window).Single(b => b.Name == "TimingDetailsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -209,8 +220,8 @@ public sealed class PersonalSyncEditorV2Tests
 					Assert.True(Read<Button>(window, "_deletePointButton").IsVisible);
 					now = 40;
 					Read<Button>(window, "_holdButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-					Assert.True(Read<Button>(window, "_resumeButton").IsVisible);
 					list.SelectedIndex = 2;
+					now = 45; Invoke(window, "Hold_Click", window, new RoutedEventArgs());
 					Assert.True(Read<Button>(window, "_resumeButton").IsVisible);
 					Read<Button>(window, "_resumeButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					var hold = profile.Segments.Single();

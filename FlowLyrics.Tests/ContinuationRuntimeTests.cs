@@ -70,9 +70,12 @@ public sealed class ContinuationRuntimeTests
 					typeof(PersonalSyncWindow).GetField("_dragLine", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(window, 1);
 					var dropConstructor = typeof(DragEventArgs).GetConstructors(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Single();
 					DragEventArgs Drop(string token) => (DragEventArgs)dropConstructor.Invoke([new DataObject("FlowLyrics.SyncLyric", token), DragDropKeyStates.LeftMouseButton, DragDropEffects.Move, target, new Point()]);
-					var wrong = Drop("another-window"); wrong.RoutedEvent = DragDrop.DropEvent; target.RaiseEvent(wrong);
+					var wrong = Drop("another-window"); wrong.RoutedEvent = DragDrop.PreviewDropEvent; target.RaiseEvent(wrong);
+					Assert.Equal(DragDropEffects.None, wrong.Effects);
 					Assert.Empty(Read<PersonalSyncProfile>(window, "_profile").Anchors);
-					var valid = Drop(Read<string>(window, "_dragToken")); valid.RoutedEvent = DragDrop.DropEvent; target.RaiseEvent(valid);
+					var over = Drop(Read<string>(window, "_dragToken")); over.RoutedEvent = DragDrop.PreviewDragOverEvent; target.RaiseEvent(over);
+					Assert.Equal(DragDropEffects.Move, over.Effects);
+					var valid = Drop(Read<string>(window, "_dragToken")); valid.RoutedEvent = DragDrop.PreviewDropEvent; target.RaiseEvent(valid);
 					var profile = Read<PersonalSyncProfile>(window, "_profile");
 					Assert.Empty(profile.Anchors);
 					Assert.Equal(15, profile.OffsetSeconds);

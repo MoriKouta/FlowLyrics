@@ -100,8 +100,8 @@ public sealed class PersonalSyncTransitionTests
 					WaitUntil(() => b.IsCompleted && c.IsCompleted);
 					Assert.StartsWith("C", Read<TextBlock>(editor, "_trackText").Text);
 					Read<ListBox>(editor, "_lyricsList").SelectedIndex = 0; Pump();
-					Button align = Read<Button>(editor, "_matchButton"); Assert.NotNull(align.Parent);
-					Assert.True(Read<Grid>(editor, "_lyricNudges").IsVisible);
+					Button align = Logical<Button>((ListBoxItem)Read<ListBox>(editor, "_lyricsList").Items[0]).Single(b => b.Name == "AlignLyricButton"); Assert.NotNull(align.Parent);
+					Assert.True(Read<Grid>(editor, "_offsetNudges").IsVisible);
 					align.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 					var profile = Read<PersonalSyncProfile>(editor, "_profile");
 					Assert.Equal(16, profile.OffsetSeconds); Assert.Empty(profile.Anchors);

@@ -18,6 +18,7 @@ public sealed class PersonalSyncRail : FrameworkElement
 	private PersonalSyncProfile _profile = new();
 	private IReadOnlyList<double> _lyricTimes = Array.Empty<double>();
 	private double _current;
+	private double? _pendingHoldStart;
 	private double? _preview;
 	private SyncRailEdit? _edit;
 	private bool _interacting;
@@ -45,6 +46,7 @@ public sealed class PersonalSyncRail : FrameworkElement
 		_profile = profile; _lyricTimes = lyricTimes; InvalidateVisual();
 	}
 	public void SetCurrent(double seconds) { _current = Math.Clamp(seconds, 0, Math.Max(0, DurationSeconds)); InvalidateVisual(); }
+	public void SetPendingHold(double? start) { _pendingHoldStart = start; InvalidateVisual(); }
 	public static double TimeAt(double y, double height, double duration) => duration > 0 && double.IsFinite(duration)
 		? Math.Clamp((y - 18) / Math.Max(1, height - 36), 0, 1) * duration : 0;
 	private double Y(double seconds) => 18 + Math.Clamp(DurationSeconds > 0 ? seconds / DurationSeconds : 0, 0, 1) * Math.Max(1, ActualHeight - 36);
@@ -56,7 +58,18 @@ public sealed class PersonalSyncRail : FrameworkElement
 		Pen rail = new(new SolidColorBrush(Color.FromRgb(94, 89, 99)), 2);
 		dc.DrawLine(rail, new Point(24, 18), new Point(24, Math.Max(18, ActualHeight - 18)));
 		if (DurationSeconds <= 0) return;
-		foreach (double time in _lyricTimes) dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(20, Y(time)), new Point(28, Y(time)));
+		double desiredStep = DurationSeconds * 60 / Math.Max(1, ActualHeight - 36);
+		double step = new[] { 5d, 10, 15, 30, 60, 120, 300, 600, 1800, 3600 }.FirstOrDefault(s => s >= desiredStep, Math.Max(3600, desiredStep));
+		for (int tick = 1; tick * step / 5 < DurationSeconds; tick++)
+		{
+			bool major = tick % 5 == 0;
+			double y = Y(tick * step / 5);
+			dc.DrawLine(new Pen(major ? Brushes.Gray : rail.Brush, 1), new Point(major ? 14 : 19, y), new Point(24, y));
+		}
+		foreach (double time in _lyricTimes) dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(26, Y(time)), new Point(30, Y(time)));
+		if (_pendingHoldStart is double start)
+			dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(100, 91, 145, 172)), new Pen(Brushes.LightBlue, 1),
+				new Rect(9, Y(start), 24, Math.Max(2, Y(Math.Max(start, _current)) - Y(start))));
 		foreach (var hold in _profile.Segments)
 		{
 			double top = Y(hold.PlaybackStartSeconds), bottom = Y(hold.PlaybackEndSeconds);
@@ -66,11 +79,18 @@ public sealed class PersonalSyncRail : FrameworkElement
 			dc.DrawRoundedRectangle(Brushes.LightBlue, null, new Rect(6, bottom - 3, 30, 6), 2, 2);
 		}
 		foreach (var anchor in _profile.Anchors)
-			dc.DrawEllipse(Brushes.LightBlue, SelectedId == anchor.Id ? new Pen(Brushes.White, 2) : null, new Point(45, Y(anchor.PlaybackSeconds)), 5, 5);
+		{
+			double y = Y(anchor.PlaybackSeconds);
+			StreamGeometry diamond = new();
+			using (var shape = diamond.Open()) { shape.BeginFigure(new Point(45, y - 6), true, true); shape.LineTo(new Point(51, y), true, false); shape.LineTo(new Point(45, y + 6), true, false); shape.LineTo(new Point(39, y), true, false); }
+			dc.DrawGeometry(Brushes.LightBlue, SelectedId == anchor.Id ? new Pen(Brushes.White, 1.5) : null, diamond);
+		}
 		double currentY = Y(_edit == null ? _preview ?? _current : _current);
+		Brush currentInk = new SolidColorBrush(Color.FromRgb(255, 125, 70));
+		dc.DrawLine(new Pen(currentInk, 1), new Point(15, currentY), new Point(ActualWidth, currentY));
 		StreamGeometry thumb = new();
 		using (var shape = thumb.Open()) { shape.BeginFigure(new Point(0, currentY - 6), true, true); shape.LineTo(new Point(15, currentY), true, false); shape.LineTo(new Point(0, currentY + 6), true, false); }
-		dc.DrawGeometry(new SolidColorBrush(Color.FromRgb(255, 125, 70)), null, thumb);
+		dc.DrawGeometry(currentInk, null, thumb);
 		Label(dc, "0:00", 0);
 		Label(dc, TimeSpan.FromSeconds(DurationSeconds).ToString(@"m\:ss"), Math.Max(0, ActualHeight - 14));
 	}

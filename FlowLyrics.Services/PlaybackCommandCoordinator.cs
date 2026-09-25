@@ -24,6 +24,9 @@ public sealed class PlaybackCommandCoordinator : IDisposable
 	public bool IsArming => _arming;
 	public bool RepeatBusy { get; private set; }
 	public bool ShuffleBusy { get; private set; }
+	public bool IsPlaying => _latest?.Session?.IsPlaying == true;
+	public bool CanTogglePlayPause => _latest?.Session?.Capabilities is { } controls
+		&& (controls.CanTogglePlayPause || controls.CanPlay || controls.CanPause);
 	public bool? ShuffleActive => _latest?.Session?.ShuffleActive;
 	public bool CanShuffle => _latest?.Session?.Capabilities.CanShuffle == true && ShuffleActive.HasValue;
 	public bool IsFallbackRepeat => _latest?.Session?.Capabilities.CanRepeat != true && _browserRepeat.Available(_latest?.Session);
