@@ -34,7 +34,7 @@ public sealed class BrowserRepeatTests
 			"native" => s with { Capabilities = s.Capabilities with { CanRepeat = true } },
 			"duration" => s with { Metadata = s.Metadata with { Duration = TimeSpan.Zero } },
 			"seek" => s with { Capabilities = s.Capabilities with { CanSeek = false } },
-			"play" => s with { Capabilities = s.Capabilities with { CanPlay = false } },
+			"play" => s with { Capabilities = s.Capabilities with { CanPlay = false, CanTogglePlayPause = false } },
 			"timeline" => s with { HasTimeline = false },
 			_ => s with { SourceAppUserModelId = "Spotify" }
 		};
@@ -61,6 +61,16 @@ public sealed class BrowserRepeatTests
 		if (reason == "dispose") f.Repeat.Dispose();
 		f.Release.TrySetResult(); await f.Repeat.Pending;
 		Assert.Empty(f.Provider.Commands);
+	}
+
+	[Fact]
+	public async Task BrowserWhilePlaying_CanPlayDisabled_StillRepeats()
+	{
+		using var f = new Fixture();
+		f.Provider.Current = f.Provider.Current with { Capabilities = f.Provider.Current.Capabilities with { CanPlay = false } };
+		await f.Start(); f.Approach(); await f.Deadline();
+		Assert.Equal(new[] { "seek", "play" }, f.Provider.Commands);
+		Assert.True(f.Repeat.Enabled);
 	}
 
 	[Fact]

@@ -139,8 +139,10 @@ public sealed class WindowsMediaSessionProvider : IMediaSessionProvider
 			session => session.TryChangeShuffleActiveAsync(active).AsTask(cancellationToken), "shuffle " + active, cancellationToken);
 
 	public Task<bool> TryPlayAsync(string sessionId, CancellationToken cancellationToken = default) =>
-		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPlayEnabled,
-			session => session.TryPlayAsync().AsTask(cancellationToken), "play", cancellationToken);
+		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPlayEnabled
+			|| session.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+			session => session.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
+				? Task.FromResult(true) : session.TryPlayAsync().AsTask(cancellationToken), "play", cancellationToken);
 
 	public Task<bool> TrySeekNativeAsync(string sessionId, TimeSpan position, CancellationToken cancellationToken = default) =>
 		TryPlaybackCommandAsync(sessionId, session => session.GetPlaybackInfo().Controls.IsPlaybackPositionEnabled,

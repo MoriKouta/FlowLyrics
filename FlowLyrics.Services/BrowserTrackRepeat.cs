@@ -32,7 +32,9 @@ public sealed class BrowserTrackRepeat : IDisposable
 
 	public static bool Eligible(MediaSessionInfo? session) => session is { HasTimeline: true, Metadata.HasTitle: true }
 		&& MediaSourceClassifier.IsBrowser(session.SourceAppUserModelId) && !session.Capabilities.CanRepeat
-		&& session.Capabilities.CanSeek && session.Capabilities.CanPlay && session.Metadata.Duration.TotalSeconds > 0;
+		&& session.Capabilities.CanSeek && (session.Capabilities.CanPlay
+			|| (session.IsPlaying && session.Capabilities.CanPause && session.Capabilities.CanTogglePlayPause))
+		&& session.Metadata.Duration.TotalSeconds > 0;
 	public static string Capability(MediaSessionInfo? session) => session?.Capabilities.CanRepeat == true ? "Native" : Eligible(session) ? "Fallback" : "Unsupported";
 	private static string Key(MediaSessionInfo session) => session.SessionId + "\0" + StopAfterTrackReservation.TrackIdentity(session);
 	public bool Available(MediaSessionInfo? session) => !_disposed && Eligible(session) && Key(session!) != _failedTarget;
